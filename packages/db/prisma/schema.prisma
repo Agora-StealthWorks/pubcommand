@@ -1,0 +1,282 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+  SUPPORT
+  BILLING
+  OPS
+}
+
+model Organization {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String    @unique
+  planId      String    @map("plan_id") @db.Uuid
+  seatLimit   Int       @map("seat_limit")
+  suspendedAt DateTime? @map("suspended_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  plan        Plan                       @relation(fields: [planId], references: [id])
+  brands      Brand[]
+  workspaces  Workspace[]
+  memberships Membership[]
+  roles       Role[]
+  exclusions  Exclusion[]
+  auditLogs   AuditLog[]
+  modules     OrganizationModule[]
+  settings    OrgSettings?
+  slugHistory OrganizationSlugHistory[]
+
+  @@index([planId])
+  @@map("organizations")
+}
+
+model OrganizationSlugHistory {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  slug           String       @unique
+  retiredAt      DateTime     @default(now()) @map("retired_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("organization_slug_history")
+}
+
+model Plan {
+  id                String         @id @default(uuid()) @db.Uuid
+  key               String         @unique
+  name              String
+  seatLimit         Int            @map("seat_limit")
+  monthlyPriceCents Int            @default(0) @map("monthly_price_cents")
+  modules           PlanModule[]
+  organizations     Organization[]
+
+  @@map("plans")
+}
+
+model PlanModule {
+  planId   String @map("plan_id") @db.Uuid
+  moduleId String @map("module_id")
+  plan     Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@id([planId, moduleId])
+  @@map("plan_modules")
+}
+
+model OrganizationModule {
+  organizationId String       @map("organization_id") @db.Uuid
+  moduleId       String       @map("module_id")
+  enabled        Boolean      @default(true)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, moduleId])
+  @@index([organizationId])
+  @@map("organization_modules")
+}
+
+model Brand {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspaces     Workspace[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("brands")
+}
+
+model Workspace {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  brandId        String       @map("brand_id") @db.Uuid
+  name           String
+  slug           String
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  brand          Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, slug])
+  @@index([organizationId])
+  @@map("workspaces")
+}
+
+model User {
+  id           String         @id @default(uuid()) @db.Uuid
+  email        String         @unique
+  name         String?
+  passwordHash String?        @map("password_hash")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  memberships  Membership[]
+  sessions     Session[]
+  magicLinks   MagicLink[]
+  staff        PlatformStaff?
+
+  @@map("users")
+}
+
+model Session {
+  id          String   @id
+  userId      String   @map("user_id") @db.Uuid
+  expiresAt   DateTime @map("expires_at")
+  mfaVerified Boolean  @default(false) @map("mfa_verified")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model MagicLink {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("magic_links")
+}
+
+model Membership {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  roleId         String           @map("role_id") @db.Uuid
+  brandId        String?          @map("brand_id") @db.Uuid
+  workspaceId    String?          @map("workspace_id") @db.Uuid
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           Role             @relation(fields: [roleId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Role {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  description    String           @default("")
+  brandId        String?          @map("brand_id") @db.Uuid
+  workspaceId    String?          @map("workspace_id") @db.Uuid
+  isSystem       Boolean          @default(false) @map("is_system")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grants         RolePermission[]
+  memberships    Membership[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("roles")
+}
+
+model RolePermission {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  roleId         String           @map("role_id") @db.Uuid
+  permission     String
+  effect         PermissionEffect @default(ALLOW)
+  role           Role             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permission])
+  @@index([organizationId])
+  @@map("role_permissions")
+}
+
+model Exclusion {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  permission     String
+  userId         String?      @map("user_id") @db.Uuid
+  roleId         String?      @map("role_id") @db.Uuid
+  brandId        String?      @map("brand_id") @db.Uuid
+  workspaceId    String?      @map("workspace_id") @db.Uuid
+  reason         String       @default("")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("exclusions")
+}
+
+model AuditLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  actorId        String?      @map("actor_id") @db.Uuid
+  action         String
+  targetType     String       @map("target_type")
+  targetId       String?      @map("target_id")
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+model OrgSettings {
+  organizationId String       @id @map("organization_id") @db.Uuid
+  displayName    String       @map("display_name")
+  timezone       String       @default("America/New_York")
+  supportEmail   String?      @map("support_email")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("org_settings")
+}
+
+model PlatformStaff {
+  id               String       @id @default(uuid()) @db.Uuid
+  userId           String       @unique @map("user_id") @db.Uuid
+  role             PlatformRole
+  totpSecretCipher String?      @map("totp_secret_cipher")
+  totpConfirmedAt  DateTime?    @map("totp_confirmed_at")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  disabledAt       DateTime?    @map("disabled_at")
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("platform_staff")
+}
+
+model PlatformAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  targetType String   @map("target_type")
+  targetId   String?  @map("target_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("platform_audit_logs")
+}
