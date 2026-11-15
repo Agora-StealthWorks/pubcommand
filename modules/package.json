@@ -4,16 +4,20 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./charts": "./charts/index.ts",
+    "./charts/studio": "./charts/studio.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@pubcommand/core": "workspace:*"
+    "@pubcommand/core": "workspace:*",
+    "react": "^19.0.0"
   },
   "devDependencies": {
+    "@types/react": "^19.0.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }
