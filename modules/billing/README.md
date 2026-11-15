@@ -2,7 +2,7 @@
 
 Organization plan, seats, and module add-ons. Route: `/billing`. Permissions: `billing.read`, `billing.manage`. Plan entitlement: `billing`.
 
-The foundation registry already loads `manifest.ts`. This folder is the working slice. It does not change auth, tenancy, or other modules.
+The foundation registry already loads `manifest.ts`. The organization route is `apps/web/src/app/sites/org/[slug]/billing/page.tsx`.
 
 ## Models
 
@@ -40,4 +40,4 @@ Checkout charges, invoices, and the `billing.invoice` job are not implemented. T
 
 ## Tests
 
-`billing.test.ts` covers the models, assignment, the settings screen, staff visibility, and the Stripe no-op. The modules package runner includes `src/**/*.test.ts` only, so this file is not part of `pnpm test` until that include is widened.
+`billing.test.ts` covers the models, assignment, the settings screen, staff visibility, and the Stripe no-op.

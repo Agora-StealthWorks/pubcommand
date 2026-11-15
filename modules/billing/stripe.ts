@@ -6,7 +6,12 @@ export const STRIPE_ENV_NAMES = [
 
 export type StripeEnvName = (typeof STRIPE_ENV_NAMES)[number];
 
-export type StripeEnv = Partial<Record<StripeEnvName, string | undefined>>;
+export type StripeEnv = {
+  STRIPE_SECRET_KEY?: string | undefined;
+  STRIPE_WEBHOOK_SECRET?: string | undefined;
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?: string | undefined;
+  [key: string]: string | undefined;
+};
 
 export type StripeEnvStatus = {
   secretKey: boolean;
