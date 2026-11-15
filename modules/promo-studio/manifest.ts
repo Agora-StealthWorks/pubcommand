@@ -4,7 +4,7 @@ export const manifest = defineModule({
   id: "promo-studio",
   slug: "promo-studio",
   name: "Promo Studio",
-  description: "Promotion drafting and approval. Not implemented in Phase 1.",
+  description: "Example promo catalog with stub scores and a package for this organization.",
   nav: [{ label: "Promo Studio", href: "/promo-studio", permission: "promo.read" }],
   routes: [{ path: "/promo-studio", title: "Promo Studio" }],
   permissions: [
