@@ -11,7 +11,7 @@ Project **divine-nourishment**, environment **production**. Do not create servic
 | `Redis` | Redis plugin. Present for a later queue. Phase 1 does not attach one. | `REDIS_URL=${{Redis.REDIS_URL}}` |
 | `pubcommand-files` | S3-compatible bucket. | `S3_*` below |
 
-The web start command is `sh scripts/start-web.sh`. It applies migrations, ensures the super admin exists, then starts Next.js. The super admin has no password.
+The web start command is `sh scripts/start-web.sh`. It applies migrations, ensures the super admin exists, then starts Next.js. The super admin has no password unless `SUPERADMIN_PASSWORD_HASH` is set. When that bcrypt hash is set, every boot writes it onto the super admin user and leaves staff TOTP enrollment unchanged.
 
 The worker is not a second service yet. Add one in the same project from this repository and set its config file to `railway.worker.json` (root of the repo). It uses the same image and `sh scripts/start-worker.sh`. Do not point the existing `pubcommand` service at the worker file.
 
@@ -25,6 +25,7 @@ Set these on the **pubcommand** web service. Reference syntax is copied into the
 | `AUTH_SECRET` | yes | long random string Stephen generates |
 | `ROOT_DOMAIN` | yes | `pubcommand.com` |
 | `SUPERADMIN_EMAIL` | yes for boot | `Stephen@onenationfinancial.com` |
+| `SUPERADMIN_PASSWORD_HASH` | no | bcrypt hash (`$2a$` or `$2b$`). When set, every boot writes it onto that user. |
 | `REDIS_URL` | no, read if set | `${{Redis.REDIS_URL}}` |
 | `S3_ENDPOINT` | no, read if the whole set is present | `${{pubcommand-files.ENDPOINT}}` |
 | `S3_BUCKET` | same | `${{pubcommand-files.BUCKET}}` |
