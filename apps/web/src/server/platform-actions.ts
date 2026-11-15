@@ -9,8 +9,9 @@ import { appendPlatformAudit, changeOrganizationSlug, rawPrisma } from "@pubcomm
 import { IMPERSONATION_COOKIE, authCookieBase, normalizeEmail, sealImpersonation } from "@pubcommand/auth";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { readSession, readStaff, rootDomain, secret } from "@/lib/auth";
-import { siteUrl } from "@/lib/request";
+import { createLoginLink, readSession, readStaff, rootDomain, secret } from "@/lib/auth";
+import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
+import { currentRequest, siteUrl } from "@/lib/request";
 
 async function staffMutation(permission: string) {
   const auth = await readSession();
@@ -123,7 +124,18 @@ export async function inviteStaff(formData: FormData) {
     targetId: user.id,
     metadata: { email, role },
   });
-  redirect("/staff?notice=Staff member saved. They must enroll 2FA before the console opens.");
+  const link = await createLoginLink(user.id);
+  const request = await currentRequest();
+  const magicUrl = magicLinkUrl(request.origin, link.token);
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite" });
+  const notice = exposeMagicLinkOnPage()
+    ? `Staff member saved. Magic link: ${magicUrl}`
+    : delivered === "sent"
+      ? "Staff member saved. A sign-in link was emailed. They must enroll 2FA before the console opens."
+      : delivered === "failed"
+        ? "Staff member saved, but the sign-in email could not be sent. They must enroll 2FA before the console opens."
+        : "Staff member saved. They must enroll 2FA before the console opens.";
+  redirect(`/staff?notice=${encodeURIComponent(notice)}`);
 }
 
 export async function disableStaff(formData: FormData) {

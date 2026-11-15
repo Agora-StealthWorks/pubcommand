@@ -1,5 +1,6 @@
 import { Button, Card, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
+import { exposeMagicLinkOnPage } from "@/lib/mail";
 import { currentRequest } from "@/lib/request";
 
 export default async function LoginPage({
@@ -11,7 +12,7 @@ export default async function LoginPage({
   const request = await currentRequest();
   const local = request.host.includes("localhost") || request.host.startsWith("127.");
   const origin = `${local ? "http" : "https"}://${request.host}`;
-  const expose = process.env.NODE_ENV !== "production" && process.env.AUTH_DEV_EXPOSE_LINKS === "true";
+  const expose = exposeMagicLinkOnPage();
   const devLink = expose && query.devLink?.startsWith(`${origin}/`) ? query.devLink : null;
 
   return (

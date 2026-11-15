@@ -25,7 +25,7 @@ Open:
 - http://localhost:3000/?site=admin platform console (staff + 2FA)
 - http://localhost:3000/?org=example-gazette an example organization
 
-With `AUTH_DEV_EXPOSE_LINKS=true` (the local example) the login page shows the magic link. That flag is ignored in production.
+With `AUTH_DEV_EXPOSE_LINKS=true` (the local example) the login page shows the magic link. That flag is ignored in production, so the link is never shown on the page there. When `RESEND_API_KEY` is set, the link is emailed from `EMAIL_FROM` (default `login@pubcommand.com`). Otherwise the server logs it with a `[magic-link]` prefix.
 
 The worker listens on port 3001 and serves `GET /health`. Redis is optional locally. A queue is not attached.
 

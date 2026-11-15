@@ -26,6 +26,8 @@ Set these on the **pubcommand** web service. Reference syntax is copied into the
 | `ROOT_DOMAIN` | yes | `pubcommand.com` |
 | `SUPERADMIN_EMAIL` | yes for boot | `Stephen@onenationfinancial.com` |
 | `SUPERADMIN_PASSWORD_HASH` | no | bcrypt hash (`$2a$` or `$2b$`). When set, every boot writes it onto that user. |
+| `RESEND_API_KEY` | no | Resend API key. When unset, magic links are written to server logs as `[magic-link]` and are not shown on the page. |
+| `EMAIL_FROM` | no | From address for those emails. Defaults to `login@pubcommand.com`. |
 | `REDIS_URL` | no, read if set | `${{Redis.REDIS_URL}}` |
 | `S3_ENDPOINT` | no, read if the whole set is present | `${{pubcommand-files.ENDPOINT}}` |
 | `S3_BUCKET` | same | `${{pubcommand-files.BUCKET}}` |
@@ -33,7 +35,7 @@ Set these on the **pubcommand** web service. Reference syntax is copied into the
 | `S3_SECRET_ACCESS_KEY` | same | `${{pubcommand-files.SECRET_ACCESS_KEY}}` |
 | `S3_REGION` | same | `${{pubcommand-files.REGION}}` |
 
-`APP_URL` is optional. Magic links use the request host. `AUTH_DEV_EXPOSE_LINKS` must stay unset in production. `ANTHROPIC_API_KEY` is not required; the provider does not call Anthropic.
+`APP_URL` is optional. Magic links use the request host. `AUTH_DEV_EXPOSE_LINKS` must stay unset in production; the login page never shows the link when `NODE_ENV` is production. Set `RESEND_API_KEY` so those links are emailed. `ANTHROPIC_API_KEY` is not required; the provider does not call Anthropic.
 
 Worker service, when added:
 
