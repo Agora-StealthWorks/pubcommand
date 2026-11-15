@@ -10,11 +10,4 @@ This slice is in-memory and scoped by `organizationId`.
 
 Nothing is scraped. `extractEmailInsights` and `scrapeCompetitorPage` are stubs.
 
-```ts
-import { loadIntelScreen, renderIntelScreen } from "./index";
-
-const screen = loadIntelScreen({ organizationId, callDate });
-const html = renderIntelScreen(screen);
-```
-
-The organization shell still paints the Phase 1 placeholder at `/intel`. Mount `renderIntelScreen` there when the shell can take a module view. `loadIntelScreen` seeds two sample competitors and one sample email the first time an organization opens the shared store.
+`apps/web/src/app/sites/org/[slug]/intel/page.tsx` calls `loadIntelScreen` for the signed-in organization. A `date` query returns example historical calls. The shared store seeds two sample competitors and one sample email the first time an organization opens it.
