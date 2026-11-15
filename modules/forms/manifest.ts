@@ -4,7 +4,7 @@ export const manifest = defineModule({
   id: "forms",
   slug: "forms",
   name: "Forms",
-  description: "Forms and funnels. Not implemented in Phase 1.",
+  description: "Build a form, preview it, and review responses.",
   nav: [{ label: "Forms", href: "/forms", permission: "forms.read" }],
   routes: [{ path: "/forms", title: "Forms" }],
   permissions: [
