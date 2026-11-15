@@ -8,6 +8,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/.turbo/**",
       "**/generated/**",
+      "**/next-env.d.ts",
     ],
   },
   ...tseslint.configs.recommended,
