@@ -1,3 +1,4 @@
+import { activateInvitedMemberships } from "@pubcommand/db";
 import { NextResponse } from "next/server";
 import { establishSession, loginDestination, verifyMagicLink } from "@/lib/auth";
 
@@ -10,6 +11,7 @@ export async function GET(request: Request) {
   const origin = `${proto}://${host}`;
   const consumed = await verifyMagicLink(token);
   if (!consumed) return NextResponse.redirect(new URL("/login?error=That sign-in link is invalid or expired.", origin));
+  await activateInvitedMemberships(consumed.userId);
   const { staff } = await establishSession(consumed.userId);
   return NextResponse.redirect(loginDestination({ staff: Boolean(staff), next, requestHost: host }));
 }

@@ -49,9 +49,11 @@ Reserved organization slugs: `www`, `app`, `admin`, `api`, `platform`, `mail`, `
 `PlatformStaff` is the staff flag. Roles:
 
 - `SUPER_ADMIN` — everything, including inviting and removing staff. Seeded for Stephen. Only this role can change staff, and only on `admin.pubcommand.com`.
-- `SUPPORT` — view organizations and users, impersonate, read the platform audit.
-- `BILLING` — view organizations, manage plans, read the platform audit.
-- `OPS` — view organizations, suspend organizations, manage platform subdomains and plan modules, read the platform audit.
+- `SUPPORT` — view organizations and users, create organizations, manage organization members, impersonate, read the platform audit.
+- `BILLING` — view organizations, manage plans, read the platform audit. Billing cannot create organizations or change members.
+- `OPS` — view and create organizations, manage members, suspend organizations, manage platform subdomains and plan modules, read the platform audit.
+
+Creating an organization, adding or removing a member, and adding yourself require `platform.orgs.manage` plus an active staff row, confirmed TOTP, and a verified session. Each of those actions writes a platform audit row and an organization audit row. The create form asks for a name, a subdomain, a plan, and the first admin's email. It creates the default brand and workspace, owner and admin roles, and that admin's membership, then emails a sign-in link. When `RESEND_API_KEY` is unset the link is logged as `[magic-link]` and is never shown on the page in production.
 
 Lucia does not issue a second factor. Phase 1 implements RFC 6238 TOTP for staff only. The secret is encrypted with `AUTH_SECRET`. A staff session is created with `mfaVerified=false` and a signed gate cookie. Middleware rejects any admin-host session that does not carry a staff gate. Staff who have not enrolled, or who have not entered a current code, can open only `/2fa`. Pending enrollment does not open the console. The admin layout checks the staff row and `mfaVerified` again. Organization users are not prompted for 2FA in this phase.
 

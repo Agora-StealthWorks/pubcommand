@@ -5,5 +5,14 @@ export { PlatformAuditImmutableError, createPrismaClient, getPrisma, rawPrisma }
 export { appendOrgAudit, loadAccessSubject } from "./access";
 export { DEFAULT_SUPERADMIN_EMAIL, normalizeEmail } from "./email";
 export { appendPlatformAudit, changeOrganizationSlug, resolveOrgBySlug, slugAvailability } from "./platform";
+export {
+  activateInvitedMemberships,
+  addOrganizationMember,
+  addStaffAsOrganizationAdmin,
+  assignOrganizationPlan,
+  provisionOrganization,
+  removeOrganizationMember,
+  setOrganizationSuspended,
+} from "./provision";
 export { ensureSuperadmin } from "./superadmin";
 export { TenantIsolationError, createTenantClient, tenantDb, withOrgContext } from "./tenant";

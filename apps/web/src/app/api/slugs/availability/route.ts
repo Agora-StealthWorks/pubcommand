@@ -14,14 +14,23 @@ export async function GET(request: Request) {
     const allowed =
       ctx.kind === "ok" && can(ctx.subject, "settings.manage", { organizationId: ctx.resolved.id, brandId: ctx.scope.brandId });
     const staff = await readStaff(auth.user.id);
-    if (!allowed && !(staff && platformCan(staff.role, PLATFORM_PERMISSIONS.manageDomains))) {
+    const staffMayCheck = Boolean(
+      staff &&
+        (platformCan(staff.role, PLATFORM_PERMISSIONS.manageDomains) ||
+          platformCan(staff.role, PLATFORM_PERMISSIONS.manageOrgs)),
+    );
+    if (!allowed && !staffMayCheck) {
       return Response.json({ available: false, reason: "forbidden" }, { status: 403 });
     }
     const currentId = ctx.kind === "ok" ? ctx.resolved.id : undefined;
     return Response.json(await slugAvailability(slug, currentId));
   }
   const staff = await readStaff(auth.user.id);
-  if (!staff || !platformCan(staff.role, PLATFORM_PERMISSIONS.manageDomains)) {
+  if (
+    !staff ||
+    (!platformCan(staff.role, PLATFORM_PERMISSIONS.manageDomains) &&
+      !platformCan(staff.role, PLATFORM_PERMISSIONS.manageOrgs))
+  ) {
     return Response.json({ available: false, reason: "forbidden" }, { status: 403 });
   }
   return Response.json(await slugAvailability(slug));

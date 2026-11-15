@@ -1,60 +1,41 @@
 import { PLATFORM_PERMISSIONS, platformCan } from "@pubcommand/core";
 import { rawPrisma } from "@pubcommand/db";
-import { Button, Input } from "@pubcommand/ui";
-import { TableScroll } from "@/components/table-scroll";
-import { Flash, PageHeader } from "@/components/ui";
-import { readSession, readStaff } from "@/lib/auth";
-import { startImpersonation, suspendOrganization } from "@/server/platform-actions";
+import { OrganizationsList, type OrganizationListItem } from "@/components/organizations-console";
+import { Flash } from "@/components/ui";
+import { readSession, readStaff, rootDomain } from "@/lib/auth";
 
 export default async function OrgsPage({ searchParams }: { searchParams: Promise<{ error?: string; notice?: string }> }) {
   const query = await searchParams;
   const auth = await readSession();
   const staff = auth.user ? await readStaff(auth.user.id) : null;
-  const organizations = await rawPrisma().organization.findMany({
-    include: { plan: true, _count: { select: { memberships: true, brands: true, workspaces: true } } },
+  const rows = await rawPrisma().organization.findMany({
+    include: {
+      plan: true,
+      memberships: { select: { status: true } },
+      _count: { select: { brands: true, workspaces: true } },
+    },
     orderBy: { name: "asc" },
   });
+  const organizations: OrganizationListItem[] = rows.map((organization) => ({
+    id: organization.id,
+    name: organization.name,
+    slug: organization.slug,
+    planId: organization.planId,
+    planName: organization.plan.name,
+    seatsUsed: organization.memberships.filter((member) => member.status === "ACTIVE" || member.status === "INVITED").length,
+    seatLimit: organization.seatLimit,
+    brands: organization._count.brands,
+    workspaces: organization._count.workspaces,
+    suspended: Boolean(organization.suspendedAt),
+  }));
   return (
     <div>
-      <PageHeader title="Organizations" description="Seats compare active memberships with the plan seat limit. Usage counts brands and workspaces." />
       <Flash error={query.error} notice={query.notice} />
-      <TableScroll>
-        <table className="min-w-[44rem] w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-muted">
-            <tr>
-              <th className="px-3 py-2">Name</th><th>Slug</th><th>Plan</th><th>Seats</th><th>Usage</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {organizations.map((organization) => (
-              <tr key={organization.id} className="border-t border-line align-top">
-                <td className="px-3 py-3 font-semibold">{organization.name}</td>
-                <td className="pc-break">{organization.slug}</td>
-                <td>{organization.plan.name}</td>
-                <td>{organization._count.memberships}/{organization.seatLimit}</td>
-                <td>{organization._count.brands} brands · {organization._count.workspaces} workspaces</td>
-                <td className="space-y-2 px-3 py-3">
-                  {organization.suspendedAt ? <p className="text-[#b42318]">Suspended</p> : null}
-                  {staff && platformCan(staff.role, PLATFORM_PERMISSIONS.suspendOrgs) ? (
-                    <form action={suspendOrganization}>
-                      <input type="hidden" name="organizationId" value={organization.id} />
-                      <input type="hidden" name="suspend" value={organization.suspendedAt ? "0" : "1"} />
-                      <Button type="submit" variant="secondary" size="sm">{organization.suspendedAt ? "Unsuspend" : "Suspend"}</Button>
-                    </form>
-                  ) : null}
-                  {staff && platformCan(staff.role, PLATFORM_PERMISSIONS.impersonate) ? (
-                    <form action={startImpersonation} className="pc-form-row">
-                      <input type="hidden" name="organizationId" value={organization.id} />
-                      <Input name="email" type="email" required placeholder="member@example.com" />
-                      <Button type="submit" size="sm">Impersonate</Button>
-                    </form>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </TableScroll>
+      <OrganizationsList
+        organizations={organizations}
+        rootDomain={rootDomain()}
+        canCreate={Boolean(staff && platformCan(staff.role, PLATFORM_PERMISSIONS.manageOrgs))}
+      />
     </div>
   );
 }

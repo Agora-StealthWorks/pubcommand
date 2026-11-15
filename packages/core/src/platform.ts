@@ -5,6 +5,7 @@ export const PLATFORM_PERMISSIONS = {
   viewOrgs: "platform.orgs.view",
   viewUsers: "platform.users.view",
   impersonate: "platform.orgs.impersonate",
+  manageOrgs: "platform.orgs.manage",
   managePlans: "platform.plans.manage",
   suspendOrgs: "platform.orgs.suspend",
   manageDomains: "platform.domains.manage",
@@ -23,6 +24,7 @@ const PLATFORM_ROLE_PERMISSIONS: Record<PlatformRole, readonly PlatformPermissio
     PLATFORM_PERMISSIONS.viewOrgs,
     PLATFORM_PERMISSIONS.viewUsers,
     PLATFORM_PERMISSIONS.impersonate,
+    PLATFORM_PERMISSIONS.manageOrgs,
     PLATFORM_PERMISSIONS.viewAudit,
   ],
   BILLING: [
@@ -32,6 +34,7 @@ const PLATFORM_ROLE_PERMISSIONS: Record<PlatformRole, readonly PlatformPermissio
   ],
   OPS: [
     PLATFORM_PERMISSIONS.viewOrgs,
+    PLATFORM_PERMISSIONS.manageOrgs,
     PLATFORM_PERMISSIONS.suspendOrgs,
     PLATFORM_PERMISSIONS.manageDomains,
     PLATFORM_PERMISSIONS.manageModules,

@@ -16,6 +16,7 @@ import { loadIntelScreen } from "../../../../modules/intel/index";
 import { PromoStudioView } from "../../../../modules/promo-studio/view";
 import { AdminShell } from "@/components/admin-shell";
 import { OrgShell } from "@/components/org-shell";
+import { NewOrganizationForm, OrganizationDetail, OrganizationsList } from "@/components/organizations-console";
 import { TableScroll } from "@/components/table-scroll";
 import { PageHeader } from "@/components/ui";
 import { FormsBuilder } from "@/app/sites/org/[slug]/forms/builder";
@@ -172,17 +173,100 @@ export async function ViewportSurface({
       <div data-surface="admin-orgs">
         {adminFrame(
           "/orgs",
-          <div>
-            <PageHeader title="Organizations" description="Seats compare active memberships with the plan seat limit." />
-            <WideTable
-              headers={["Name", "Slug", "Plan", "Seats", "Usage"]}
-              rows={[[organization.name, SLUG, "Desk", "3/8", "2 brands · 4 workspaces"]]}
-            />
-            <form className="pc-form-row mt-4">
-              <Input type="email" defaultValue={EMAIL} aria-label="Member email" />
-              <Button type="button">Impersonate</Button>
-            </form>
-          </div>,
+          <OrganizationsList
+            rootDomain="pubcommand.com"
+            canCreate
+            newHref="/viewport/admin/orgs/new"
+            detailHref={() => "/viewport/admin/orgs/detail"}
+            organizations={[
+              {
+                id: "org-northstar",
+                name: organization.name,
+                slug: SLUG,
+                planId: "plan-desk",
+                planName: "Desk",
+                seatsUsed: 3,
+                seatLimit: 8,
+                brands: 2,
+                workspaces: 4,
+                suspended: false,
+              },
+            ]}
+          />,
+        )}
+      </div>
+    );
+  }
+
+  if (route === "admin/orgs/empty") {
+    return (
+      <div data-surface="admin-orgs-empty">
+        {adminFrame(
+          "/orgs",
+          <OrganizationsList
+            rootDomain="pubcommand.com"
+            canCreate
+            newHref="/viewport/admin/orgs/new"
+            organizations={[]}
+          />,
+        )}
+      </div>
+    );
+  }
+
+  if (route === "admin/orgs/new") {
+    return (
+      <div data-surface="admin-orgs-new">
+        {adminFrame(
+          "/orgs/new",
+          <NewOrganizationForm
+            plans={[
+              { id: "plan-desk", name: "Desk" },
+              { id: "plan-team", name: "Team" },
+            ]}
+            rootDomain="pubcommand.com"
+            listHref="/viewport/admin/orgs"
+          />,
+        )}
+      </div>
+    );
+  }
+
+  if (route === "admin/orgs/detail") {
+    return (
+      <div data-surface="admin-orgs-detail">
+        {adminFrame(
+          "/orgs/northstar",
+          <OrganizationDetail
+            rootDomain="pubcommand.com"
+            listHref="/viewport/admin/orgs"
+            selfIsAdmin={false}
+            canManage
+            canPlan
+            canSuspend
+            canImpersonate
+            organization={{
+              id: "org-northstar",
+              name: organization.name,
+              slug: SLUG,
+              planId: "plan-desk",
+              planName: "Desk",
+              seatsUsed: 1,
+              seatLimit: 8,
+              brands: 1,
+              workspaces: 1,
+              suspended: false,
+            }}
+            plans={[
+              { id: "plan-desk", name: "Desk" },
+              { id: "plan-team", name: "Team" },
+            ]}
+            roles={[
+              { id: "role-owner", name: "Owner" },
+              { id: "role-admin", name: "Admin" },
+            ]}
+            members={[{ id: "member-stephen", email: EMAIL, roleName: "Owner", status: "INVITED" }]}
+          />,
         )}
       </div>
     );

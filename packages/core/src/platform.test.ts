@@ -10,9 +10,12 @@ describe("platform staff", () => {
   it("gives super admins every platform permission and scopes the other roles", () => {
     expect(platformCan("SUPER_ADMIN", PLATFORM_PERMISSIONS.manageStaff)).toBe(true);
     expect(platformCan("SUPPORT", PLATFORM_PERMISSIONS.impersonate)).toBe(true);
+    expect(platformCan("SUPPORT", PLATFORM_PERMISSIONS.manageOrgs)).toBe(true);
     expect(platformCan("SUPPORT", PLATFORM_PERMISSIONS.managePlans)).toBe(false);
     expect(platformCan("BILLING", PLATFORM_PERMISSIONS.managePlans)).toBe(true);
+    expect(platformCan("BILLING", PLATFORM_PERMISSIONS.manageOrgs)).toBe(false);
     expect(platformCan("BILLING", PLATFORM_PERMISSIONS.suspendOrgs)).toBe(false);
+    expect(platformCan("OPS", PLATFORM_PERMISSIONS.manageOrgs)).toBe(true);
     expect(platformCan("OPS", PLATFORM_PERMISSIONS.suspendOrgs)).toBe(true);
     expect(platformCan("OPS", PLATFORM_PERMISSIONS.manageDomains)).toBe(true);
     expect(platformCan("OPS", PLATFORM_PERMISSIONS.manageStaff)).toBe(false);

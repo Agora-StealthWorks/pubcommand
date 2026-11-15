@@ -1,5 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { publicViewportRoutes, viewportRoutes } from "../src/viewport/routes";
+
+const LONG_EMAIL = "stephen.operator.with.a.very.long.mailbox@onenationfinancial.example";
 
 async function overflow(page: Page) {
   return page.evaluate(() => {
@@ -20,6 +22,63 @@ test("key pages do not overflow at 375px", async ({ page }) => {
       box.clientWidth,
     );
   }
+});
+
+async function expectTapTarget(locator: Locator) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("Missing tap target box");
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(box.width).toBeGreaterThanOrEqual(44);
+}
+
+test("organization admin fits a phone", async ({ page }) => {
+  await page.goto("/viewport/admin/orgs/empty");
+  await expect(page.getByRole("columnheader", { name: "Name" })).toBeVisible();
+  await expect(page.getByText("No organizations yet")).toBeVisible();
+  await expectTapTarget(page.getByRole("link", { name: "Create" }));
+  await expectTapTarget(page.getByRole("link", { name: "New organization" }));
+  const empty = await overflow(page);
+  expect(empty.scrollWidth).toBeLessThanOrEqual(empty.clientWidth);
+
+  await page.goto("/viewport/admin/orgs");
+  await expect(page.getByRole("columnheader", { name: "Name" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Plan" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Seats" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Northstar Publishing Desk" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "https://northstar-publishing-command-desk.pubcommand.com" }).first()).toBeVisible();
+  await expectTapTarget(page.getByRole("link", { name: "New organization" }));
+  await expectTapTarget(page.getByRole("link", { name: "Open org" }));
+  await page.getByRole("link", { name: "New organization" }).click();
+  await expect(page.locator('[data-surface="admin-orgs-new"]')).toBeVisible();
+
+  await expect(page.getByLabel("Organization name")).toBeVisible();
+  await expect(page.getByLabel("Subdomain")).toBeVisible();
+  await expect(page.getByLabel("Plan")).toBeVisible();
+  await expect(page.getByLabel("First admin email")).toBeVisible();
+  await expectTapTarget(page.getByRole("button", { name: "Create organization" }));
+  for (const word of ["admin", "app", "www", "api"]) {
+    await page.getByLabel("Subdomain").fill(word.toUpperCase());
+    await expect(page.getByLabel("Subdomain")).toHaveValue(word);
+    await expect(page.getByText("That name is reserved.")).toBeVisible();
+  }
+  const form = await overflow(page);
+  expect(form.scrollWidth).toBeLessThanOrEqual(form.clientWidth);
+
+  await page.goto("/viewport/admin/orgs/detail");
+  await expect(page.getByRole("heading", { name: "Northstar Publishing Desk" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Plan" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
+  await expect(page.getByText(LONG_EMAIL, { exact: true })).toBeVisible();
+  await expect(page.getByText("https://northstar-publishing-command-desk.pubcommand.com").first()).toBeVisible();
+  await expectTapTarget(page.getByRole("link", { name: "Open org" }));
+  await expectTapTarget(page.getByRole("button", { name: "Add me as admin" }));
+  await expectTapTarget(page.getByRole("button", { name: "Add member" }));
+  await expectTapTarget(page.getByRole("button", { name: "Remove" }));
+  await expectTapTarget(page.getByRole("button", { name: "Change plan" }));
+  await expectTapTarget(page.getByRole("button", { name: "Suspend" }));
+  const detail = await overflow(page);
+  expect(detail.scrollWidth).toBeLessThanOrEqual(detail.clientWidth);
 });
 
 test("org drawer and command palette fit the viewport", async ({ page }) => {

@@ -32,7 +32,7 @@ export function AdminShell({
           <p className="px-2 text-lg font-semibold">PubCommand</p>
           <nav className="mt-4">
             {visible.map((link) => (
-              <Link key={link.href} href={link.href} className={navClass(pathname === link.href)}>
+              <Link key={link.href} href={link.href} className={navClass(isCurrent(pathname, link.href))}>
                 {link.label}
               </Link>
             ))}
@@ -51,6 +51,11 @@ export function AdminShell({
       {children}
     </AppFrame>
   );
+}
+
+function isCurrent(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function navClass(active: boolean) {
