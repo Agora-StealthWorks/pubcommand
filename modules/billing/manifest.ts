@@ -1,18 +1,22 @@
 import { defineModule } from "@pubcommand/core";
 
-// TODO: billing checkout, invoices, and seat changes are not implemented.
+// Plan, seats, and add-ons: ./models, ./assignment, ./screen.
+// Checkout charges and invoices are not collected in this slice.
+// TODO: metering — seat totals are assigned counts, not usage records.
+// TODO: SSO — not a billing provider. Auth owns SsoHooks.
+// TODO: per-organization custom domains — this module does not call the Railway API.
 export const manifest = defineModule({
   id: "billing",
   slug: "billing",
   name: "Billing",
-  description: "Plan, seats, and invoices. Manifest only.",
+  description: "Organization plan, seats, and module add-ons.",
   nav: [{ label: "Billing", href: "/billing", permission: "billing.read" }],
   routes: [{ path: "/billing", title: "Billing" }],
   permissions: [
     { key: "billing.read", description: "Read the organization plan and seats" },
     { key: "billing.manage", description: "Change the organization plan" },
   ],
-  events: [{ name: "billing.plan.changed", description: "TODO: emitted when a plan change is real" }],
+  events: [{ name: "billing.plan.changed", description: "Payload from assignOrgPlan. Nothing publishes it yet." }],
   jobs: [{ name: "billing.invoice", description: "TODO: not scheduled in this phase" }],
   settingsSchema: {
     type: "object",
