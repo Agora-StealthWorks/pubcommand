@@ -18,6 +18,7 @@ export function ChartsStudio({
   canEdit,
   shareNotice,
   publishShare,
+  initialShareUrl = null,
 }: {
   initialCsv: string;
   initialAnnotation: string;
@@ -25,11 +26,12 @@ export function ChartsStudio({
   canEdit: boolean;
   shareNotice: string | null;
   publishShare: (draft: ChartDraft) => Promise<ShareResult>;
+  initialShareUrl?: string | null;
 }) {
   const [csv, setCsv] = useState(initialCsv);
   const [annotation, setAnnotation] = useState(initialAnnotation);
   const [accent, setAccent] = useState(normalizeAccent(initialAccent));
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(initialShareUrl);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const parsed = useMemo(() => parseCsv(csv), [csv]);
@@ -62,9 +64,12 @@ export function ChartsStudio({
   return (
     <div>
       <style>{`
-        .pc-charts-grid { display: grid; gap: 16px; }
+        .pc-charts-grid { display: grid; gap: 16px; min-width: 0; }
+        .pc-charts-grid > * { min-width: 0; max-width: 100%; }
+        .pc-chart { min-width: 0; max-width: 100%; }
+        .pc-chart svg { display: block; width: 100%; height: auto; max-width: 100%; }
         @media (min-width: 880px) {
-          .pc-charts-grid { grid-template-columns: 320px minmax(0, 1fr); align-items: start; }
+          .pc-charts-grid { grid-template-columns: minmax(0, 320px) minmax(0, 1fr); align-items: start; }
         }
       `}</style>
       <header style={{ marginBottom: 16 }}>
@@ -111,7 +116,7 @@ export function ChartsStudio({
               value={accent}
               disabled={!canEdit}
               onChange={(event) => setAccent(normalizeAccent(event.target.value))}
-              style={{ display: "block", marginTop: 6, width: 48, height: 32, padding: 0, border: `1px solid ${line}`, background: "#fff" }}
+              style={{ display: "block", marginTop: 6, width: 48, height: 44, padding: 0, border: `1px solid ${line}`, background: "#fff" }}
             />
           </label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
@@ -131,7 +136,7 @@ export function ChartsStudio({
           {parsed.ok ? null : <p style={errorText}>{parsed.error}</p>}
           {actionError ? <p style={errorText}>{actionError}</p> : null}
           {shareUrl ? (
-            <p style={{ marginTop: 12, fontSize: 13, color: ink, wordBreak: "break-all" }}>
+            <p style={{ marginTop: 12, fontSize: 13, color: ink, overflowWrap: "anywhere", wordBreak: "break-all" }}>
               <a href={shareUrl} style={{ color: BRAND_ACCENT }}>{shareUrl}</a>
             </p>
           ) : null}
@@ -140,7 +145,7 @@ export function ChartsStudio({
         </section>
         <section style={{ ...card, overflow: "auto" }}>
           {svg ? (
-            <div dangerouslySetInnerHTML={{ __html: svg }} />
+            <div className="pc-chart" dangerouslySetInnerHTML={{ __html: svg }} />
           ) : (
             <p style={{ margin: 0, fontSize: 14, color: muted }}>The chart appears when the CSV has a header and numeric rows.</p>
           )}
@@ -169,14 +174,15 @@ const field: CSSProperties = {
   boxSizing: "border-box",
   border: `1px solid ${line}`,
   borderRadius: 6,
-  padding: "8px 10px",
+  minHeight: 44,
+  padding: "10px 12px",
   fontSize: 14,
   color: ink,
   background: "#fff",
 };
 
 const primary: CSSProperties = {
-  height: 36,
+  minHeight: 44,
   padding: "0 12px",
   borderRadius: 6,
   border: `1px solid ${BRAND_ACCENT}`,

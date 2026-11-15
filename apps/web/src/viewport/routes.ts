@@ -1,0 +1,31 @@
+export const viewportRoutes = [
+  { path: "/viewport/admin", surface: "admin" },
+  { path: "/viewport/admin/2fa", surface: "admin-2fa" },
+  { path: "/viewport/admin/orgs", surface: "admin-orgs" },
+  { path: "/viewport/admin/users", surface: "admin-users" },
+  { path: "/viewport/admin/staff", surface: "admin-staff" },
+  { path: "/viewport/admin/plans", surface: "admin-plans" },
+  { path: "/viewport/admin/domains", surface: "admin-domains" },
+  { path: "/viewport/admin/audit", surface: "admin-audit" },
+  { path: "/viewport/app", surface: "app" },
+  { path: "/viewport/org", surface: "org" },
+  { path: "/viewport/org/billing", surface: "billing" },
+  { path: "/viewport/org/knowledge", surface: "knowledge" },
+  { path: "/viewport/org/editorial", surface: "editorial" },
+  { path: "/viewport/org/performance", surface: "performance" },
+  { path: "/viewport/org/intel", surface: "intel" },
+  { path: "/viewport/org/promo-studio", surface: "promo-studio" },
+  { path: "/viewport/org/forms", surface: "forms" },
+  { path: "/viewport/org/charts", surface: "charts" },
+  { path: "/viewport/org/search", surface: "search" },
+  { path: "/viewport/org/settings", surface: "settings" },
+  { path: "/viewport/org/settings/users", surface: "settings-users" },
+  { path: "/viewport/org/settings/roles", surface: "settings-roles" },
+  { path: "/viewport/org/settings/modules", surface: "settings-modules" },
+  { path: "/viewport/org/settings/audit", surface: "settings-audit" },
+] as const;
+
+export const publicViewportRoutes = [
+  { path: "/", surface: "marketing" },
+  { path: "/login", surface: "login" },
+] as const;

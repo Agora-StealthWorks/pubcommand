@@ -46,9 +46,9 @@ export default async function IntelRoute({
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-white">
             {screen.competitors.map((row) => (
-              <li key={row.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
-                <span className="font-medium text-ink">{row.name}</span>
-                <span className="text-muted">{row.domain}</span>
+              <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                <span className="min-w-0 font-medium text-ink">{row.name}</span>
+                <span className="pc-break min-w-0 text-muted">{row.domain}</span>
               </li>
             ))}
           </ul>
@@ -68,7 +68,7 @@ export default async function IntelRoute({
                   <span className="text-sm font-semibold text-ink">{row.subject}</span>
                   <span className="text-xs text-muted">{row.receivedAt}</span>
                 </div>
-                <p className="mt-1 text-sm text-muted">{row.from}</p>
+                <p className="pc-break mt-1 text-sm text-muted">{row.from}</p>
                 <p className="mt-2 text-sm text-ink">{row.bodyExcerpt}</p>
               </li>
             ))}
@@ -77,12 +77,12 @@ export default async function IntelRoute({
       </section>
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Historical calls</h2>
-        <form action="/intel" className="mb-4 flex max-w-md items-end gap-2">
-          <div className="flex-1">
+        <form action="/intel" className="pc-form-row mb-4 max-w-md">
+          <div className="min-w-0">
             <Label htmlFor="intel-call-date">Call date</Label>
             <Input id="intel-call-date" name="date" type="date" defaultValue={dateValue} className="mt-1" />
           </div>
-          <Button type="submit" variant="secondary">
+          <Button type="submit" variant="secondary" className="w-full sm:w-auto">
             Look up
           </Button>
         </form>

@@ -34,16 +34,16 @@ export default async function ModulesPage({
           const toggle = organization.modules.find((row) => row.moduleId === manifest.id);
           const enabled = manifest.id === "settings" || (onPlan && (toggle ? toggle.enabled : true));
           return (
-            <li key={manifest.id} className="flex items-center justify-between px-4 py-3 text-sm">
-              <div>
+            <li key={manifest.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+              <div className="min-w-0">
                 <p className="font-semibold">{manifest.name}</p>
-                <p className="text-muted">/{manifest.slug} · {onPlan ? "on plan" : "not on plan"}</p>
+                <p className="pc-break text-muted">/{manifest.slug} · {onPlan ? "on plan" : "not on plan"}</p>
               </div>
               {onPlan && manifest.id !== "settings" ? (
                 <form action={toggleModule}>
                   <input type="hidden" name="moduleId" value={manifest.id} />
                   <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
-                  <button className="font-semibold text-accent">{enabled ? "Enabled" : "Disabled"}</button>
+                  <button className="inline-flex min-h-11 items-center font-semibold text-accent">{enabled ? "Enabled" : "Disabled"}</button>
                 </form>
               ) : (
                 <span className="text-muted">{enabled ? "Always on" : "Unavailable"}</span>

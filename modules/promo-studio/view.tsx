@@ -65,8 +65,8 @@ export function PromoStudioView({ organizationId }: { organizationId: string }) 
               key={promo.id}
               style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface)", padding: 16 }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>{promo.name}</h3>
+              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                <h3 style={{ margin: 0, minWidth: 0, fontSize: 16, fontWeight: 600, color: "var(--ink)", overflowWrap: "anywhere" }}>{promo.name}</h3>
                 <span style={{ ...pill, ...STATUS_COLOR[promo.status] }}>{statusLabel(promo.status)}</span>
               </div>
               <p style={{ margin: "10px 0 6px", fontSize: 14, color: "var(--ink)" }}>
@@ -124,11 +124,14 @@ const plainList = {
 
 const packageRow = {
   display: "flex",
+  flexWrap: "wrap",
   justifyContent: "space-between",
   gap: 12,
   padding: "8px 0",
   borderTop: "1px solid var(--line)",
   fontSize: 14,
+  minWidth: 0,
+  overflowWrap: "anywhere",
 } as const;
 
 const pill = {

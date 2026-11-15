@@ -1,6 +1,7 @@
 import { PLATFORM_PERMISSIONS, platformCan } from "@pubcommand/core";
 import { rawPrisma } from "@pubcommand/db";
 import { Button, Input } from "@pubcommand/ui";
+import { TableScroll } from "@/components/table-scroll";
 import { Flash, PageHeader } from "@/components/ui";
 import { readSession, readStaff } from "@/lib/auth";
 import { startImpersonation, suspendOrganization } from "@/server/platform-actions";
@@ -17,8 +18,8 @@ export default async function OrgsPage({ searchParams }: { searchParams: Promise
     <div>
       <PageHeader title="Organizations" description="Seats compare active memberships with the plan seat limit. Usage counts brands and workspaces." />
       <Flash error={query.error} notice={query.notice} />
-      <div className="overflow-auto rounded-lg border border-line bg-white">
-        <table className="min-w-full text-sm">
+      <TableScroll>
+        <table className="min-w-[44rem] w-full text-sm">
           <thead className="text-left text-xs uppercase tracking-wide text-muted">
             <tr>
               <th className="px-3 py-2">Name</th><th>Slug</th><th>Plan</th><th>Seats</th><th>Usage</th><th></th>
@@ -28,7 +29,7 @@ export default async function OrgsPage({ searchParams }: { searchParams: Promise
             {organizations.map((organization) => (
               <tr key={organization.id} className="border-t border-line align-top">
                 <td className="px-3 py-3 font-semibold">{organization.name}</td>
-                <td>{organization.slug}</td>
+                <td className="pc-break">{organization.slug}</td>
                 <td>{organization.plan.name}</td>
                 <td>{organization._count.memberships}/{organization.seatLimit}</td>
                 <td>{organization._count.brands} brands · {organization._count.workspaces} workspaces</td>
@@ -42,9 +43,9 @@ export default async function OrgsPage({ searchParams }: { searchParams: Promise
                     </form>
                   ) : null}
                   {staff && platformCan(staff.role, PLATFORM_PERMISSIONS.impersonate) ? (
-                    <form action={startImpersonation} className="flex gap-2">
+                    <form action={startImpersonation} className="pc-form-row">
                       <input type="hidden" name="organizationId" value={organization.id} />
-                      <Input name="email" type="email" required placeholder="member@example.com" className="h-8" />
+                      <Input name="email" type="email" required placeholder="member@example.com" />
                       <Button type="submit" size="sm">Impersonate</Button>
                     </form>
                   ) : null}
@@ -53,7 +54,7 @@ export default async function OrgsPage({ searchParams }: { searchParams: Promise
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     </div>
   );
 }

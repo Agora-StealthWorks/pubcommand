@@ -3,6 +3,7 @@ import { Button, Input } from "@pubcommand/ui";
 import { moduleRegistry } from "@pubcommand/modules";
 import { tenantDb } from "@pubcommand/db";
 import { notFound } from "next/navigation";
+import { TableScroll } from "@/components/table-scroll";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { getOrgContext } from "@/lib/org";
 import { createRole, toggleGrant } from "@/server/org-actions";
@@ -25,16 +26,16 @@ export default async function RolesPage({
     <div>
       <PageHeader title="Roles and permissions" description="A grant is not enough by itself. The plan must entitle the module, and no exclusion may block it." />
       <Flash error={query.error} notice={query.notice} />
-      <form action={createRole} className="mb-6 flex flex-wrap items-end gap-2">
-        <Input name="name" required placeholder="Role name" className="max-w-xs" />
-        <select name="brandId" className="h-10 rounded-md border border-line bg-white px-2 text-sm">
+      <form action={createRole} className="pc-form-row mb-6">
+        <Input name="name" required placeholder="Role name" className="md:max-w-xs" />
+        <select name="brandId" className="pc-control w-full md:w-auto">
           <option value="">Whole organization</option>
           {ctx.brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
         </select>
-        <Button type="submit" variant="secondary">Create role</Button>
+        <Button type="submit" variant="secondary" className="w-full md:w-auto">Create role</Button>
       </form>
-      <div className="overflow-auto rounded-lg border border-line bg-white">
-        <table className="min-w-full border-collapse text-sm">
+      <TableScroll>
+        <table className="min-w-[40rem] w-full border-collapse text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-muted">
               <th className="px-3 py-2">Permission</th>
@@ -44,7 +45,7 @@ export default async function RolesPage({
           <tbody>
             {permissions.map((permission) => (
               <tr key={permission.key} className="border-t border-line">
-                <td className="px-3 py-2 font-medium">{permission.key}</td>
+                <td className="pc-break px-3 py-2 font-medium">{permission.key}</td>
                 {roles.map((role) => {
                   const enabled = role.grants.some((grant) => grant.permission === permission.key && grant.effect === "ALLOW");
                   return (
@@ -53,7 +54,7 @@ export default async function RolesPage({
                         <input type="hidden" name="roleId" value={role.id} />
                         <input type="hidden" name="permission" value={permission.key} />
                         <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
-                        <button className={enabled ? "font-semibold text-[#067647]" : "text-muted"}>{enabled ? "Allow" : "Off"}</button>
+                        <button className={`inline-flex min-h-11 items-center ${enabled ? "font-semibold text-[#067647]" : "text-muted"}`}>{enabled ? "Allow" : "Off"}</button>
                       </form>
                     </td>
                   );
@@ -62,7 +63,7 @@ export default async function RolesPage({
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     </div>
   );
 }

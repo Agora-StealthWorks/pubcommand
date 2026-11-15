@@ -142,7 +142,7 @@ export default async function BillingRoute({
             {screen.current.price} · {screen.current.seatsUsed} of {screen.current.seatLimit} seats
           </p>
           <p className="mt-2 text-sm text-ink">
-            {screen.current.modules.length > 0 ? screen.current.modules.join(", ") : "No modules on this plan."}
+            <span className="pc-break">{screen.current.modules.length > 0 ? screen.current.modules.join(", ") : "No modules on this plan."}</span>
           </p>
         </section>
       ) : (
@@ -155,8 +155,8 @@ export default async function BillingRoute({
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-white">
             {screen.seats.map((seat) => (
-              <li key={seat.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <span className="font-medium text-ink">{loaded.holders.get(seat.id) ?? seat.holder}</span>
+              <li key={seat.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                <span className="pc-break min-w-0 font-medium text-ink">{loaded.holders.get(seat.id) ?? seat.holder}</span>
                 <span className="text-muted">{seat.status}</span>
               </li>
             ))}
@@ -170,8 +170,8 @@ export default async function BillingRoute({
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line bg-white">
             {screen.addOns.map((addOn) => (
-              <li key={addOn.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <span className="font-medium text-ink">{addOn.moduleId}</span>
+              <li key={addOn.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                <span className="pc-break min-w-0 font-medium text-ink">{addOn.moduleId}</span>
                 <span className="text-muted">{addOn.active ? addOn.price : "Inactive"}</span>
               </li>
             ))}
@@ -179,14 +179,14 @@ export default async function BillingRoute({
         )}
       </section>
       {screen.canManage && screen.choices.length > 0 ? (
-        <form action={assignBillingPlan} className="mt-6 flex flex-wrap items-end gap-2 rounded-lg border border-line bg-white p-5">
-          <label className="text-sm" htmlFor="billing-plan">
+        <form action={assignBillingPlan} className="pc-form-row mt-6 items-stretch rounded-lg border border-line bg-white p-4 sm:items-end sm:p-5">
+          <label className="min-w-0 text-sm" htmlFor="billing-plan">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Plan</span>
             <select
               id="billing-plan"
               name="planId"
               defaultValue={screen.current?.planId ?? screen.choices[0]?.planId}
-              className="h-10 rounded-md border border-line bg-white px-2 text-sm"
+              className="pc-control w-full"
             >
               {screen.choices.map((choice) => (
                 <option key={choice.planId} value={choice.planId}>
@@ -195,7 +195,7 @@ export default async function BillingRoute({
               ))}
             </select>
           </label>
-          <Button type="submit">Assign plan</Button>
+          <Button type="submit" className="w-full sm:w-auto">Assign plan</Button>
         </form>
       ) : null}
       <p className="mt-6 text-sm text-muted">{screen.stripe.detail}</p>

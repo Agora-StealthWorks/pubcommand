@@ -82,30 +82,30 @@ export function renderIntelScreen(screen: IntelScreen): string {
 </header>
 <section class="mb-6">
 <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Competitors</h2>
-<table class="w-full overflow-hidden rounded-lg border border-line bg-white text-left">
+<div class="pc-scroll"><table class="w-full min-w-[24rem] text-left">
 <thead><tr><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Name</th><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Domain</th></tr></thead>
 <tbody>${competitorRows || `<tr><td class="px-4 py-4 text-sm text-muted" colspan="2">No competitors for this organization.</td></tr>`}</tbody>
-</table>
+</table></div>
 </section>
 <section class="mb-6">
 <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Ingested email</h2>
-<table class="w-full overflow-hidden rounded-lg border border-line bg-white text-left">
+<div class="pc-scroll"><table class="w-full min-w-[36rem] text-left">
 <thead><tr><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Subject</th><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">From</th><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Received</th><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Excerpt</th></tr></thead>
 <tbody>${emailRows || `<tr><td class="px-4 py-4 text-sm text-muted" colspan="4">No ingested email for this organization.</td></tr>`}</tbody>
-</table>
+</table></div>
 </section>
 <section>
 <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Historical calls</h2>
-<form method="get" action="/intel" class="mb-4 flex flex-wrap items-end gap-3">
+<form method="get" action="/intel" class="pc-form-row mb-4 max-w-md">
 <label for="intel-call-date" class="text-sm font-semibold text-ink">Call date</label>
-<input id="intel-call-date" name="date" type="date" value="${escapeHtml(dateValue)}" class="h-10 rounded-md border border-line bg-white px-3 text-sm text-ink">
-<button type="submit" class="h-10 rounded-md border border-accent bg-accent px-3.5 text-sm font-semibold text-white">Look up</button>
+<input id="intel-call-date" name="date" type="date" value="${escapeHtml(dateValue)}" class="pc-control w-full">
+<button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-md border border-accent bg-accent px-3.5 text-sm font-semibold text-white">Look up</button>
 </form>
 <p class="mb-3 text-sm text-muted">${escapeHtml(screen.callMessage)}</p>
-<table class="w-full overflow-hidden rounded-lg border border-line bg-white text-left">
+<div class="pc-scroll"><table class="w-full min-w-[36rem] text-left">
 <thead><tr><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Source</th><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Date</th><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Title</th><th class="px-4 py-3 text-xs font-semibold uppercase text-muted">Summary</th></tr></thead>
 <tbody>${callRows || `<tr><td class="px-4 py-4 text-sm text-muted" colspan="4">No call rows for this date.</td></tr>`}</tbody>
-</table>
+</table></div>
 </section>
 </div>`;
 }

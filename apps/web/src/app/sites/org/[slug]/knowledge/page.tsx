@@ -64,13 +64,13 @@ export default async function KnowledgeRoute({
         description="Markdown pages for this organization. Search by keyword and open a citation."
       />
       <Flash error={query.error} notice={query.notice} />
-      <form action="/knowledge" className="mb-6 flex max-w-xl gap-2">
+      <form action="/knowledge" className="pc-form-row mb-6 max-w-xl">
         <Input name="q" defaultValue={view.query} placeholder="Search pages" aria-label="Search pages" />
-        <Button type="submit" variant="secondary">
+        <Button type="submit" variant="secondary" className="w-full sm:w-auto">
           Search
         </Button>
       </form>
-      <div className="grid items-start gap-6 lg:grid-cols-[280px_1fr]">
+      <div className="grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <div className="space-y-6">
           {view.query ? (
             <section>

@@ -21,7 +21,7 @@ export default async function SettingsPage({
   if (!can(ctx.subject, "settings.manage", ctx.scope)) return <Denied />;
   const settings = await tenantDb(ctx.resolved.id).orgSettings.findUnique({ where: { organizationId: ctx.resolved.id } });
   return (
-    <div className="max-w-xl">
+    <div className="max-w-xl min-w-0">
       <PageHeader title="Organization settings" description="The public slug is the subdomain. Old slugs keep redirecting." />
       <Flash error={query.error} notice={query.notice} />
       <form action={updateSettings} className="space-y-3 rounded-lg border border-line bg-white p-5">
@@ -31,11 +31,11 @@ export default async function SettingsPage({
         <Input id="timezone" name="timezone" defaultValue={settings?.timezone ?? "America/New_York"} />
         <Label htmlFor="supportEmail">Support email</Label>
         <Input id="supportEmail" name="supportEmail" defaultValue={settings?.supportEmail ?? ""} />
-        <Button type="submit">Save settings</Button>
+        <Button type="submit" className="w-full sm:w-auto">Save settings</Button>
       </form>
       <form action={updateSlug} className="mt-6 space-y-3 rounded-lg border border-line bg-white p-5">
         <SlugField current={ctx.resolved.slug} />
-        <Button type="submit" variant="secondary">Change slug</Button>
+        <Button type="submit" variant="secondary" className="w-full sm:w-auto">Change slug</Button>
       </form>
     </div>
   );

@@ -69,7 +69,7 @@ export function renderLineChartSvg(input: { chart: CsvChart; accent: string; ann
     ? `<text x="${padL}" y="24" font-size="13" font-weight="600" fill="${accent}">${xml(note)}</text>`
     : "";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${xml(input.chart.yLabel)}" font-family="ui-sans-serif, system-ui, sans-serif">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${xml(input.chart.yLabel)}" style="display:block;width:100%;height:auto;max-width:100%" font-family="ui-sans-serif, system-ui, sans-serif">
   <rect width="100%" height="100%" fill="#ffffff"/>
   ${annotation}
   <text x="${padL - 8}" y="${padT + 4}" text-anchor="end" font-size="11" fill="#3e4a5c">${xml(formatTick(max))}</text>

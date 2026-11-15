@@ -26,9 +26,11 @@ export function CommandPalette({ items }: { items: { label: string; href: string
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 bg-[#0b1220]/30 p-4" onClick={() => setOpen(false)}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-[#0b1220]/30 p-3 sm:p-4" onClick={() => setOpen(false)}>
       <div
-        className="mx-auto mt-24 max-w-lg overflow-hidden rounded-lg border border-line bg-white shadow-lg"
+        role="dialog"
+        aria-label="Jump to a page"
+        className="mt-[8vh] flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-line bg-white shadow-lg"
         onClick={(event) => event.stopPropagation()}
       >
         <input
@@ -36,13 +38,14 @@ export function CommandPalette({ items }: { items: { label: string; href: string
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Jump to a page"
-          className="h-12 w-full border-b border-line px-4 text-sm outline-none"
+          aria-label="Jump to a page"
+          className="h-11 w-full shrink-0 border-b border-line px-4 text-sm outline-none"
         />
-        <ul className="max-h-80 overflow-auto py-2">
+        <ul className="min-h-0 flex-1 overflow-auto py-2">
           {matches.map((item) => (
             <li key={item.href}>
               <button
-                className="block w-full px-4 py-2 text-left text-sm hover:bg-canvas"
+                className="flex min-h-11 w-full items-center px-4 text-left text-sm hover:bg-canvas"
                 onClick={() => {
                   setOpen(false);
                   router.push(item.href);
@@ -61,12 +64,12 @@ export function CommandPalette({ items }: { items: { label: string; href: string
 
 export function SearchForm() {
   return (
-    <form action="/search" className="hidden md:block">
+    <form action="/search" className="min-w-0 sm:max-w-xs sm:flex-1">
       <input
         name="q"
         placeholder="Search"
         aria-label="Search"
-        className="h-9 w-56 rounded-md border border-line bg-white px-3 text-sm outline-none"
+        className="h-11 w-full min-w-0 rounded-md border border-line bg-white px-3 text-sm outline-none"
       />
     </form>
   );

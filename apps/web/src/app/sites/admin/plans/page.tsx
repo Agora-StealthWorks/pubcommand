@@ -23,7 +23,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
         {plans.map((plan) => (
           <li key={plan.id} className="rounded-lg border border-line bg-white p-4">
             <p className="font-semibold">{plan.name}</p>
-            <p className="text-sm text-muted">{plan.seatLimit} seats · ${(plan.monthlyPriceCents / 100).toFixed(0)} / month · {plan.modules.map((row) => row.moduleId).join(", ")}</p>
+            <p className="pc-break text-sm text-muted">{plan.seatLimit} seats · ${(plan.monthlyPriceCents / 100).toFixed(0)} / month · {plan.modules.map((row) => row.moduleId).join(", ")}</p>
             {canModules ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {moduleRegistry.all().filter((manifest) => manifest.id !== "settings").map((manifest) => {
@@ -33,7 +33,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
                       <input type="hidden" name="planId" value={plan.id} />
                       <input type="hidden" name="moduleId" value={manifest.id} />
                       <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
-                      <button className="rounded-full border border-line px-2 py-1 text-xs">{manifest.name}: {enabled ? "on" : "off"}</button>
+                      <button className="inline-flex min-h-11 items-center rounded-full border border-line px-3 text-xs">{manifest.name}: {enabled ? "on" : "off"}</button>
                     </form>
                   );
                 })}
@@ -43,14 +43,14 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
         ))}
       </ul>
       {canEdit ? (
-        <form action={assignPlan} className="mt-6 flex flex-wrap gap-2">
-          <select name="organizationId" className="h-10 rounded-md border border-line bg-white px-2 text-sm">
+        <form action={assignPlan} className="pc-form-row mt-6">
+          <select name="organizationId" className="pc-control w-full md:max-w-xs">
             {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
           </select>
-          <select name="planId" className="h-10 rounded-md border border-line bg-white px-2 text-sm">
+          <select name="planId" className="pc-control w-full md:max-w-xs">
             {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
           </select>
-          <button className="rounded-md bg-accent px-3 text-sm font-semibold text-white">Assign plan</button>
+          <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-3 text-sm font-semibold text-white md:w-auto">Assign plan</button>
         </form>
       ) : null}
     </div>

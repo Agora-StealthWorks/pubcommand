@@ -20,14 +20,14 @@ export default async function DomainsPage({ searchParams }: { searchParams: Prom
         {organizations.map((organization) => (
           <li key={organization.id} className="rounded-lg border border-line bg-white p-4">
             <p className="font-semibold">{organization.name}</p>
-            <p className="text-sm text-muted">{organization.slug}.{process.env.ROOT_DOMAIN}</p>
+            <p className="pc-break text-sm text-muted">{organization.slug}.{process.env.ROOT_DOMAIN}</p>
             {organization.slugHistory.length > 0 ? (
-              <p className="mt-1 text-xs text-muted">Redirects: {organization.slugHistory.map((row) => row.slug).join(", ")}</p>
+              <p className="pc-break mt-1 text-xs text-muted">Redirects: {organization.slugHistory.map((row) => row.slug).join(", ")}</p>
             ) : null}
-            <form action={overrideSlug} className="mt-3 flex gap-2">
+            <form action={overrideSlug} className="pc-form-row mt-3">
               <input type="hidden" name="organizationId" value={organization.id} />
-              <Input name="slug" defaultValue={organization.slug} className="max-w-xs" />
-              <Button type="submit" variant="secondary">Override slug</Button>
+              <Input name="slug" defaultValue={organization.slug} className="md:max-w-xs" />
+              <Button type="submit" variant="secondary" className="w-full md:w-auto">Override slug</Button>
             </form>
           </li>
         ))}

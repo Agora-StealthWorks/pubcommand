@@ -215,7 +215,7 @@ export function FormsBuilder({
                         onChange={(event) => setDraft((current) => updateField(current, field.id, { label: event.target.value }))}
                       />
                     </div>
-                    <label className="flex items-end gap-2 pb-2 text-sm">
+                    <label className="flex min-h-11 items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={field.required}
@@ -268,7 +268,7 @@ export function FormsBuilder({
                     {control.required ? " *" : ""}
                   </span>
                   {control.type === "select" ? (
-                    <select disabled className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm text-ink">
+                    <select disabled className="pc-control w-full">
                       {control.options.map((option, index) => (
                         <option key={`${option}-${index}`}>{option}</option>
                       ))}
@@ -277,7 +277,7 @@ export function FormsBuilder({
                     <input
                       disabled
                       type={control.type === "email" ? "email" : "text"}
-                      className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm"
+                      className="h-11 min-h-11 w-full max-w-full rounded-md border border-line bg-white px-3 text-sm"
                     />
                   )}
                 </label>

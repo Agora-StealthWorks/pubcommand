@@ -17,12 +17,12 @@ type AssistView =
   | { kind: "result"; result: WritingAssistResult };
 
 const CSS = `
-.ed{color:#0b1220;font:15px/1.5 ui-sans-serif,system-ui,sans-serif;max-width:960px}
+.ed{color:#0b1220;font:15px/1.5 ui-sans-serif,system-ui,sans-serif;max-width:100%;overflow-wrap:anywhere}
 .ed h1{font-size:1.5rem;line-height:1.25;margin:0;font-weight:600}
 .ed h2{font-size:1.125rem;line-height:1.3;margin:0;font-weight:600}
 .ed p{margin:.35rem 0 0}
 .ed a{color:#1d4ed8;font-weight:600}
-.ed code{font-size:.85em}
+.ed code{font-size:.85em;overflow-wrap:anywhere;word-break:break-all}
 .ed-muted{color:#3e4a5c}
 .ed-header{margin-bottom:1.25rem}
 .ed-table{overflow-x:auto;border:1px solid #e1e4ea;border-radius:8px;background:#fff}
@@ -33,14 +33,15 @@ const CSS = `
 .ed-card,.ed-note,.ed-todo{border:1px solid #e1e4ea;border-radius:8px;padding:.9rem 1rem}
 .ed-card{background:#fff;margin-top:.5rem}
 .ed-note,.ed-todo{background:#f5f6f8;margin-top:.9rem}
-.ed-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem;margin:.9rem 0}
+.ed-stats{display:grid;grid-template-columns:1fr;gap:.75rem;margin:.9rem 0}@media (min-width:640px){.ed-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .ed-stat{border:1px solid #e1e4ea;border-radius:8px;padding:.75rem .85rem;background:#fff}
 .ed-stat dt{font-size:.75rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#3e4a5c}
 .ed-stat dd{font-size:1.25rem;font-weight:600;margin:.2rem 0 0}
 .ed label{display:block;font-weight:600;margin-top:.9rem}
-.ed textarea{display:block;width:100%;min-height:6.5rem;margin-top:.35rem;border:1px solid #e1e4ea;border-radius:6px;padding:.55rem .7rem;font:inherit;box-sizing:border-box}
-.ed button{margin-top:.75rem;background:#1d4ed8;color:#fff;border:1px solid #1d4ed8;border-radius:6px;padding:.45rem .85rem;font-weight:600}
+.ed textarea{display:block;width:100%;min-height:7rem;margin-top:.35rem;border:1px solid #e1e4ea;border-radius:6px;padding:.7rem;font:inherit;box-sizing:border-box}
+.ed button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:.75rem;background:#1d4ed8;color:#fff;border:1px solid #1d4ed8;border-radius:6px;padding:.55rem .9rem;font-weight:600}
 .ed-back{margin:0 0 .75rem}
+.ed-back a{display:inline-flex;align-items:center;min-height:44px}
 `.replaceAll("\n", "");
 
 export async function renderEditorialPage(input: EditorialPageInput): Promise<string> {

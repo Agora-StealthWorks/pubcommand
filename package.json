@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
+    "viewport": "pnpm --filter @pubcommand/web viewport",
     "db:generate": "pnpm --filter @pubcommand/db generate",
     "db:migrate": "pnpm --filter @pubcommand/db migrate:deploy",
     "db:seed": "pnpm --filter @pubcommand/db seed"

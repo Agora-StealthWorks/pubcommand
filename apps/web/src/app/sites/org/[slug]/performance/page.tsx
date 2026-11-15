@@ -1,6 +1,7 @@
 import { can } from "@pubcommand/core";
 import { moduleRegistry, performanceHome } from "@pubcommand/modules";
 import { notFound } from "next/navigation";
+import { TableScroll } from "@/components/table-scroll";
 import { Denied, PageHeader } from "@/components/ui";
 import { getOrgContext } from "@/lib/org";
 
@@ -32,7 +33,8 @@ export default async function PerformancePage({ params }: { params: Promise<{ sl
           : "Example seed for this organization. Broker import is not connected."}
       </p>
       <h2 className="mb-2 text-sm font-semibold">Recommendations</h2>
-      <table className="w-full border-collapse overflow-hidden rounded-lg border border-line bg-white text-sm">
+      <TableScroll>
+      <table className="w-full min-w-[36rem] border-collapse text-sm">
         <thead className="bg-canvas text-left text-xs uppercase tracking-wide text-muted">
           <tr>
             <th className="px-3 py-2">Symbol</th>
@@ -54,10 +56,12 @@ export default async function PerformancePage({ params }: { params: Promise<{ sl
           ))}
         </tbody>
       </table>
+      </TableScroll>
       <p className="mb-6 mt-2 text-sm text-muted">Closed P&L {home.closedPnl}</p>
       <h2 className="mb-2 text-sm font-semibold">Launch funnel</h2>
       <p className="mb-2 text-sm text-muted">Placeholder metrics. Launch tracking is not connected.</p>
-      <table className="w-full border-collapse overflow-hidden rounded-lg border border-line bg-white text-sm">
+      <TableScroll>
+      <table className="w-full min-w-[24rem] border-collapse text-sm">
         <thead className="bg-canvas text-left text-xs uppercase tracking-wide text-muted">
           <tr>
             <th className="px-3 py-2">Visits</th>
@@ -73,6 +77,7 @@ export default async function PerformancePage({ params }: { params: Promise<{ sl
           </tr>
         </tbody>
       </table>
+      </TableScroll>
     </div>
   );
 }

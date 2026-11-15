@@ -8,12 +8,20 @@ export async function middleware(request: NextRequest) {
   if (site.kind === "unknown") return new NextResponse("Unknown host", { status: 404 });
 
   const { pathname, search } = request.nextUrl;
-  if (pathname === "/sites" || pathname.startsWith("/sites/")) return new NextResponse("Not found", { status: 404 });
+  if (pathname === "/sites" || pathname.startsWith("/sites/")) {
+    if (request.headers.get("x-pc-rewrite") === "1") return NextResponse.next();
+    return new NextResponse("Not found", { status: 404 });
+  }
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pc-pathname", pathname);
   requestHeaders.set("x-pc-search", search);
   requestHeaders.set("x-pc-site", site.kind);
+  requestHeaders.set("x-pc-rewrite", "1");
+
+  if (pathname === "/viewport" || pathname.startsWith("/viewport/")) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
 
   if (site.kind === "admin") {
     const secret = process.env.AUTH_SECRET ?? "";

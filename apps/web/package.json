@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "viewport": "playwright install chromium && playwright test -c playwright.viewport.config.ts"
   },
   "dependencies": {
     "@pubcommand/ai": "workspace:*",
@@ -20,6 +21,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",

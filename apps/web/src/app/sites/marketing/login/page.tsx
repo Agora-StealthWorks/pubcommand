@@ -16,7 +16,7 @@ export default async function LoginPage({
   const devLink = expose && query.devLink?.startsWith(`${origin}/`) ? query.devLink : null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-16">
+    <main data-surface="login" className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
       <Link href="/" className="text-sm font-semibold text-accent">
         PubCommand
       </Link>
@@ -25,7 +25,7 @@ export default async function LoginPage({
       {query.sent ? <p className="mt-4 text-sm text-[#067647]">If that account exists, a sign-in link is ready.</p> : null}
       {query.error ? <p className="mt-4 text-sm text-[#912018]">{query.error}</p> : null}
       {devLink ? (
-        <p className="mt-4 break-all rounded-md border border-line bg-white p-3 text-sm">
+        <p className="pc-break mt-4 rounded-md border border-line bg-white p-3 text-sm">
           Development link: <a className="text-accent underline" href={devLink}>{devLink}</a>
         </p>
       ) : null}

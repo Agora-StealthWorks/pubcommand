@@ -24,12 +24,12 @@ export default async function OrgPickerPage() {
   });
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
+    <main data-surface="app" className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
       <p className="text-sm font-semibold uppercase tracking-wide text-accent">PubCommand</p>
-      <h1 className="mt-2 text-3xl font-semibold">Choose an organization</h1>
-      <p className="mt-2 text-sm text-muted">{auth.user.email}</p>
+      <h1 className="mt-2 break-words text-3xl font-semibold">Choose an organization</h1>
+      <p className="pc-break mt-2 text-sm text-muted">{auth.user.email}</p>
       {staff ? (
-        <a href={adminHref} className="mt-6 inline-flex rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white">
+        <a href={adminHref} className="mt-6 inline-flex min-h-11 items-center rounded-md bg-accent px-4 text-sm font-semibold text-white">
           {staff.totpConfirmedAt && auth.session?.mfaVerified ? "Open platform console" : "Finish staff two-factor setup"}
         </a>
       ) : null}
@@ -42,12 +42,12 @@ export default async function OrgPickerPage() {
             pathname: "/",
           });
           return (
-            <li key={membership.id} className="flex items-center justify-between px-4 py-4">
-              <div>
-                <p className="font-semibold">{membership.organization.name}</p>
+            <li key={membership.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+              <div className="min-w-0">
+                <p className="break-words font-semibold">{membership.organization.name}</p>
                 <p className="text-sm text-muted">{membership.role.name}</p>
               </div>
-              <a href={href} className="text-sm font-semibold text-accent">Open</a>
+              <a href={href} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">Open</a>
             </li>
           );
         })}

@@ -32,7 +32,7 @@ export function SlugField({ current }: { current: string }) {
         name="slug"
         value={slug}
         onChange={(event) => setSlug(event.target.value)}
-        className="mt-1 h-10 w-full rounded-md border border-line px-3 font-normal"
+        className="mt-1 h-11 min-h-11 w-full max-w-full rounded-md border border-line px-3 font-normal"
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}

@@ -32,8 +32,8 @@ export default async function OrgHome({ params }: { params: Promise<{ slug: stri
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted">Recent audit</h2>
       <ul className="divide-y divide-line rounded-lg border border-line bg-white">
         {audit.map((entry) => (
-          <li key={entry.id} className="flex items-center justify-between px-4 py-3 text-sm">
-            <span>{entry.action}</span>
+          <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+            <span className="pc-break min-w-0">{entry.action}</span>
             <Badge>{entry.createdAt.toISOString().slice(0, 16).replace("T", " ")}</Badge>
           </li>
         ))}
