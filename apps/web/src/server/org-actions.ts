@@ -5,6 +5,7 @@ import { appendOrgAudit, appendPlatformAudit, changeOrganizationSlug, rawPrisma,
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createLoginLink, normalizeEmail } from "@/lib/auth";
+import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 
@@ -110,13 +111,17 @@ export async function inviteUser(formData: FormData) {
   });
   const link = await createLoginLink(user.id);
   await audit(ctx, "user.invited", "user", user.id, { email });
-  const dev = process.env.NODE_ENV !== "production" && process.env.AUTH_DEV_EXPOSE_LINKS === "true";
   const request = await currentRequest();
-  const proto = request.host.includes("localhost") || request.host.startsWith("127.") ? "http" : "https";
-  const magicUrl = `${proto}://${request.host}/api/auth/magic-link/verify?token=${link.token}`;
-  redirect(
-    `/settings/users?notice=${encodeURIComponent(dev ? `Invite created. Magic link: ${magicUrl}` : "Invite created. They can request a magic link.")}`,
-  );
+  const magicUrl = magicLinkUrl(request.origin, link.token);
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite" });
+  const notice = exposeMagicLinkOnPage()
+    ? `Invite created. Magic link: ${magicUrl}`
+    : delivered === "sent"
+      ? "Invite created. A sign-in link was emailed."
+      : delivered === "failed"
+        ? "Invite created, but the sign-in email could not be sent."
+        : "Invite created.";
+  redirect(`/settings/users?notice=${encodeURIComponent(notice)}`);
 }
 
 export async function addExclusion(formData: FormData) {
