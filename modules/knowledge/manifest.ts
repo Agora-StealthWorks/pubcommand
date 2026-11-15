@@ -4,7 +4,7 @@ export const manifest = defineModule({
   id: "knowledge",
   slug: "knowledge",
   name: "Knowledge",
-  description: "Shared knowledge base. Not implemented in Phase 1.",
+  description: "Markdown pages for this organization, with keyword search and citations.",
   nav: [{ label: "Knowledge", href: "/knowledge", permission: "knowledge.read" }],
   routes: [{ path: "/knowledge", title: "Knowledge" }],
   permissions: [
