@@ -1,0 +1,24 @@
+{
+  "name": "@pubcommand/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./edge": "./src/edge.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pubcommand/db": "workspace:*",
+    "bcryptjs": "^2.4.3",
+    "lucia": "^3.2.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
