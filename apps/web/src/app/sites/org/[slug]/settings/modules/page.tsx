@@ -1,8 +1,8 @@
 import { can } from "@pubcommand/core";
 import { tenantDb } from "@pubcommand/db";
-import { moduleRegistry } from "@pubcommand/modules";
 import { notFound } from "next/navigation";
 import { Denied, Flash, PageHeader } from "@/components/ui";
+import { appCatalog } from "@/lib/apps";
 import { getOrgContext } from "@/lib/org";
 import { toggleModule } from "@/server/org-actions";
 
@@ -25,28 +25,39 @@ export default async function ModulesPage({
   if (!organization) notFound();
   const planModules = new Set(organization.plan.modules.map((row) => row.moduleId));
   return (
-    <div>
-      <PageHeader title="Modules" description={`${organization.plan.name} plan. Settings stays available so the organization cannot lock itself out.`} />
+    <div className="max-w-2xl">
+      <PageHeader title="Apps" description="Turn apps on or off for everyone in this workspace." />
       <Flash error={query.error} notice={query.notice} />
       <ul className="divide-y divide-line rounded-lg border border-line bg-white">
-        {moduleRegistry.all().map((manifest) => {
-          const onPlan = manifest.id === "settings" || planModules.has(manifest.id);
-          const toggle = organization.modules.find((row) => row.moduleId === manifest.id);
-          const enabled = manifest.id === "settings" || (onPlan && (toggle ? toggle.enabled : true));
+        {appCatalog().map((app) => {
+          const onPlan = planModules.has(app.moduleId);
+          const toggle = organization.modules.find((row) => row.moduleId === app.moduleId);
+          const enabled = onPlan && (toggle ? toggle.enabled : true);
           return (
-            <li key={manifest.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-              <div className="min-w-0">
-                <p className="font-semibold">{manifest.name}</p>
-                <p className="pc-break text-muted">/{manifest.slug} · {onPlan ? "on plan" : "not on plan"}</p>
+            <li key={app.moduleId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="text-xl" aria-hidden>
+                  {app.icon}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-semibold">{app.name}</p>
+                  <p className="pc-break text-muted">{app.description}</p>
+                </div>
               </div>
-              {onPlan && manifest.id !== "settings" ? (
+              {onPlan ? (
                 <form action={toggleModule}>
-                  <input type="hidden" name="moduleId" value={manifest.id} />
+                  <input type="hidden" name="moduleId" value={app.moduleId} />
                   <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
-                  <button className="inline-flex min-h-11 items-center font-semibold text-accent">{enabled ? "Enabled" : "Disabled"}</button>
+                  <button
+                    className={`inline-flex min-h-9 items-center rounded-full px-3 text-xs font-semibold ${
+                      enabled ? "bg-[#ecfdf3] text-[#067647]" : "bg-canvas text-muted"
+                    }`}
+                  >
+                    {enabled ? "On" : "Off"}
+                  </button>
                 </form>
               ) : (
-                <span className="text-muted">{enabled ? "Always on" : "Unavailable"}</span>
+                <span className="text-muted">Not available</span>
               )}
             </li>
           );

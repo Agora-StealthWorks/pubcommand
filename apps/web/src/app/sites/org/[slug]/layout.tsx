@@ -60,23 +60,11 @@ export default async function OrgLayout({
   const target = ctx.impersonatingHere
     ? await rawPrisma().user.findUnique({ where: { id: ctx.impersonatingHere.targetUserId } })
     : null;
-  const orgLinks = ctx.memberships.map((membership) => ({
-    name: membership.organization.name,
-    current: membership.organization.slug === ctx.resolved.slug,
-    href: buildSiteUrl({
-      rootDomain: rootDomain(),
-      requestHost: ctx.request.host,
-      site: { kind: "org", slug: membership.organization.slug },
-      pathname: "/",
-    }),
-  }));
-
   return (
     <OrgShell
       organization={ctx.resolved}
       brands={ctx.brands}
       brand={ctx.brand}
-      orgLinks={orgLinks}
       subject={ctx.subject}
       pathname={ctx.request.pathname}
       email={target?.email ?? ctx.auth.user.email}

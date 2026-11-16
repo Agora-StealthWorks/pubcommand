@@ -1,20 +1,22 @@
 import type { AccessSubject } from "@pubcommand/core";
 import { can } from "@pubcommand/core";
-import { Badge } from "@pubcommand/ui";
-import { moduleRegistry } from "@pubcommand/modules";
 import Link from "next/link";
+import { appForPath, CATEGORY_ORDER, visibleApps } from "@/lib/apps";
 import { stopImpersonation } from "@/server/platform-actions";
-import { setBrand } from "@/server/org-actions";
 import { AppFrame } from "./app-frame";
-import { CommandPalette, SearchForm } from "./command-palette";
+import { BrandSwitcher } from "./brand-switcher";
+import { CommandPalette } from "./command-palette";
 
 type Brand = { id: string; name: string };
 
+/**
+ * Sidebar with the apps grouped by area, and one Settings link at the bottom.
+ * Everything administrative lives under Settings.
+ */
 export function OrgShell({
   organization,
   brands,
   brand,
-  orgLinks,
   subject,
   pathname,
   email,
@@ -24,19 +26,72 @@ export function OrgShell({
   organization: { id: string; name: string; slug: string };
   brands: Brand[];
   brand: Brand | null;
-  orgLinks: { name: string; href: string; current: boolean }[];
   subject: AccessSubject;
   pathname: string;
   email: string;
   impersonating: { targetEmail: string } | null;
   children: React.ReactNode;
 }) {
-  const links = moduleRegistry.all().flatMap((manifest) => {
-    if (!subject.entitledModuleIds.includes(manifest.planEntitlement)) return [];
-    return manifest.nav
-      .filter((item) => !item.permission || can(subject, item.permission, { organizationId: organization.id, brandId: subject.membershipBrandId ?? brand?.id ?? null }))
-      .map((item) => ({ href: item.href, label: item.label }));
-  });
+  const scope = { organizationId: organization.id, brandId: subject.membershipBrandId ?? brand?.id ?? null };
+  const apps = visibleApps(subject, scope);
+  const current = appForPath(apps, pathname);
+  const inSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const canSettings = can(subject, "settings.manage", scope);
+  const groups = CATEGORY_ORDER.map((category) => ({ category, apps: apps.filter((app) => app.category === category) })).filter(
+    (group) => group.apps.length > 0,
+  );
+
+  const sidebar = (
+    <div className="flex min-h-full flex-col">
+      <div className="space-y-3 px-4 py-4">
+        <Link href="/" className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-sm font-bold text-white">P</span>
+          <span className="text-base font-semibold">PubCommand</span>
+        </Link>
+        <div className="rounded-lg border border-line px-2 py-1.5">
+          <p className="px-1 text-[11px] font-medium text-muted">Brand</p>
+          <BrandSwitcher brands={brands} current={brand?.id ?? null} />
+        </div>
+      </div>
+      <nav className="flex-1 px-2 pb-4" aria-label="Apps">
+        <Link className={navClass(pathname === "/")} href="/">
+          <span aria-hidden className="w-5 text-center">
+            🏠
+          </span>
+          Dashboard
+        </Link>
+        {groups.map((group) => (
+          <div key={group.category} className="mt-4">
+            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{group.category}</p>
+            {group.apps.map((app) => (
+              <Link key={app.moduleId} className={navClass(current?.moduleId === app.moduleId)} href={app.href}>
+                <span aria-hidden className="w-5 text-center">
+                  {app.icon}
+                </span>
+                {app.name}
+              </Link>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div className="border-t border-line px-2 py-3">
+        {canSettings ? (
+          <Link className={navClass(inSettings)} href="/settings">
+            <span aria-hidden className="w-5 text-center">
+              ⚙️
+            </span>
+            Settings
+          </Link>
+        ) : null}
+        <div className="mt-2 flex items-center justify-between gap-2 px-3">
+          <span className="truncate text-xs text-muted">{email}</span>
+          <form action="/api/auth/logout" method="post">
+            <button className="inline-flex min-h-9 items-center whitespace-nowrap text-xs font-semibold text-muted hover:text-ink">Sign out</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -44,77 +99,38 @@ export function OrgShell({
         banner={
           impersonating ? (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#f9dbaf] bg-[#fffaeb] px-4 py-2 text-sm text-[#93370d]">
-              <p className="pc-break min-w-0">
-                Impersonating {impersonating.targetEmail}. Actions are written to the platform audit log.
-              </p>
+              <p className="pc-break min-w-0">Viewing as {impersonating.targetEmail}.</p>
               <form action={stopImpersonation}>
-                <button className="inline-flex min-h-11 items-center font-semibold underline">End impersonation</button>
+                <button className="inline-flex min-h-11 items-center font-semibold underline">Stop</button>
               </form>
             </div>
           ) : null
         }
-        sidebar={
-          <>
-            <div className="border-b border-line px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">PubCommand</p>
-              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-muted">Organization</p>
-              <ul className="mt-2 space-y-1">
-                {orgLinks.map((link) => (
-                  <li key={link.href}>
-                    <a href={link.href} className={`block break-all py-1 text-sm font-semibold ${link.current ? "text-ink" : "text-accent"}`}>
-                      {link.name}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-              <form action={setBrand} className="mt-3">
-                <label className="block text-xs font-semibold text-muted">
-                  Brand
-                  <select name="brandId" defaultValue={brand?.id ?? ""} className="pc-control mt-1 w-full">
-                    {brands.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button className="mt-2 inline-flex min-h-11 w-full items-center text-sm font-semibold text-accent">Switch brand</button>
-              </form>
-            </div>
-            <nav className="px-2 py-3">
-              <Link className={navClass(pathname === "/")} href="/">
-                Overview
-              </Link>
-              {links.map((link) => (
-                <Link key={link.href} className={navClass(pathname === link.href)} href={link.href}>
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
-          </>
-        }
+        sidebar={sidebar}
         header={
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-            <SearchForm />
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm sm:ml-auto">
-              <Badge className="pc-break max-w-full" tone="accent">
-                {organization.slug}
-              </Badge>
-              <span className="pc-break min-w-0 text-muted">{email}</span>
-              <form action="/api/auth/logout" method="post">
-                <button className="inline-flex min-h-11 items-center font-semibold text-accent">Log out</button>
-              </form>
-            </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-sm font-semibold">
+              {current ? current.name : inSettings ? "Settings" : "Dashboard"}
+            </p>
+            <span className="ml-auto hidden text-xs text-muted sm:inline">⌘K to jump</span>
           </div>
         }
       >
         {children}
       </AppFrame>
-      <CommandPalette items={[{ label: "Overview", href: "/" }, { label: "Search", href: "/search" }, ...links]} />
+      <CommandPalette
+        items={[
+          { label: "Dashboard", href: "/" },
+          ...apps.map((app) => ({ label: app.name, href: app.href })),
+          ...(canSettings ? [{ label: "Settings", href: "/settings" }] : []),
+        ]}
+      />
     </div>
   );
 }
 
 function navClass(active: boolean) {
-  return `flex min-h-11 items-center rounded-md px-3 text-sm font-medium ${active ? "bg-[#dbe7ff] text-[#1e3a8a]" : "text-ink hover:bg-canvas"}`;
+  return `flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium ${
+    active ? "bg-[#e0e7ff] text-[#1e3a8a]" : "text-ink hover:bg-canvas"
+  }`;
 }

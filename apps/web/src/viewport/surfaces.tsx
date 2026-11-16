@@ -32,7 +32,6 @@ const SHARE_URL =
 
 const organization = { id: VIEWPORT_ORG_ID, name: "Northstar Publishing Desk", slug: SLUG };
 const brands = [{ id: "brand-desk", name: "Northstar Desk" }];
-const orgLinks = [{ name: "Northstar Publishing Desk", href: "/viewport/org", current: true }];
 
 function orgFrame(pathname: string, children: React.ReactNode, impersonating = false) {
   return (
@@ -40,7 +39,6 @@ function orgFrame(pathname: string, children: React.ReactNode, impersonating = f
       organization={organization}
       brands={brands}
       brand={brands[0] ?? null}
-      orgLinks={orgLinks}
       subject={viewportSubject()}
       pathname={pathname}
       email={EMAIL}

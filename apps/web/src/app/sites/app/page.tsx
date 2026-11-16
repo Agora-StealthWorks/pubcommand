@@ -23,10 +23,22 @@ export default async function OrgPickerPage() {
     pathname: staffReady(staff, auth.session) ? "/" : "/2fa",
   });
 
+  // One workspace: go straight to its dashboard, like signing in to OxfordHub.
+  if (memberships.length === 1) {
+    redirect(
+      buildSiteUrl({
+        rootDomain: rootDomain(),
+        requestHost: request.host,
+        site: { kind: "org", slug: memberships[0]!.organization.slug },
+        pathname: "/",
+      }),
+    );
+  }
+
   return (
     <main data-surface="app" className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
       <p className="text-sm font-semibold uppercase tracking-wide text-accent">PubCommand</p>
-      <h1 className="mt-2 break-words text-3xl font-semibold">Choose an organization</h1>
+      <h1 className="mt-2 break-words text-3xl font-semibold">Choose a workspace</h1>
       <p className="pc-break mt-2 text-sm text-muted">{auth.user.email}</p>
       {staff ? (
         <a href={adminHref} className="mt-6 inline-flex min-h-11 items-center rounded-md bg-accent px-4 text-sm font-semibold text-white">

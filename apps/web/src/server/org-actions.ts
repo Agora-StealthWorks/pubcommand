@@ -189,5 +189,31 @@ export async function toggleModule(formData: FormData) {
     update: { enabled },
   });
   await audit(ctx, "module.entitlement.changed", "module", moduleId, { enabled: String(enabled) });
-  redirect("/settings/modules?notice=Module updated.");
+  redirect("/settings/modules?notice=App updated.");
+}
+
+export async function createBrand(formData: FormData) {
+  const ctx = await orgMutation("settings.manage");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name || name.length > 80) redirect("/settings/brands?error=Enter a brand name (up to 80 characters).");
+  const base = slugifyName(name) || "brand";
+  const db = tenantDb(ctx.resolved.id);
+  const taken = new Set((await db.brand.findMany({ select: { slug: true } })).map((row) => row.slug));
+  let slug = base;
+  for (let n = 2; taken.has(slug); n += 1) slug = `${base.slice(0, 36)}-${n}`;
+  const brand = await db.brand.create({ data: { organizationId: ctx.resolved.id, name, slug } });
+  await db.workspace.create({ data: { organizationId: ctx.resolved.id, brandId: brand.id, name: "General", slug: "general" } });
+  await audit(ctx, "brand.created", "brand", brand.id, { name });
+  redirect(`/settings/brands?notice=${encodeURIComponent(`${name} added.`)}`);
+}
+
+export async function renameBrand(formData: FormData) {
+  const ctx = await orgMutation("settings.manage");
+  const brandId = String(formData.get("brandId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name || name.length > 80) redirect("/settings/brands?error=Enter a brand name (up to 80 characters).");
+  const result = await tenantDb(ctx.resolved.id).brand.updateMany({ where: { id: brandId }, data: { name } });
+  if (result.count === 0) redirect("/settings/brands?error=Unknown brand.");
+  await audit(ctx, "brand.renamed", "brand", brandId, { name });
+  redirect("/settings/brands?notice=Brand renamed.");
 }

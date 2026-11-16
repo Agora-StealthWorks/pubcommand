@@ -25,7 +25,7 @@ export function AppFrame({
     <div className="min-h-screen max-w-full bg-canvas text-ink">
       {banner}
       <div className="md:grid md:min-h-screen md:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-line bg-white md:block">{sidebar}</aside>
+        <aside className="hidden border-r border-line bg-white md:sticky md:top-0 md:block md:h-screen md:overflow-y-auto">{sidebar}</aside>
         {open ? (
           <div className="fixed inset-0 z-40 md:hidden">
             <button

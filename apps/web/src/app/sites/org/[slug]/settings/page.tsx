@@ -22,7 +22,7 @@ export default async function SettingsPage({
   const settings = await tenantDb(ctx.resolved.id).orgSettings.findUnique({ where: { organizationId: ctx.resolved.id } });
   return (
     <div className="max-w-xl min-w-0">
-      <PageHeader title="Organization settings" description="The public slug is the subdomain. Old slugs keep redirecting." />
+      <PageHeader title="General" description="Workspace name, timezone and web address." />
       <Flash error={query.error} notice={query.notice} />
       <form action={updateSettings} className="space-y-3 rounded-lg border border-line bg-white p-5">
         <Label htmlFor="displayName">Display name</Label>
@@ -35,7 +35,7 @@ export default async function SettingsPage({
       </form>
       <form action={updateSlug} className="mt-6 space-y-3 rounded-lg border border-line bg-white p-5">
         <SlugField current={ctx.resolved.slug} />
-        <Button type="submit" variant="secondary" className="w-full sm:w-auto">Change slug</Button>
+        <Button type="submit" variant="secondary" className="w-full sm:w-auto">Change web address</Button>
       </form>
     </div>
   );
