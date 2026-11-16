@@ -1,58 +1,55 @@
 import { PLATFORM_PERMISSIONS, platformCan } from "@pubcommand/core";
 import { rawPrisma } from "@pubcommand/db";
 import { moduleRegistry } from "@pubcommand/modules";
+import { PlansConsole, type PlanRow } from "@/components/plans-console";
 import { Flash, PageHeader } from "@/components/ui";
 import { readSession, readStaff } from "@/lib/auth";
-import { assignPlan, togglePlanModule } from "@/server/platform-actions";
+import { archivePlan, assignPlan, createPlan, togglePlanModule, updatePlan } from "@/server/platform-actions";
 
 export default async function PlansPage({ searchParams }: { searchParams: Promise<{ error?: string; notice?: string }> }) {
   const query = await searchParams;
   const auth = await readSession();
   const staff = auth.user ? await readStaff(auth.user.id) : null;
   const [plans, organizations] = await Promise.all([
-    rawPrisma().plan.findMany({ include: { modules: true }, orderBy: { seatLimit: "asc" } }),
-    rawPrisma().organization.findMany({ orderBy: { name: "asc" } }),
+    rawPrisma().plan.findMany({
+      include: { modules: true, _count: { select: { organizations: true } } },
+      orderBy: [{ archivedAt: "asc" }, { seatLimit: "asc" }],
+    }),
+    rawPrisma().organization.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const canEdit = Boolean(staff && platformCan(staff.role, PLATFORM_PERMISSIONS.managePlans));
   const canModules = Boolean(staff && platformCan(staff.role, PLATFORM_PERMISSIONS.manageModules));
+  const modules = moduleRegistry
+    .all()
+    .filter((manifest) => manifest.id !== "settings" && manifest.id !== "example")
+    .map((manifest) => ({ id: manifest.id, name: manifest.name }));
+  const rows: PlanRow[] = plans.map((plan) => ({
+    id: plan.id,
+    key: plan.key,
+    name: plan.name,
+    seatLimit: plan.seatLimit,
+    brandLimit: plan.brandLimit,
+    workspaceLimit: plan.workspaceLimit,
+    monthlyPriceCents: plan.monthlyPriceCents,
+    archived: Boolean(plan.archivedAt),
+    moduleIds: plan.modules.map((row) => row.moduleId),
+    organizationCount: plan._count.organizations,
+  }));
   return (
     <div>
-      <PageHeader title="Plans" description="Assign a plan to an organization, or change which modules a plan includes." />
+      <PageHeader
+        title="Plans"
+        description="Create and edit plans. Seat, brand, and workspace limits describe what the plan includes. The price is display only and is not charged."
+      />
       <Flash error={query.error} notice={query.notice} />
-      <ul className="space-y-4">
-        {plans.map((plan) => (
-          <li key={plan.id} className="rounded-lg border border-line bg-white p-4">
-            <p className="font-semibold">{plan.name}</p>
-            <p className="pc-break text-sm text-muted">{plan.seatLimit} seats · ${(plan.monthlyPriceCents / 100).toFixed(0)} / month · {plan.modules.map((row) => row.moduleId).join(", ")}</p>
-            {canModules ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {moduleRegistry.all().filter((manifest) => manifest.id !== "settings").map((manifest) => {
-                  const enabled = plan.modules.some((row) => row.moduleId === manifest.id);
-                  return (
-                    <form key={manifest.id} action={togglePlanModule}>
-                      <input type="hidden" name="planId" value={plan.id} />
-                      <input type="hidden" name="moduleId" value={manifest.id} />
-                      <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
-                      <button className="inline-flex min-h-11 items-center rounded-full border border-line px-3 text-xs">{manifest.name}: {enabled ? "on" : "off"}</button>
-                    </form>
-                  );
-                })}
-              </div>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      {canEdit ? (
-        <form action={assignPlan} className="pc-form-row mt-6">
-          <select name="organizationId" className="pc-control w-full md:max-w-xs">
-            {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
-          </select>
-          <select name="planId" className="pc-control w-full md:max-w-xs">
-            {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
-          </select>
-          <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-3 text-sm font-semibold text-white md:w-auto">Assign plan</button>
-        </form>
-      ) : null}
+      <PlansConsole
+        plans={rows}
+        modules={modules}
+        organizations={organizations}
+        canEdit={canEdit}
+        canModules={canModules}
+        actions={{ create: createPlan, update: updatePlan, archive: archivePlan, assign: assignPlan, toggleModule: togglePlanModule }}
+      />
     </div>
   );
 }

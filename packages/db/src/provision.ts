@@ -88,7 +88,7 @@ export async function provisionOrganization(input: {
   try {
     return await rawPrisma().$transaction(async (tx) => {
       const plan = await tx.plan.findUnique({ where: { id: draft.planId }, include: { modules: true } });
-      if (!plan) throw new Error("Choose a plan.");
+      if (!plan || plan.archivedAt) throw new Error("Choose a plan.");
       if (plan.seatLimit < 1) throw new Error("That plan has no seats.");
       const taken = await tx.organization.findUnique({ where: { slug: draft.slug } });
       if (taken) throw new Error("That slug is already in use.");
@@ -323,6 +323,37 @@ export async function removeOrganizationMember(input: {
   }
 }
 
+export async function changeOrganizationMemberRole(input: {
+  organizationId: string;
+  membershipId: string;
+  roleId: string;
+  actorId: string;
+}): Promise<void> {
+  try {
+    await rawPrisma().$transaction(async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { id: input.membershipId, organizationId: input.organizationId },
+        include: { user: true },
+      });
+      if (!membership || membership.status === "DISABLED") throw new Error("Unknown member.");
+      const role = await tx.role.findFirst({ where: { id: input.roleId, organizationId: input.organizationId } });
+      if (!role) throw new Error("Choose a role.");
+      if (membership.roleId === role.id) return;
+      await tx.membership.update({ where: { id: membership.id }, data: { roleId: role.id } });
+      await writeAudits(tx, {
+        organizationId: input.organizationId,
+        actorId: input.actorId,
+        action: "org.member.role",
+        targetType: "membership",
+        targetId: membership.id,
+        metadata: { email: membership.user.email, role: role.slug },
+      });
+    });
+  } catch (error) {
+    rethrow(error, "Could not change that role.");
+  }
+}
+
 export async function assignOrganizationPlan(input: {
   organizationId: string;
   planId: string;
@@ -335,7 +366,7 @@ export async function assignOrganizationPlan(input: {
         tx.plan.findUnique({ where: { id: input.planId } }),
       ]);
       if (!organization) throw new Error("Unknown organization.");
-      if (!plan) throw new Error("Unknown plan.");
+      if (!plan || (plan.archivedAt && plan.id !== organization.planId)) throw new Error("Unknown plan.");
       await tx.organization.update({
         where: { id: organization.id },
         data: { planId: plan.id, seatLimit: plan.seatLimit },

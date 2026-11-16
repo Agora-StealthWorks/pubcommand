@@ -66,7 +66,10 @@ model Plan {
   key               String         @unique
   name              String
   seatLimit         Int            @map("seat_limit")
+  brandLimit        Int            @default(1) @map("brand_limit")
+  workspaceLimit    Int            @default(1) @map("workspace_limit")
   monthlyPriceCents Int            @default(0) @map("monthly_price_cents")
+  archivedAt        DateTime?      @map("archived_at")
   modules           PlanModule[]
   organizations     Organization[]
 
@@ -129,6 +132,7 @@ model User {
   email        String         @unique
   name         String?
   passwordHash String?        @map("password_hash")
+  disabledAt   DateTime?      @map("disabled_at")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
   memberships  Membership[]

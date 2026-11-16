@@ -46,7 +46,11 @@ export async function readSession() {
   const jar = await cookies();
   const sessionId = jar.get(SESSION_COOKIE)?.value ?? null;
   if (!sessionId) return { user: null, session: null };
-  return lucia.validateSession(sessionId);
+  const auth = await lucia.validateSession(sessionId);
+  if (!auth.user) return auth;
+  const account = await rawPrisma().user.findUnique({ where: { id: auth.user.id }, select: { disabledAt: true } });
+  if (account?.disabledAt) return { user: null, session: null };
+  return auth;
 }
 
 export async function readStaff(userId: string) {

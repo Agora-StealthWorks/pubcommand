@@ -17,7 +17,11 @@ export default async function NewOrganizationPage({
   if (!staff || !platformCan(staff.role, PLATFORM_PERMISSIONS.manageOrgs)) {
     redirect("/orgs?error=You do not have permission.");
   }
-  const plans = await rawPrisma().plan.findMany({ orderBy: { seatLimit: "asc" }, select: { id: true, name: true } });
+  const plans = await rawPrisma().plan.findMany({
+    where: { archivedAt: null },
+    orderBy: { seatLimit: "asc" },
+    select: { id: true, name: true, key: true },
+  });
   return (
     <div>
       <Flash error={query.error} notice={query.notice} />

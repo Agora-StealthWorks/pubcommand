@@ -17,6 +17,8 @@ import { PromoStudioView } from "../../../../modules/promo-studio/view";
 import { AdminShell } from "@/components/admin-shell";
 import { OrgShell } from "@/components/org-shell";
 import { NewOrganizationForm, OrganizationDetail, OrganizationsList } from "@/components/organizations-console";
+import { PlansConsole } from "@/components/plans-console";
+import { UserDetail, UsersList } from "@/components/users-console";
 import { TableScroll } from "@/components/table-scroll";
 import { PageHeader } from "@/components/ui";
 import { FormsBuilder } from "@/app/sites/org/[slug]/forms/builder";
@@ -221,12 +223,23 @@ export async function ViewportSurface({
           "/orgs/new",
           <NewOrganizationForm
             plans={[
-              { id: "plan-desk", name: "Desk" },
-              { id: "plan-team", name: "Team" },
+              { id: "plan-desk", key: "desk", name: "Desk" },
+              { id: "plan-internal", key: "internal", name: "Internal (unlimited)" },
             ]}
             rootDomain="pubcommand.com"
             listHref="/viewport/admin/orgs"
           />,
+        )}
+      </div>
+    );
+  }
+
+  if (route === "admin/orgs/new-empty") {
+    return (
+      <div data-surface="admin-orgs-new-empty">
+        {adminFrame(
+          "/orgs/new",
+          <NewOrganizationForm plans={[]} rootDomain="pubcommand.com" listHref="/viewport/admin/orgs" plansHref="/viewport/admin/plans" />,
         )}
       </div>
     );
@@ -265,7 +278,7 @@ export async function ViewportSurface({
               { id: "role-owner", name: "Owner" },
               { id: "role-admin", name: "Admin" },
             ]}
-            members={[{ id: "member-stephen", email: EMAIL, roleName: "Owner", status: "INVITED" }]}
+            members={[{ id: "member-stephen", email: EMAIL, roleId: "role-owner", roleName: "Owner", status: "INVITED" }]}
           />,
         )}
       </div>
@@ -278,9 +291,65 @@ export async function ViewportSurface({
         {adminFrame(
           "/users",
           <div>
-            <PageHeader title="Users" description="Platform view of accounts." />
-            <WideTable headers={["Email", "Staff", "Organizations"]} rows={[[EMAIL, "SUPER_ADMIN", SLUG]]} />
+            <PageHeader title="Users" description="Search accounts, then open one to edit it." />
+            <UsersList
+              query=""
+              listPath="/viewport/admin/users"
+              detailHref={() => "/viewport/admin/users/detail"}
+              users={[
+                {
+                  id: "user-stephen",
+                  email: EMAIL,
+                  name: "Stephen Operator",
+                  disabled: false,
+                  staffRole: "SUPER_ADMIN",
+                  organizations: SLUG,
+                },
+              ]}
+            />
           </div>,
+        )}
+      </div>
+    );
+  }
+
+  if (route === "admin/users/detail") {
+    return (
+      <div data-surface="admin-users-detail">
+        {adminFrame(
+          "/users/stephen",
+          <UserDetail
+            listHref="/viewport/admin/users"
+            canEdit
+            canStaff
+            self={false}
+            user={{
+              id: "user-stephen",
+              email: EMAIL,
+              name: "Stephen Operator",
+              disabled: false,
+              staffManager: false,
+              sessionCount: 2,
+              staff: { role: "SUPPORT", removed: false, totp: "enrolled" },
+            }}
+            memberships={[
+              {
+                id: "member-stephen",
+                organizationId: "org-northstar",
+                organizationName: organization.name,
+                roleId: "role-owner",
+                roleName: "Owner",
+                status: "ACTIVE",
+                roles: [
+                  { id: "role-owner", name: "Owner" },
+                  { id: "role-admin", name: "Admin" },
+                ],
+              },
+            ]}
+            placements={[
+              { organizationId: "org-harbor", organizationName: "Harbor Weekly", roleId: "role-editor", roleName: "Editor" },
+            ]}
+          />,
         )}
       </div>
     );
@@ -314,17 +383,31 @@ export async function ViewportSurface({
         {adminFrame(
           "/plans",
           <div>
-            <PageHeader title="Plans" description="Assign a plan to an organization." />
-            <div className="rounded-lg border border-line bg-white p-4">
-              <p className="font-semibold">Desk</p>
-              <p className="pc-break text-sm text-muted">8 seats · $49 / month · knowledge, editorial, charts, billing</p>
-            </div>
-            <form className="pc-form-row mt-6">
-              <select className="pc-control w-full md:max-w-xs" aria-label="Organization" defaultValue={SLUG}>
-                <option>{organization.name}</option>
-              </select>
-              <Button type="button" className="w-full md:w-auto">Assign plan</Button>
-            </form>
+            <PageHeader title="Plans" description="Create and edit plans. The price is display only." />
+            <PlansConsole
+              canEdit
+              canModules={false}
+              organizations={[{ id: "org-northstar", name: organization.name }]}
+              modules={[
+                { id: "knowledge", name: "Knowledge" },
+                { id: "editorial", name: "Editorial" },
+                { id: "charts", name: "Charts" },
+              ]}
+              plans={[
+                {
+                  id: "plan-internal",
+                  key: "internal",
+                  name: "Internal (unlimited)",
+                  seatLimit: 1_000_000,
+                  brandLimit: 1_000_000,
+                  workspaceLimit: 1_000_000,
+                  monthlyPriceCents: 0,
+                  archived: false,
+                  moduleIds: ["knowledge", "editorial", "charts"],
+                  organizationCount: 1,
+                },
+              ]}
+            />
           </div>,
         )}
       </div>

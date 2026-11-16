@@ -5,19 +5,31 @@ import {
   isPlatformRole,
   organizationInviteNotice,
   platformCan,
+  validatePlanDraft,
+  canManagePlatformStaff,
 } from "@pubcommand/core";
 import {
   addOrganizationMember as addOrganizationMemberRecord,
   addStaffAsOrganizationAdmin,
   appendPlatformAudit,
   assignOrganizationPlan,
+  changeOrganizationMemberRole as changeOrganizationMemberRoleRecord,
   changeOrganizationSlug,
+  createCatalogPlan,
   provisionOrganization,
   rawPrisma,
   removeOrganizationMember as removeOrganizationMemberRecord,
+  resetUserTwoFactor,
+  revokeUserSessions,
   setOrganizationSuspended,
+  setPlanArchived,
+  setPlatformStaffAccess,
+  setUserDisabled,
+  setUserPasswordHash,
+  updateCatalogPlan,
+  updateUserProfile,
 } from "@pubcommand/db";
-import { IMPERSONATION_COOKIE, authCookieBase, normalizeEmail, sealImpersonation } from "@pubcommand/auth";
+import { IMPERSONATION_COOKIE, authCookieBase, hashPassword, normalizeEmail, sealImpersonation } from "@pubcommand/auth";
 import { moduleRegistry } from "@pubcommand/modules";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -43,6 +55,39 @@ function permissionKeys() {
 
 function organizationHref(organizationId: string): string {
   return ORGANIZATION_ID.test(organizationId) ? `/orgs/${organizationId}` : "/orgs";
+}
+
+function userHref(userId: string): string {
+  return ORGANIZATION_ID.test(userId) ? `/users/${userId}` : "/users";
+}
+
+function allowedReturn(formData: FormData, organizationId: string): string {
+  const fallback = organizationHref(organizationId);
+  const next = String(formData.get("next") ?? "");
+  if (next === fallback) return next;
+  if (/^\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(next)) return next;
+  return fallback;
+}
+
+function planDraft(formData: FormData, key?: string) {
+  return validatePlanDraft(
+    {
+      name: String(formData.get("name") ?? ""),
+      seatLimit: String(formData.get("seatLimit") ?? ""),
+      brandLimit: String(formData.get("brandLimit") ?? ""),
+      workspaceLimit: String(formData.get("workspaceLimit") ?? ""),
+      monthlyPrice: String(formData.get("monthlyPrice") ?? ""),
+      seatUnlimited: String(formData.get("seatUnlimited") ?? "") === "1",
+      brandUnlimited: String(formData.get("brandUnlimited") ?? "") === "1",
+      workspaceUnlimited: String(formData.get("workspaceUnlimited") ?? "") === "1",
+      moduleIds: formData.getAll("moduleId").map((value) => String(value)),
+    },
+    key ? { key } : undefined,
+  );
+}
+
+function catalogModuleIds() {
+  return moduleRegistry.all().map((manifest) => manifest.id);
 }
 
 function organizationReturn(formData: FormData, organizationId: string): string {
@@ -129,9 +174,11 @@ export async function addOrganizationMember(formData: FormData) {
 }
 
 export async function removeOrganizationMember(formData: FormData) {
-  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageOrgs);
   const organizationId = String(formData.get("organizationId") ?? "");
-  const href = organizationHref(organizationId);
+  const href = allowedReturn(formData, organizationId);
+  const { auth } = await staffMutation(
+    href.startsWith("/users/") ? PLATFORM_PERMISSIONS.manageUsers : PLATFORM_PERMISSIONS.manageOrgs,
+  );
   try {
     await removeOrganizationMemberRecord({
       organizationId,
@@ -236,26 +283,23 @@ export async function togglePlanModule(formData: FormData) {
 
 export async function inviteStaff(formData: FormData) {
   const { auth, staff } = await staffMutation(PLATFORM_PERMISSIONS.manageStaff);
-  if (staff.role !== "SUPER_ADMIN") redirect("/staff?error=Only a super admin can invite staff.");
+  if (!canManagePlatformStaff({ email: auth.user.email, role: staff.role })) {
+    redirect("/staff?error=Only Stephen can manage staff.");
+  }
   const email = normalizeEmail(String(formData.get("email") ?? ""));
   const role = String(formData.get("role") ?? "");
   if (!isPlatformRole(role)) redirect("/staff?error=Choose a staff role.");
-  const existing = await rawPrisma().user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
-  const user = existing ?? (await rawPrisma().user.create({ data: { email, passwordHash: null } }));
-  const prior = await rawPrisma().platformStaff.findUnique({ where: { userId: user.id } });
-  if (prior) {
-    await rawPrisma().platformStaff.update({ where: { id: prior.id }, data: { role, disabledAt: null } });
-  } else {
-    await rawPrisma().platformStaff.create({ data: { userId: user.id, role } });
+  if (!email.includes("@")) redirect("/staff?error=Enter an email address.");
+  let userId = "";
+  try {
+    const existing = await rawPrisma().user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
+    const user = existing ?? (await rawPrisma().user.create({ data: { email, passwordHash: null } }));
+    userId = user.id;
+    await setPlatformStaffAccess({ actorId: auth.user.id, userId: user.id, role });
+  } catch (error) {
+    redirect(`/staff?error=${encodeURIComponent(failureMessage(error, "Could not save that staff member."))}`);
   }
-  await appendPlatformAudit({
-    actorId: auth.user.id,
-    action: "staff.invited",
-    targetType: "user",
-    targetId: user.id,
-    metadata: { email, role },
-  });
-  const link = await createLoginLink(user.id);
+  const link = await createLoginLink(userId);
   const request = await currentRequest();
   const magicUrl = magicLinkUrl(request.origin, link.token);
   const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite" });
@@ -271,25 +315,217 @@ export async function inviteStaff(formData: FormData) {
 
 export async function disableStaff(formData: FormData) {
   const { auth, staff } = await staffMutation(PLATFORM_PERMISSIONS.manageStaff);
-  if (staff.role !== "SUPER_ADMIN") redirect("/staff?error=Only a super admin can remove staff.");
-  const userId = String(formData.get("userId") ?? "");
-  if (userId === auth.user.id) redirect("/staff?error=You cannot remove your own staff access.");
-  const target = await rawPrisma().platformStaff.findUnique({ where: { userId } });
-  if (!target) redirect("/staff?error=That person is not staff.");
-  if (target.role === "SUPER_ADMIN") {
-    const remaining = await rawPrisma().platformStaff.count({
-      where: { role: "SUPER_ADMIN", disabledAt: null, userId: { not: userId } },
-    });
-    if (remaining < 1) redirect("/staff?error=Keep at least one super admin.");
+  if (!canManagePlatformStaff({ email: auth.user.email, role: staff.role })) {
+    redirect("/staff?error=Only Stephen can manage staff.");
   }
-  await rawPrisma().platformStaff.update({ where: { userId }, data: { disabledAt: new Date() } });
-  await appendPlatformAudit({
-    actorId: auth.user.id,
-    action: "staff.removed",
-    targetType: "user",
-    targetId: userId,
-  });
+  const userId = String(formData.get("userId") ?? "");
+  try {
+    await setPlatformStaffAccess({ actorId: auth.user.id, userId, role: null });
+  } catch (error) {
+    redirect(`/staff?error=${encodeURIComponent(failureMessage(error, "Could not remove that staff member."))}`);
+  }
   redirect("/staff?notice=Staff access removed.");
+}
+
+export async function createPlan(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.managePlans);
+  const draft = planDraft(formData);
+  if (!draft.ok) redirect(`/plans?error=${encodeURIComponent(draft.message)}`);
+  try {
+    await createCatalogPlan({
+      actorId: auth.user.id,
+      key: draft.key,
+      name: draft.name,
+      seatLimit: draft.seatLimit,
+      brandLimit: draft.brandLimit,
+      workspaceLimit: draft.workspaceLimit,
+      monthlyPriceCents: draft.monthlyPriceCents,
+      moduleIds: draft.moduleIds,
+      allowedModuleIds: catalogModuleIds(),
+    });
+  } catch (error) {
+    redirect(`/plans?error=${encodeURIComponent(failureMessage(error, "Could not create the plan."))}`);
+  }
+  redirect("/plans?notice=Plan created.");
+}
+
+export async function updatePlan(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.managePlans);
+  const planId = String(formData.get("planId") ?? "");
+  const existing = await rawPrisma().plan.findUnique({ where: { id: planId }, select: { key: true } });
+  if (!existing) redirect("/plans?error=Unknown plan.");
+  const draft = planDraft(formData, existing.key);
+  if (!draft.ok) redirect(`/plans?error=${encodeURIComponent(draft.message)}`);
+  try {
+    await updateCatalogPlan({
+      actorId: auth.user.id,
+      planId,
+      name: draft.name,
+      seatLimit: draft.seatLimit,
+      brandLimit: draft.brandLimit,
+      workspaceLimit: draft.workspaceLimit,
+      monthlyPriceCents: draft.monthlyPriceCents,
+      moduleIds: draft.moduleIds,
+      allowedModuleIds: catalogModuleIds(),
+    });
+  } catch (error) {
+    redirect(`/plans?error=${encodeURIComponent(failureMessage(error, "Could not save the plan."))}`);
+  }
+  redirect("/plans?notice=Plan saved.");
+}
+
+export async function archivePlan(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.managePlans);
+  const planId = String(formData.get("planId") ?? "");
+  const archived = String(formData.get("archived") ?? "") === "1";
+  try {
+    await setPlanArchived({ actorId: auth.user.id, planId, archived });
+  } catch (error) {
+    redirect(`/plans?error=${encodeURIComponent(failureMessage(error, "Could not update the plan."))}`);
+  }
+  redirect(`/plans?notice=${encodeURIComponent(archived ? "Plan archived." : "Plan restored.")}`);
+}
+
+export async function changeOrganizationMemberRole(formData: FormData) {
+  const organizationId = String(formData.get("organizationId") ?? "");
+  const href = allowedReturn(formData, organizationId);
+  const { auth } = await staffMutation(
+    href.startsWith("/users/") ? PLATFORM_PERMISSIONS.manageUsers : PLATFORM_PERMISSIONS.manageOrgs,
+  );
+  try {
+    await changeOrganizationMemberRoleRecord({
+      organizationId,
+      membershipId: String(formData.get("membershipId") ?? ""),
+      roleId: String(formData.get("roleId") ?? ""),
+      actorId: auth.user.id,
+    });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not change that role."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent("Role updated.")}`);
+}
+
+export async function saveUserProfile(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  try {
+    await updateUserProfile({
+      actorId: auth.user.id,
+      userId,
+      name: String(formData.get("name") ?? ""),
+      email: String(formData.get("email") ?? ""),
+    });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not save that account."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent("Account saved.")}`);
+}
+
+export async function saveUserPassword(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  const clear = String(formData.get("clear") ?? "") === "1";
+  let notice = "";
+  try {
+    if (clear) {
+      await setUserPasswordHash({ actorId: auth.user.id, userId, passwordHash: null });
+      notice = "Password cleared. Existing sessions were signed out.";
+    } else {
+      const password = String(formData.get("password") ?? "");
+      if (password.length < 8 || password.length > 200) throw new Error("Use 8 to 200 characters.");
+      await setUserPasswordHash({ actorId: auth.user.id, userId, passwordHash: await hashPassword(password) });
+      notice = "Password updated. Existing sessions were signed out.";
+    }
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not update the password."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent(notice)}`);
+}
+
+export async function resetUserAuthenticator(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  try {
+    await resetUserTwoFactor({ actorId: auth.user.id, userId });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not reset two-factor authentication."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent("Two-factor authentication was reset. Existing sessions were signed out.")}`);
+}
+
+export async function signOutUserSessions(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  try {
+    await revokeUserSessions({ actorId: auth.user.id, userId });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not sign that account out."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent("Signed out of all sessions.")}`);
+}
+
+export async function setUserAccess(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  const disabled = String(formData.get("disabled") ?? "") === "1";
+  try {
+    await setUserDisabled({ actorId: auth.user.id, userId, disabled });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not update that account."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent(disabled ? "Account disabled." : "Account enabled.")}`);
+}
+
+export async function addUserOrganization(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  const [organizationId, roleId] = String(formData.get("placement") ?? "").split("|");
+  let notice = "Membership saved.";
+  try {
+    const account = await rawPrisma().user.findUnique({ where: { id: userId } });
+    if (!account || account.disabledAt) throw new Error(account ? "That account is disabled." : "Unknown account.");
+    const member = await addOrganizationMemberRecord({
+      organizationId: organizationId ?? "",
+      email: account.email,
+      roleId: roleId ?? "",
+      actorId: auth.user.id,
+    });
+    if (member.status === "INVITED") {
+      try {
+        notice = await inviteNotice(member.userId, member.email, "Member invited.");
+      } catch {
+        notice = "Member invited. The sign-in email could not be sent.";
+      }
+    }
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not add that membership."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent(notice)}`);
+}
+
+export async function saveUserStaff(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageStaff);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  const remove = String(formData.get("remove") ?? "") === "1";
+  const role = String(formData.get("role") ?? "");
+  if (!remove && !isPlatformRole(role)) redirect(`${href}?error=${encodeURIComponent("Choose a staff role.")}`);
+  try {
+    await setPlatformStaffAccess({
+      actorId: auth.user.id,
+      userId,
+      role: remove || !isPlatformRole(role) ? null : role,
+    });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not update staff."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent(remove ? "Staff access removed." : "Staff access saved.")}`);
 }
 
 export async function startImpersonation(formData: FormData) {

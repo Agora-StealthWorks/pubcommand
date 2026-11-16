@@ -1,0 +1,5 @@
+ALTER TABLE "plans" ADD COLUMN "brand_limit" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "plans" ADD COLUMN "workspace_limit" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "plans" ADD COLUMN "archived_at" TIMESTAMP(3);
+
+ALTER TABLE "users" ADD COLUMN "disabled_at" TIMESTAMP(3);

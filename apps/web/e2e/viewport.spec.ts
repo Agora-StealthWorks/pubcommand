@@ -79,6 +79,35 @@ test("organization admin fits a phone", async ({ page }) => {
   await expectTapTarget(page.getByRole("button", { name: "Suspend" }));
   const detail = await overflow(page);
   expect(detail.scrollWidth).toBeLessThanOrEqual(detail.clientWidth);
+
+  await page.goto("/viewport/admin/orgs/new-empty");
+  await expect(page.getByRole("link", { name: "Create a plan" })).toBeVisible();
+  await expectTapTarget(page.getByRole("link", { name: "Create a plan" }));
+  const emptyPlans = await overflow(page);
+  expect(emptyPlans.scrollWidth).toBeLessThanOrEqual(emptyPlans.clientWidth);
+
+  await page.goto("/viewport/admin/users/detail");
+  await expect(page.getByRole("heading", { name: LONG_EMAIL })).toBeVisible();
+  await expectTapTarget(page.getByRole("button", { name: "Save profile" }));
+  await expectTapTarget(page.getByRole("button", { name: "Set password" }));
+  await expectTapTarget(page.getByRole("button", { name: "Clear password" }));
+  await expectTapTarget(page.getByRole("button", { name: "Reset 2FA" }));
+  await expectTapTarget(page.getByRole("button", { name: "Sign out of all sessions" }));
+  await expectTapTarget(page.getByRole("button", { name: "Disable account" }));
+  await expectTapTarget(page.getByRole("button", { name: "Save role" }));
+  await expectTapTarget(page.getByRole("button", { name: "Remove", exact: true }));
+  await expectTapTarget(page.getByRole("button", { name: "Add to organization" }));
+  await expectTapTarget(page.getByRole("button", { name: "Save staff" }));
+  await expectTapTarget(page.getByRole("button", { name: "Remove staff" }));
+  const userDetail = await overflow(page);
+  expect(userDetail.scrollWidth).toBeLessThanOrEqual(userDetail.clientWidth);
+
+  await page.goto("/viewport/admin/plans");
+  await expect(page.getByRole("button", { name: "Create plan" })).toBeVisible();
+  await expectTapTarget(page.getByRole("button", { name: "Create plan" }));
+  await expectTapTarget(page.getByRole("button", { name: "Archive" }));
+  const plans = await overflow(page);
+  expect(plans.scrollWidth).toBeLessThanOrEqual(plans.clientWidth);
 });
 
 test("org drawer and command palette fit the viewport", async ({ page }) => {

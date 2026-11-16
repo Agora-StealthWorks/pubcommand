@@ -1,4 +1,4 @@
-import { organizationPublicUrl } from "@pubcommand/core";
+import { defaultPlanChoice, organizationPublicUrl } from "@pubcommand/core";
 import { Button, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
 import { OrgSlugField } from "./org-slug-field";
@@ -112,12 +112,16 @@ export function NewOrganizationForm({
   plans,
   rootDomain,
   listHref = "/orgs",
+  plansHref = "/plans",
 }: {
   action?: FormAction;
-  plans: { id: string; name: string }[];
+  plans: { id: string; name: string; key?: string }[];
   rootDomain: string;
   listHref?: string;
+  plansHref?: string;
 }) {
+  const keyed = plans.flatMap((plan) => (plan.key ? [{ id: plan.id, key: plan.key }] : []));
+  const selectedId = defaultPlanChoice(keyed)?.id ?? plans[0]?.id ?? "";
   return (
     <div className="mx-auto w-full max-w-lg">
       <Link href={listHref} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
@@ -128,7 +132,12 @@ export function NewOrganizationForm({
         The subdomain is lowercase and must be unique. Reserved names such as admin, app, www, and api are blocked.
       </p>
       {plans.length === 0 ? (
-        <p className="mt-6 rounded-lg border border-line bg-white p-4 text-sm">No plans exist yet. Add a plan before creating an organization.</p>
+        <div className="mt-6 rounded-lg border border-line bg-white p-4">
+          <p className="text-sm">No plans exist yet. Create one, then come back to this form.</p>
+          <Link href={plansHref} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
+            Create a plan
+          </Link>
+        </div>
       ) : (
         <form action={action} className="mt-6 space-y-4 rounded-lg border border-line bg-white p-4">
           <div>
@@ -138,7 +147,7 @@ export function NewOrganizationForm({
           <OrgSlugField rootDomain={rootDomain} />
           <div>
             <Label htmlFor="org-plan">Plan</Label>
-            <select id="org-plan" name="planId" required className="pc-control mt-1 w-full" defaultValue={plans[0]?.id}>
+            <select id="org-plan" name="planId" required className="pc-control mt-1 w-full" defaultValue={selectedId}>
               {plans.map((plan) => (
                 <option key={plan.id} value={plan.id}>
                   {plan.name}
@@ -162,6 +171,7 @@ export function NewOrganizationForm({
 export type OrganizationMemberRow = {
   id: string;
   email: string;
+  roleId: string;
   roleName: string;
   status: "ACTIVE" | "INVITED" | "DISABLED";
 };
@@ -200,6 +210,7 @@ export function OrganizationDetail({
   actions?: {
     addMember?: FormAction;
     removeMember?: FormAction;
+    changeRole?: FormAction;
     addSelf?: FormAction;
     changePlan?: FormAction;
     suspend?: FormAction;
@@ -259,13 +270,27 @@ export function OrganizationDetail({
                 <p className="text-sm text-muted">{member.roleName} · {statusLabel(member.status)}</p>
               </div>
               {canManage && member.status !== "DISABLED" ? (
-                <form action={actions?.removeMember}>
-                  <input type="hidden" name="organizationId" value={organization.id} />
-                  <input type="hidden" name="membershipId" value={member.id} />
-                  <Button type={actions?.removeMember ? "submit" : "button"} variant="danger" className="w-full sm:w-auto">
-                    Remove
-                  </Button>
-                </form>
+                <div className="flex w-full min-w-0 flex-col gap-2">
+                  <form action={actions?.changeRole} className="pc-form-row">
+                    <input type="hidden" name="organizationId" value={organization.id} />
+                    <input type="hidden" name="membershipId" value={member.id} />
+                    <select name="roleId" aria-label={`Role for ${member.email}`} className="pc-control w-full" defaultValue={member.roleId}>
+                      {roles.map((role) => (
+                        <option key={role.id} value={role.id}>{role.name}</option>
+                      ))}
+                    </select>
+                    <Button type={actions?.changeRole ? "submit" : "button"} variant="secondary" className="w-full sm:w-auto">
+                      Save role
+                    </Button>
+                  </form>
+                  <form action={actions?.removeMember}>
+                    <input type="hidden" name="organizationId" value={organization.id} />
+                    <input type="hidden" name="membershipId" value={member.id} />
+                    <Button type={actions?.removeMember ? "submit" : "button"} variant="danger" className="w-full sm:w-auto">
+                      Remove
+                    </Button>
+                  </form>
+                </div>
               ) : null}
             </li>
           ))}

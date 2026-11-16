@@ -7,6 +7,7 @@ import { readSession, readStaff, rootDomain } from "@/lib/auth";
 import {
   addOrganizationMember,
   addSelfAsOrganizationAdmin,
+  changeOrganizationMemberRole,
   changeOrganizationPlan,
   removeOrganizationMember,
   startImpersonation,
@@ -38,7 +39,11 @@ export default async function OrganizationDetailPage({
   });
   if (!organization) notFound();
   const [plans, roles] = await Promise.all([
-    rawPrisma().plan.findMany({ orderBy: { seatLimit: "asc" }, select: { id: true, name: true } }),
+    rawPrisma().plan.findMany({
+      where: { OR: [{ archivedAt: null }, { id: organization.planId }] },
+      orderBy: { seatLimit: "asc" },
+      select: { id: true, name: true },
+    }),
     rawPrisma().role.findMany({
       where: { organizationId },
       orderBy: { name: "asc" },
@@ -52,6 +57,7 @@ export default async function OrganizationDetailPage({
   const members: OrganizationMemberRow[] = organization.memberships.map((member) => ({
     id: member.id,
     email: member.user.email,
+    roleId: member.roleId,
     roleName: member.role.name,
     status: member.status,
   }));
@@ -83,6 +89,7 @@ export default async function OrganizationDetailPage({
         actions={{
           addMember: addOrganizationMember,
           removeMember: removeOrganizationMember,
+          changeRole: changeOrganizationMemberRole,
           addSelf: addSelfAsOrganizationAdmin,
           changePlan: changeOrganizationPlan,
           suspend: suspendOrganization,

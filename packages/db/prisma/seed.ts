@@ -1,65 +1,10 @@
 import { moduleRegistry } from "@pubcommand/modules";
 import { rawPrisma } from "../src/client";
+import { ensureDefaultPlans } from "../src/plans";
 import { ensureSuperadmin } from "../src/superadmin";
 
 const db = rawPrisma();
 const permissions = Object.keys(moduleRegistry.permissionModules());
-
-const plans = [
-  {
-    key: "starter",
-    name: "Starter",
-    seatLimit: 5,
-    monthlyPriceCents: 0,
-    modules: ["knowledge", "editorial", "forms", "settings"],
-  },
-  {
-    key: "team",
-    name: "Team",
-    seatLimit: 25,
-    monthlyPriceCents: 4900,
-    modules: [
-      "knowledge",
-      "editorial",
-      "performance",
-      "promo-studio",
-      "intel",
-      "forms",
-      "charts",
-      "billing",
-      "settings",
-    ],
-  },
-  {
-    key: "enterprise",
-    name: "Enterprise",
-    seatLimit: 100,
-    monthlyPriceCents: 14900,
-    modules: moduleRegistry.all().map((manifest) => manifest.id),
-  },
-] as const;
-
-async function seedPlan(plan: (typeof plans)[number]) {
-  const row = await db.plan.upsert({
-    where: { key: plan.key },
-    create: {
-      key: plan.key,
-      name: plan.name,
-      seatLimit: plan.seatLimit,
-      monthlyPriceCents: plan.monthlyPriceCents,
-    },
-    update: {
-      name: plan.name,
-      seatLimit: plan.seatLimit,
-      monthlyPriceCents: plan.monthlyPriceCents,
-    },
-  });
-  await db.planModule.deleteMany({ where: { planId: row.id } });
-  await db.planModule.createMany({
-    data: plan.modules.map((moduleId) => ({ planId: row.id, moduleId })),
-  });
-  return row;
-}
 
 async function seedRole(
   organizationId: string,
@@ -87,14 +32,14 @@ async function seedRole(
 }
 
 async function main() {
-  const starter = await seedPlan(plans[0]);
-  const team = await seedPlan(plans[1]);
-  await seedPlan(plans[2]);
+  await ensureDefaultPlans();
+  const starter = await db.plan.findUniqueOrThrow({ where: { key: "starter" }, include: { modules: true } });
+  const pro = await db.plan.findUniqueOrThrow({ where: { key: "pro" }, include: { modules: true } });
 
   const gazette = await db.organization.upsert({
     where: { slug: "example-gazette" },
-    create: { name: "Example Gazette", slug: "example-gazette", planId: team.id, seatLimit: team.seatLimit },
-    update: { name: "Example Gazette", planId: team.id, seatLimit: team.seatLimit },
+    create: { name: "Example Gazette", slug: "example-gazette", planId: pro.id, seatLimit: pro.seatLimit },
+    update: { name: "Example Gazette", planId: pro.id, seatLimit: pro.seatLimit },
   });
   const harbor = await db.organization.upsert({
     where: { slug: "example-harbor" },
@@ -131,13 +76,11 @@ async function main() {
   });
 
   for (const org of [gazette, harbor]) {
-    const plan = org.id === gazette.id ? team : starter;
-    const included = org.id === gazette.id ? plans[1].modules : plans[0].modules;
+    const included = org.id === gazette.id ? pro.modules : starter.modules;
     await db.organizationModule.deleteMany({ where: { organizationId: org.id } });
     await db.organizationModule.createMany({
-      data: included.map((moduleId) => ({ organizationId: org.id, moduleId, enabled: true })),
+      data: included.map((row) => ({ organizationId: org.id, moduleId: row.moduleId, enabled: true })),
     });
-    void plan;
   }
 
   const daily = await db.brand.upsert({

@@ -1,31 +1,41 @@
+import { PLATFORM_PERMISSIONS, platformCan } from "@pubcommand/core";
 import { rawPrisma } from "@pubcommand/db";
-import { TableScroll } from "@/components/table-scroll";
-import { PageHeader } from "@/components/ui";
+import { UsersList, type UserListRow } from "@/components/users-console";
+import { Denied, PageHeader } from "@/components/ui";
+import { readSession, readStaff } from "@/lib/auth";
 
-export default async function PlatformUsersPage() {
+export default async function PlatformUsersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const query = (await searchParams).q?.trim().slice(0, 80) ?? "";
+  const auth = await readSession();
+  const staff = auth.user ? await readStaff(auth.user.id) : null;
+  if (!staff || !platformCan(staff.role, PLATFORM_PERMISSIONS.viewUsers)) return <Denied title="Platform staff only" />;
   const users = await rawPrisma().user.findMany({
+    where: query
+      ? {
+          OR: [
+            { email: { contains: query, mode: "insensitive" } },
+            { name: { contains: query, mode: "insensitive" } },
+          ],
+        }
+      : undefined,
     include: { staff: true, memberships: { include: { organization: true } } },
     orderBy: { email: "asc" },
   });
+  const rows: UserListRow[] = users.map((user) => ({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    disabled: Boolean(user.disabledAt),
+    staffRole: user.staff && !user.staff.disabledAt ? user.staff.role : null,
+    organizations: user.memberships
+      .filter((membership) => membership.status !== "DISABLED")
+      .map((membership) => membership.organization.slug)
+      .join(", "),
+  }));
   return (
     <div>
-      <PageHeader title="Users" description="Platform view of accounts. Staff status is separate from organization membership." />
-      <TableScroll>
-      <table className="w-full min-w-[36rem] border-collapse text-sm">
-        <thead className="text-left text-xs uppercase text-muted">
-          <tr><th className="px-3 py-2">Email</th><th>Staff</th><th>Organizations</th></tr>
-        </thead>
-        <tbody>
-          {users.map((user) => (
-            <tr key={user.id} className="border-t border-line">
-              <td className="pc-break px-3 py-2">{user.email}</td>
-              <td>{user.staff && !user.staff.disabledAt ? user.staff.role : "—"}</td>
-              <td className="pc-break">{user.memberships.map((membership) => membership.organization.slug).join(", ") || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </TableScroll>
+      <PageHeader title="Users" description="Search accounts, then open one to edit the profile, memberships, password, or staff access." />
+      <UsersList users={rows} query={query} />
     </div>
   );
 }

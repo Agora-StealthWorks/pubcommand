@@ -4,6 +4,7 @@ export type PlatformRole = (typeof PLATFORM_ROLES)[number];
 export const PLATFORM_PERMISSIONS = {
   viewOrgs: "platform.orgs.view",
   viewUsers: "platform.users.view",
+  manageUsers: "platform.users.manage",
   impersonate: "platform.orgs.impersonate",
   manageOrgs: "platform.orgs.manage",
   managePlans: "platform.plans.manage",

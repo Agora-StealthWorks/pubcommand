@@ -19,6 +19,11 @@ export async function POST(request: Request) {
     dest.searchParams.set("error", "Email or password is wrong, or this account has no password yet.");
     return NextResponse.redirect(dest, 303);
   }
+  if (user.disabledAt) {
+    const dest = new URL("/login", origin);
+    dest.searchParams.set("error", "This account is disabled.");
+    return NextResponse.redirect(dest, 303);
+  }
   const { staff } = await establishSession(user.id);
   return NextResponse.redirect(loginDestination({ staff: Boolean(staff), next, requestHost: host }));
 }

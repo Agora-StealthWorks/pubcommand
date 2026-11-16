@@ -1,17 +1,22 @@
-import { PLATFORM_ROLES } from "@pubcommand/core";
+import { PLATFORM_ROLES, PLATFORM_STAFF_MANAGER_EMAIL, canManagePlatformStaff } from "@pubcommand/core";
 import { rawPrisma } from "@pubcommand/db";
 import { Button, Input } from "@pubcommand/ui";
 import { TableScroll } from "@/components/table-scroll";
 import { Flash, PageHeader } from "@/components/ui";
+import { readSession, readStaff } from "@/lib/auth";
 import { disableStaff, inviteStaff } from "@/server/platform-actions";
 
 export default async function StaffPage({ searchParams }: { searchParams: Promise<{ error?: string; notice?: string }> }) {
   const query = await searchParams;
+  const auth = await readSession();
+  const viewer = auth.user ? await readStaff(auth.user.id) : null;
+  const canManage = Boolean(auth.user && viewer && canManagePlatformStaff({ email: auth.user.email, role: viewer.role }));
   const staff = await rawPrisma().platformStaff.findMany({ include: { user: true }, orderBy: { createdAt: "asc" } });
   return (
     <div>
-      <PageHeader title="Staff" description="Only a super admin can invite or remove staff, and only from this console. Every staff member must enroll TOTP before the console opens." />
+      <PageHeader title="Staff" description={`Only ${PLATFORM_STAFF_MANAGER_EMAIL} can add, remove, or change staff roles. Every staff member must enroll TOTP before the console opens.`} />
       <Flash error={query.error} notice={query.notice} />
+      {canManage ? (
       <form action={inviteStaff} className="pc-form-row mb-6">
         <Input name="email" type="email" required placeholder="person@onenationfinancial.com" className="md:max-w-xs" />
         <select name="role" className="pc-control w-full md:w-auto">
@@ -19,6 +24,9 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
         </select>
         <Button type="submit" className="w-full md:w-auto">Save staff</Button>
       </form>
+      ) : (
+        <p className="mb-6 text-sm text-muted">You can view staff. Only {PLATFORM_STAFF_MANAGER_EMAIL} can change it.</p>
+      )}
       <TableScroll>
       <table className="w-full min-w-[36rem] border-collapse text-sm">
         <thead className="text-left text-xs uppercase text-muted">
@@ -31,12 +39,12 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
               <td>{row.disabledAt ? "removed" : row.role}</td>
               <td>{row.totpConfirmedAt ? "enrolled" : "pending"}</td>
               <td>
-                {row.disabledAt ? null : (
+                {canManage && !row.disabledAt && row.userId !== auth.user?.id ? (
                   <form action={disableStaff}>
                     <input type="hidden" name="userId" value={row.userId} />
                     <button className="inline-flex min-h-11 items-center text-sm font-semibold text-[#b42318]">Remove</button>
                   </form>
-                )}
+                ) : null}
               </td>
             </tr>
           ))}
