@@ -15,7 +15,7 @@ import {
   type MagicLinkStore,
 } from "@pubcommand/auth";
 import { buildSiteUrl, platformCan, PLATFORM_PERMISSIONS, safeNextUrl } from "@pubcommand/core";
-import { rawPrisma } from "@pubcommand/db";
+import { activateInvitedMemberships, rawPrisma } from "@pubcommand/db";
 import { cookies } from "next/headers";
 
 const lucia = createLucia(rawPrisma());
@@ -80,6 +80,8 @@ async function writeGate(input: { sid: string; uid: string; role: "SUPER_ADMIN" 
 }
 
 export async function establishSession(userId: string) {
+  // Signing in by any method (password or magic link) accepts pending invites.
+  await activateInvitedMemberships(userId);
   const session = await lucia.createSession(userId, { mfaVerified: false });
   const cookie = lucia.createSessionCookie(session.id);
   const jar = await cookies();

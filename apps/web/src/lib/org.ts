@@ -1,9 +1,9 @@
 import { can, type AccessScope } from "@pubcommand/core";
-import { loadAccessSubject, rawPrisma, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
+import { loadAccessSubject, loadSuperAdminSubject, rawPrisma, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
 import { moduleRegistry } from "@pubcommand/modules";
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { readImpersonation, readSession } from "./auth";
+import { readImpersonation, readSession, readStaff } from "./auth";
 import { currentRequest } from "./request";
 
 export const getOrgContext = cache(async (slug: string) => {
@@ -20,7 +20,14 @@ export const getOrgContext = cache(async (slug: string) => {
   if (resolved.suspendedAt) {
     return { kind: "suspended" as const, request, resolved, auth, impersonatingHere };
   }
-  const subject = await loadAccessSubject(resolved.id, effectiveUserId, moduleRegistry.permissionModules());
+  let subject = await loadAccessSubject(resolved.id, effectiveUserId, moduleRegistry.permissionModules());
+  if (!subject && !impersonatingHere && auth.session.mfaVerified) {
+    // The platform super admin can open every organization without being a member.
+    const staff = await readStaff(auth.user.id);
+    if (staff?.role === "SUPER_ADMIN" && staff.totpConfirmedAt) {
+      subject = await loadSuperAdminSubject(resolved.id, auth.user.id, moduleRegistry.permissionModules());
+    }
+  }
   if (!subject) return { kind: "forbidden" as const, request, resolved, auth, impersonatingHere };
   const brands = await tenantDb(resolved.id).brand.findMany({
     orderBy: { name: "asc" },

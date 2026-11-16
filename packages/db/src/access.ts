@@ -49,6 +49,46 @@ export async function loadAccessSubject(
   };
 }
 
+/**
+ * Full access for the platform SUPER_ADMIN in any organization, even without a
+ * membership. The caller must confirm the user is an active SUPER_ADMIN with a
+ * 2FA-verified session. Org module toggles still apply; the plan does not.
+ */
+export async function loadSuperAdminSubject(
+  organizationId: string,
+  userId: string,
+  permissionModules: Readonly<Record<string, string>>,
+): Promise<AccessSubject | null> {
+  const organization = await tenantDb(organizationId).organization.findUnique({
+    where: { id: organizationId },
+    include: { modules: true },
+  });
+  if (!organization) return null;
+  const disabled = new Set(organization.modules.filter((row) => !row.enabled).map((row) => row.moduleId));
+  const entitled = new Set<string>(["settings"]);
+  for (const moduleId of Object.values(permissionModules)) {
+    if (!disabled.has(moduleId)) entitled.add(moduleId);
+  }
+  const roleId = "platform-super-admin";
+  return {
+    userId,
+    organizationId,
+    roleId,
+    membershipBrandId: null,
+    membershipWorkspaceId: null,
+    grants: Object.keys(permissionModules).map((permission) => ({
+      permission,
+      effect: "allow" as const,
+      brandId: null,
+      workspaceId: null,
+      roleId,
+    })),
+    exclusions: [],
+    entitledModuleIds: [...entitled],
+    permissionModules,
+  };
+}
+
 export async function appendOrgAudit(
   organizationId: string,
   entry: {

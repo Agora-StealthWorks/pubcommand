@@ -1,4 +1,4 @@
-import { activateInvitedMemberships, rawPrisma } from "@pubcommand/db";
+import { rawPrisma } from "@pubcommand/db";
 import { NextResponse } from "next/server";
 import { establishSession, loginDestination, verifyMagicLink } from "@/lib/auth";
 
@@ -15,7 +15,6 @@ export async function GET(request: Request) {
   if (!account || account.disabledAt) {
     return NextResponse.redirect(new URL("/login?error=This account is disabled.", origin));
   }
-  await activateInvitedMemberships(consumed.userId);
   const { staff } = await establishSession(consumed.userId);
   return NextResponse.redirect(loginDestination({ staff: Boolean(staff), next, requestHost: host }));
 }
