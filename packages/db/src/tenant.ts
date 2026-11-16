@@ -20,6 +20,11 @@ const TENANT_MODELS = new Set([
   "AuditLog",
   "OrganizationModule",
   "OrgSettings",
+  "Promo",
+  "PromoAnalysis",
+  "PromoFile",
+  "KnowledgePage",
+  "AiUsageLog",
 ]);
 
 const SCOPED_BY_ID = new Set(["Organization"]);

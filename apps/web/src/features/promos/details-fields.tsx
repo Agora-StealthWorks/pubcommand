@@ -1,0 +1,63 @@
+import { Input, Label } from "@pubcommand/ui";
+import { PROMO_STATUSES, PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
+
+type Values = {
+  publisher?: string | null;
+  gurus?: string[];
+  product?: string | null;
+  promoType?: string | null;
+  promoStatus?: string | null;
+  promoCode?: string | null;
+  runStartDate?: Date | null;
+  pricePoint?: number | null;
+};
+
+/** Shared by the upload form and the Details tab. */
+export function PromoDetailsFields({ values = {} }: { values?: Values }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div>
+        <Label htmlFor="publisher">Publisher</Label>
+        <Input id="publisher" name="publisher" defaultValue={values.publisher ?? ""} maxLength={200} />
+      </div>
+      <div>
+        <Label htmlFor="gurus">Guru(s)</Label>
+        <Input id="gurus" name="gurus" defaultValue={values.gurus?.join(", ") ?? ""} placeholder="Comma separated" />
+      </div>
+      <div>
+        <Label htmlFor="product">Product</Label>
+        <Input id="product" name="product" defaultValue={values.product ?? ""} maxLength={200} />
+      </div>
+      <div>
+        <Label htmlFor="pricePoint">Price</Label>
+        <Input id="pricePoint" name="pricePoint" defaultValue={values.pricePoint ?? ""} inputMode="decimal" placeholder="49" />
+      </div>
+      <div>
+        <Label htmlFor="promoType">Promo type</Label>
+        <select id="promoType" name="promoType" defaultValue={values.promoType ?? ""} className="pc-control mt-1 w-full">
+          <option value="">Detect automatically</option>
+          {PROMO_TYPES.map((type) => (
+            <option key={type}>{type}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <Label htmlFor="promoStatus">Status</Label>
+        <select id="promoStatus" name="promoStatus" defaultValue={values.promoStatus ?? ""} className="pc-control mt-1 w-full">
+          <option value="">Not set</option>
+          {PROMO_STATUSES.map((status) => (
+            <option key={status}>{status}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <Label htmlFor="promoCode">Promo / creative code</Label>
+        <Input id="promoCode" name="promoCode" defaultValue={values.promoCode ?? ""} maxLength={80} />
+      </div>
+      <div>
+        <Label htmlFor="runStartDate">Started running</Label>
+        <Input id="runStartDate" name="runStartDate" type="date" defaultValue={values.runStartDate ? values.runStartDate.toISOString().slice(0, 10) : ""} />
+      </div>
+    </div>
+  );
+}

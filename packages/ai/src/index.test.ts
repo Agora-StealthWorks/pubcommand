@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { AnthropicProvider } from "./index";
+import { aiConfigured, runStructured } from "./index";
 
-describe("AnthropicProvider", () => {
-  it("does not call Anthropic in Phase 1", async () => {
-    await expect(new AnthropicProvider().complete({ model: "claude", messages: [] })).resolves.toMatchObject({
-      status: "unavailable",
-      provider: "anthropic",
-    });
-    await expect(
-      new AnthropicProvider("test-key").complete({
-        model: "claude",
-        messages: [{ role: "user", content: "hello" }],
-      }),
-    ).resolves.toMatchObject({ status: "stub", provider: "anthropic" });
+describe("runStructured", () => {
+  it("reports unavailable without an API key instead of calling the network", async () => {
+    const saved = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      expect(aiConfigured()).toBe(false);
+      await expect(
+        runStructured({ system: "s", input: [{ type: "text", text: "hi" }], schema: { type: "object" } }),
+      ).resolves.toMatchObject({ status: "unavailable" });
+    } finally {
+      if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
+    }
   });
 });

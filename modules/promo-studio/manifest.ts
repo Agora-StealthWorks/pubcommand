@@ -3,10 +3,10 @@ import { defineModule } from "@pubcommand/core";
 export const manifest = defineModule({
   id: "promo-studio",
   slug: "promo-studio",
-  name: "Promo Studio",
-  description: "Example promo catalog with stub scores and a package for this organization.",
-  nav: [{ label: "Promo Studio", href: "/promo-studio", permission: "promo.read" }],
-  routes: [{ path: "/promo-studio", title: "Promo Studio" }],
+  name: "Promo Analyzer",
+  description: "Upload promos, get a full copy analysis, and teach the brand Brain.",
+  nav: [{ label: "Promo Analyzer", href: "/promo-studio", permission: "promo.read" }],
+  routes: [{ path: "/promo-studio", title: "Promo Analyzer" }],
   permissions: [
     { key: "promo.read", description: "Read promotions" },
     { key: "promo.write", description: "Edit promotions" },

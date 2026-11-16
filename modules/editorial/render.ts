@@ -8,7 +8,7 @@ export type EditorialPageInput = {
   issueId?: string;
   prompt?: string;
   canWrite: boolean;
-  loadAssist?: () => Promise<WritingCompleter | null>;
+  assist?: WritingCompleter;
 };
 
 type AssistView =
@@ -111,7 +111,7 @@ async function assistView(issue: EditorialIssue, input: EditorialPageInput): Pro
   if (!prompt) return { kind: "idle" };
   const result = await writingAssist(
     { organizationId: issue.organizationId, issueTitle: issue.title, prompt },
-    input.loadAssist,
+    input.assist,
   );
   return { kind: "result", result };
 }
@@ -123,7 +123,9 @@ function renderAssist(issue: EditorialIssue, input: EditorialPageInput, assist: 
   const prompt = assist.kind === "result" ? (input.prompt?.trim() ?? "") : "";
   const result =
     assist.kind === "result"
-      ? `<p class="ed-note">${escapeHtml(assist.result.status)}: ${escapeHtml(assist.result.reason)}</p>`
+      ? assist.result.status === "ok"
+        ? `<pre class="ed-note">${escapeHtml(assist.result.text)}</pre>`
+        : `<p class="ed-note">${escapeHtml(assist.result.reason)}</p>`
       : `<p class="ed-muted">The assist calls the AI package when you submit a prompt.</p>`;
   return `<form method="get" action="/editorial">
     <input type="hidden" name="issue" value="${escapeHtml(issue.id)}">

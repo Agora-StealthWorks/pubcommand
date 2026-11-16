@@ -13,7 +13,6 @@ import {
 import { renderEditorialPage } from "../../../../modules/editorial/render";
 import { loadKnowledge } from "../../../../modules/knowledge/index";
 import { loadIntelScreen } from "../../../../modules/intel/index";
-import { PromoStudioView } from "../../../../modules/promo-studio/view";
 import { AdminShell } from "@/components/admin-shell";
 import { OrgShell } from "@/components/org-shell";
 import { NewOrganizationForm, OrganizationDetail, OrganizationsList } from "@/components/organizations-console";
@@ -649,7 +648,7 @@ export async function ViewportSurface({
 
   if (route === "org/promo-studio") {
     return (
-      <div data-surface="promo-studio">{orgFrame("/promo-studio", <PromoStudioView organizationId={VIEWPORT_ORG_ID} />)}</div>
+      <div data-surface="promo-studio">{orgFrame("/promo-studio", <p className="text-sm text-muted">Promo Analyzer</p>)}</div>
     );
   }
 

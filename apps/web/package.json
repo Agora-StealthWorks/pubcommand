@@ -16,9 +16,12 @@
     "@pubcommand/db": "workspace:*",
     "@pubcommand/modules": "workspace:*",
     "@pubcommand/ui": "workspace:*",
+    "docx": "^9.15.4",
+    "mammoth": "^1.13.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "unpdf": "^2.2.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",

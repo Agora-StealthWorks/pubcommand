@@ -122,9 +122,9 @@ describe("editorial page", () => {
       issueId: "example-coverage-draft",
       prompt: "Tighten the lede",
       canWrite: false,
-      loadAssist: async () => {
+      assist: async () => {
         calls += 1;
-        return null;
+        return { status: "unavailable", reason: "no key" };
       },
     });
     expect(calls).toBe(0);
@@ -132,59 +132,44 @@ describe("editorial page", () => {
     expect(html).not.toContain("<textarea");
   });
 
-  it("calls the assist loader and shows a TODO when the AI package is missing", async () => {
+  it("calls the assist and shows why when the AI is unavailable", async () => {
     let calls = 0;
     const html = await renderEditorialPage({
       organizationId: orgA,
       issueId: "example-coverage-draft",
       prompt: "Tighten the lede",
       canWrite: true,
-      loadAssist: async () => {
+      assist: async () => {
         calls += 1;
-        return null;
+        return { status: "unavailable", reason: "The AI key is not set." };
       },
     });
     expect(calls).toBe(1);
-    expect(html).toContain("@pubcommand/ai");
+    expect(html).toContain("The AI key is not set.");
     expect(html).toContain("TODO: the assist does not write the issue body yet.");
   });
 });
 
 describe("writing assist", () => {
-  it("calls the AI package with the issue and organization", async () => {
+  it("sends the issue and prompt to the AI", async () => {
     let seen = "";
     const result = await writingAssist(
       { organizationId: orgA, issueTitle: "EXAMPLE: How we pick coverage", prompt: "Tighten the lede" },
-      async () => async (request) => {
-        seen = request.messages.map((message) => message.content).join("\n");
-        return { status: "stub", provider: "anthropic", reason: "stubbed draft" };
+      async (request) => {
+        seen = request.prompt;
+        return { status: "ok", text: "A tighter lede.", usage: { model: "m", inputTokens: 1, outputTokens: 1, cacheReadTokens: 0 } };
       },
     );
-    expect(result).toMatchObject({ status: "stub", provider: "anthropic", reason: "stubbed draft" });
-    expect(seen).toContain(orgA);
+    expect(result).toMatchObject({ status: "ok", text: "A tighter lede." });
     expect(seen).toContain("EXAMPLE: How we pick coverage");
     expect(seen).toContain("Tighten the lede");
   });
 
-  it("shows a TODO when no prompt or provider is available", async () => {
+  it("asks for a prompt before calling the AI", async () => {
     await expect(
       writingAssist({ organizationId: orgA, issueTitle: "EXAMPLE", prompt: "  " }, async () => {
-        throw new Error("should not load");
+        throw new Error("should not call");
       }),
-    ).resolves.toMatchObject({ status: "todo", provider: null });
-    await expect(
-      writingAssist({ organizationId: orgA, issueTitle: "EXAMPLE", prompt: "hello" }, async () => null),
-    ).resolves.toMatchObject({ status: "todo", reason: expect.stringContaining("@pubcommand/ai") });
-  });
-
-  it("calls the workspace AI package", async () => {
-    const result = await writingAssist({
-      organizationId: orgA,
-      issueTitle: "EXAMPLE: How we pick coverage",
-      prompt: "Tighten the lede",
-    });
-    expect(result.provider).toBe("anthropic");
-    expect(result.status === "unavailable" || result.status === "stub").toBe(true);
-    expect(result.reason.length).toBeGreaterThan(0);
+    ).resolves.toMatchObject({ status: "todo" });
   });
 });
