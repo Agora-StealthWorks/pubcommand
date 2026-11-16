@@ -79,16 +79,35 @@ async function writeGate(input: { sid: string; uid: string; role: "SUPER_ADMIN" 
   jar.set(GATE_COOKIE, token, { ...authCookieBase(), maxAge: 60 * 60 * 12 });
 }
 
+/**
+ * Staff two-factor is off unless REQUIRE_STAFF_2FA=true. When off, a password or
+ * magic-link sign-in is enough to open the admin console.
+ */
+export function staffTwoFactorRequired(): boolean {
+  return process.env.REQUIRE_STAFF_2FA === "true";
+}
+
+/** True when this staff member may use the console with this session. */
+export function staffReady(
+  staff: { totpConfirmedAt: Date | null } | null,
+  session: { mfaVerified: boolean } | null,
+): boolean {
+  if (!staff || !session) return false;
+  if (!staffTwoFactorRequired()) return true;
+  return Boolean(staff.totpConfirmedAt) && session.mfaVerified;
+}
+
 export async function establishSession(userId: string) {
   // Signing in by any method (password or magic link) accepts pending invites.
   await activateInvitedMemberships(userId);
-  const session = await lucia.createSession(userId, { mfaVerified: false });
+  const mfaVerified = !staffTwoFactorRequired();
+  const session = await lucia.createSession(userId, { mfaVerified });
   const cookie = lucia.createSessionCookie(session.id);
   const jar = await cookies();
   jar.set(cookie.name, cookie.value, cookie.attributes);
   const staff = await readStaff(userId);
   if (staff) {
-    await writeGate({ sid: session.id, uid: userId, role: staff.role, mfa: false });
+    await writeGate({ sid: session.id, uid: userId, role: staff.role, mfa: mfaVerified });
   } else {
     await writeGate(null);
   }
@@ -104,7 +123,7 @@ export async function markSessionMfa(sessionId: string, userId: string) {
 
 export function loginDestination(input: { staff: boolean; next: string | null; requestHost: string }) {
   const root = rootDomain();
-  if (input.staff) {
+  if (input.staff && staffTwoFactorRequired()) {
     return buildSiteUrl({ rootDomain: root, requestHost: input.requestHost, site: { kind: "admin" }, pathname: "/2fa" });
   }
   return (

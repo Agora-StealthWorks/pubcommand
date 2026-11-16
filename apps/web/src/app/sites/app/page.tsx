@@ -1,7 +1,7 @@
 import { buildSiteUrl } from "@pubcommand/core";
 import { rawPrisma } from "@pubcommand/db";
 import { redirect } from "next/navigation";
-import { readSession, readStaff, rootDomain } from "@/lib/auth";
+import { readSession, readStaff, rootDomain, staffReady } from "@/lib/auth";
 import { currentRequest } from "@/lib/request";
 
 export default async function OrgPickerPage() {
@@ -20,7 +20,7 @@ export default async function OrgPickerPage() {
     rootDomain: rootDomain(),
     requestHost: request.host,
     site: { kind: "admin" },
-    pathname: staff?.totpConfirmedAt && auth.session?.mfaVerified ? "/" : "/2fa",
+    pathname: staffReady(staff, auth.session) ? "/" : "/2fa",
   });
 
   return (
@@ -30,7 +30,7 @@ export default async function OrgPickerPage() {
       <p className="pc-break mt-2 text-sm text-muted">{auth.user.email}</p>
       {staff ? (
         <a href={adminHref} className="mt-6 inline-flex min-h-11 items-center rounded-md bg-accent px-4 text-sm font-semibold text-white">
-          {staff.totpConfirmedAt && auth.session?.mfaVerified ? "Open platform console" : "Finish staff two-factor setup"}
+          {staffReady(staff, auth.session) ? "Open platform console" : "Finish staff two-factor setup"}
         </a>
       ) : null}
       <ul className="mt-8 divide-y divide-line overflow-hidden rounded-lg border border-line bg-white">

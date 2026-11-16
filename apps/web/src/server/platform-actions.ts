@@ -33,7 +33,7 @@ import { IMPERSONATION_COOKIE, authCookieBase, hashPassword, normalizeEmail, sea
 import { moduleRegistry } from "@pubcommand/modules";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createLoginLink, readSession, readStaff, rootDomain, secret } from "@/lib/auth";
+import { createLoginLink, readSession, readStaff, rootDomain, secret, staffReady } from "@/lib/auth";
 import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
 import { currentRequest, siteUrl } from "@/lib/request";
 
@@ -43,7 +43,7 @@ async function staffMutation(permission: string) {
   const auth = await readSession();
   if (!auth.user || !auth.session?.mfaVerified) redirect("/2fa");
   const staff = await readStaff(auth.user.id);
-  if (!staff || !staff.totpConfirmedAt || !platformCan(staff.role, permission)) {
+  if (!staff || !staffReady(staff, auth.session) || !platformCan(staff.role, permission)) {
     redirect("/?error=You do not have permission.");
   }
   return { auth, staff };

@@ -1,7 +1,7 @@
 import { canAccessPlatformConsole } from "@pubcommand/core";
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
-import { readSession, readStaff } from "@/lib/auth";
+import { readSession, readStaff, staffTwoFactorRequired } from "@/lib/auth";
 import { currentRequest } from "@/lib/request";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const mfa = canAccessPlatformConsole({
     role: staff.role,
     disabled: false,
-    totpConfirmed: Boolean(staff.totpConfirmedAt),
+    totpConfirmed: staffTwoFactorRequired() ? Boolean(staff.totpConfirmedAt) : true,
     mfaVerified: auth.session.mfaVerified,
   });
   if (!mfa) {

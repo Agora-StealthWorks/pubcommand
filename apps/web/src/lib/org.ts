@@ -3,7 +3,7 @@ import { loadAccessSubject, loadSuperAdminSubject, rawPrisma, resolveOrgBySlug, 
 import { moduleRegistry } from "@pubcommand/modules";
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { readImpersonation, readSession, readStaff } from "./auth";
+import { readImpersonation, readSession, readStaff, staffReady } from "./auth";
 import { currentRequest } from "./request";
 
 export const getOrgContext = cache(async (slug: string) => {
@@ -24,7 +24,7 @@ export const getOrgContext = cache(async (slug: string) => {
   if (!subject && !impersonatingHere && auth.session.mfaVerified) {
     // The platform super admin can open every organization without being a member.
     const staff = await readStaff(auth.user.id);
-    if (staff?.role === "SUPER_ADMIN" && staff.totpConfirmedAt) {
+    if (staff?.role === "SUPER_ADMIN" && staffReady(staff, auth.session)) {
       subject = await loadSuperAdminSubject(resolved.id, auth.user.id, moduleRegistry.permissionModules());
     }
   }
