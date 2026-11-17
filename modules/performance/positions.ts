@@ -283,6 +283,8 @@ export function planImport(input: {
   portfolios: readonly string[];
   existing: readonly ExistingPosition[];
   today: Date;
+  /** The brand's editors, for the optional editor column. */
+  editors?: readonly { id: string; name: string; slug?: string }[];
 }): ImportPlan {
   const { csv, ...rest } = input;
   return planImportTable({ ...rest, table: parseCsv(csv) });

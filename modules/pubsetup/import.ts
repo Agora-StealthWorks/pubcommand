@@ -32,6 +32,8 @@ export type ParsedImport = {
   brandLogos: ImportLogos;
   /** Problems with single records. Those records are left out; the rest still import. */
   warnings: string[];
+  /** Publication fields the file replaces on existing records (see README). Everything else is fill-only. */
+  replace: string[];
 };
 
 const IMAGE_MIME = /^image\/(png|jpeg|gif|webp|svg\+xml)$/;
@@ -88,8 +90,10 @@ export function parseImport(text: string): { ok: true; file: ParsedImport } | { 
   if (!raw || typeof raw !== "object" || (raw as { format?: unknown }).format !== IMPORT_FORMAT) {
     return { ok: false, error: `That is not a Publication Setup import file (expected format "${IMPORT_FORMAT}").` };
   }
-  const body = raw as { publications?: unknown; editors?: unknown; brand?: unknown };
+  const body = raw as { publications?: unknown; editors?: unknown; brand?: unknown; replace?: unknown };
   const warnings: string[] = [];
+  const replaceable = new Set(PUBLICATION_FIELDS.filter((d) => !d.required && !d.internal && d.kind !== "slug").map((d) => d.key));
+  const replace = (Array.isArray(body.replace) ? body.replace : []).filter((key): key is string => typeof key === "string" && replaceable.has(key));
   const publications: ImportPublication[] = [];
   const editors: ImportEditor[] = [];
   const links: ImportLink[] = [];
@@ -149,7 +153,7 @@ export function parseImport(text: string): { ok: true; file: ParsedImport } | { 
   const brandLogos = readLogos(brand, "brand-logo", "The brand", warnings);
 
   if (publications.length === 0 && editors.length === 0) return { ok: false, error: warnings[0] ?? "The file has no publications or editors." };
-  return { ok: true, file: { publications, editors, links, brandLogos, warnings } };
+  return { ok: true, file: { publications, editors, links, brandLogos, warnings, replace } };
 }
 
 const LOGO_KEYS = [
@@ -195,11 +199,17 @@ function blank(value: unknown): boolean {
 }
 
 /** The imported fields an existing record has left blank. Required and layout fields are never touched. */
-export function fillBlanks(defs: readonly FieldDef[], existing: Record<string, unknown>, incoming: FieldValues, skip: readonly string[] = []): FieldValues {
+export function fillBlanks(defs: readonly FieldDef[], existing: Record<string, unknown>, incoming: FieldValues, skip: readonly string[] = [], replace: readonly string[] = []): FieldValues {
   const out: FieldValues = {};
   for (const def of defs) {
     if (def.required || def.internal || def.kind === "slug" || skip.includes(def.key)) continue;
     const value: FieldValue | undefined = incoming[def.key];
+    if (replace.includes(def.key)) {
+      // Replaced fields take the file's value, including clearing them, when it differs.
+      const norm = (v: unknown) => JSON.stringify(blank(v) ? null : v);
+      if (norm(value) !== norm(existing[def.key])) out[def.key] = value ?? (def.kind === "list" || def.kind === "pairs" ? [] : null);
+      continue;
+    }
     if (blank(value) || !blank(existing[def.key])) continue;
     out[def.key] = value!;
   }
@@ -231,10 +241,13 @@ export type ImportPlan = {
   counts: { create: number; fill: number; same: number; links: number };
 };
 
-function labelFill(defs: readonly FieldDef[], fill: FieldValues, images: string[]): string {
-  const names = Object.keys(fill).map((key) => defs.find((d) => d.key === key)?.label.toLowerCase() ?? key);
-  names.push(...images);
-  return names.length ? `adds ${names.join(", ")}` : "already up to date";
+function labelFill(defs: readonly FieldDef[], fill: FieldValues, images: string[], replace: readonly string[] = []): string {
+  const label = (key: string) => defs.find((d) => d.key === key)?.label.toLowerCase() ?? key;
+  const keys = Object.keys(fill);
+  const added = [...keys.filter((k) => !replace.includes(k)).map(label), ...images];
+  const replaced = keys.filter((k) => replace.includes(k)).map(label);
+  const parts = [added.length ? `adds ${added.join(", ")}` : "", replaced.length ? `replaces ${replaced.join(", ")}` : ""].filter(Boolean);
+  return parts.length ? parts.join("; ") : "already up to date";
 }
 
 export function planImport(
@@ -260,12 +273,12 @@ export function planImport(
       const logoSlots = { light: Boolean(slots.light), dark: Boolean(slots.dark) };
       return { action: "create", label: "new", record, existingId: null, fill: {}, image: logoSlots.light || logoSlots.dark, logoSlots };
     }
-    const fill = fillBlanks(PUBLICATION_FIELDS, match, record.values);
+    const fill = fillBlanks(PUBLICATION_FIELDS, match, record.values, [], file.replace);
     const logoSlots = { light: Boolean(slots.light) && !match.hasLogoLight, dark: Boolean(slots.dark) && !match.hasLogoDark };
     const image = logoSlots.light || logoSlots.dark;
     const action = Object.keys(fill).length || image ? "fill" : "same";
     const images = [...(logoSlots.light ? ["logo for light backgrounds"] : []), ...(logoSlots.dark ? ["logo for dark backgrounds"] : [])];
-    return { action, label: labelFill(PUBLICATION_FIELDS, fill, images), record, existingId: match.id, fill, image, logoSlots };
+    return { action, label: labelFill(PUBLICATION_FIELDS, fill, images, file.replace), record, existingId: match.id, fill, image, logoSlots };
   });
 
   // An imported editor may match an existing one under a different slug (same name).

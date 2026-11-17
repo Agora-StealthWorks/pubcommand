@@ -139,3 +139,20 @@ describe("pricing and logo slots in the import", () => {
     expect(placeLogos({ auto: img, light: named, dark: null }, null)).toEqual({ auto: null, light: named, dark: img });
   });
 });
+
+describe("replace", () => {
+  it("replaces only the listed fields, including clearing them", () => {
+    const text = JSON.stringify({ format: IMPORT_FORMAT, replace: ["offers", "name", "bogus"], publications: [{ code: "EDGE", name: "New name", tagline: "T" }] });
+    const parsed = parseImport(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.file.replace).toEqual(["offers"]);
+    const plan = planImport(parsed.file, {
+      publications: [{ id: "p1", code: "EDGE", slug: "edge", name: "Old", tagline: "Kept", offers: [{ label: "List price", price: "$1", term: "" }], hasLogoLight: false, hasLogoDark: false }],
+      editors: [],
+      links: [],
+      brandLogos: { light: false, dark: false },
+    });
+    expect(plan.publications[0]!.fill).toEqual({ offers: [] });
+    expect(plan.publications[0]!.label).toBe("replaces price points and offers");
+  });
+});

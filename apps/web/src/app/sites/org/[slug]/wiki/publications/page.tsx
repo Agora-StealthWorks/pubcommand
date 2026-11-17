@@ -61,7 +61,7 @@ export default async function WikiPublicationsPage({ params, searchParams }: { p
               </h2>
               <ul className="grid gap-3 md:grid-cols-2">
                 {group.items.map((pub) => {
-                  const price = pub.retailPrice ? `${pub.retailPrice} retail` : priceSummary(pub.offers);
+                  const price = pub.retailPrice ? (/\d/.test(pub.retailPrice) ? `${pub.retailPrice} retail` : pub.retailPrice) : priceSummary(pub.offers);
                   const n = counts.get(pub.id) ?? 0;
                   return (
                     <li key={pub.id} className="min-w-0">

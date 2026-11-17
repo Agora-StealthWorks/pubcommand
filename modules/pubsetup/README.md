@@ -130,3 +130,6 @@ in `import.ts` (pure, tested in `import.test.ts`):
   so re-running a file is a no-op.
 - `logoLight` (for light backgrounds) and `logoDark` (for dark backgrounds) go straight to that slot; `logo` is sorted by its artwork into a slot the record did not name (`placeLogos`). Only empty slots are filled.
 - The dry run changes nothing. Each saved publication and editor teaches the Brain, as a form save does.
+- A file may list `"replace": ["offers", …]` (publication fields only, never name/code/status/color/slug).
+  Those fields take the file's value on existing publications, including being cleared, and the dry run
+  says "replaces …". Use it to correct something an earlier import got wrong.
