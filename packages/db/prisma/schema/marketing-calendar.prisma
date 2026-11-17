@@ -1,0 +1,244 @@
+// Marketing Calendar tables (module id "editorial"). Every row belongs to one brand.
+// Calendar days are stored as DATE (no time zone); event times are "HH:mm" strings.
+
+/// A publication / list a brand mails (code is the key used to match send stats).
+model CalendarPublication {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  code           String
+  name           String
+  color          String    @default("#7f77dd")
+  description    String?
+  logoFilename   String?   @map("logo_filename")
+  logoMime       String?   @map("logo_mime")
+  logoData       Bytes?    @map("logo_data")
+  active         Boolean   @default(true)
+  sortOrder      Int       @default(0) @map("sort_order")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([brandId, code])
+  @@index([organizationId, brandId])
+  @@map("calendar_publications")
+}
+
+/// An optional channel or room an event runs in (webinar room, livestream, podcast feed...).
+model CalendarChannel {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  name           String
+  color          String   @default("#27455c")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([brandId, name])
+  @@index([organizationId, brandId])
+  @@map("calendar_channels")
+}
+
+/// A recurring event: shared copy plus a cadence that generates CalendarEvent occurrences.
+model CalendarSeries {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  brandId        String          @map("brand_id") @db.Uuid
+  name           String
+  frequency      String
+  startsOn       DateTime        @map("starts_on") @db.Date
+  until          DateTime?       @db.Date
+  active         Boolean         @default(true)
+  profile        Json?
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  occurrences    CalendarEvent[]
+
+  @@index([organizationId, brandId])
+  @@map("calendar_series")
+}
+
+/// A live event. Its three stages run marketingStart -> eventDate..eventEnd -> marketingEnd.
+model CalendarEvent {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  brandId        String          @map("brand_id") @db.Uuid
+  name           String
+  eventType      String?         @map("event_type")
+  format         String?
+  stage          String          @default("Idea")
+  marketingStart DateTime?       @map("marketing_start") @db.Date
+  eventDate      DateTime?       @map("event_date") @db.Date
+  eventEnd       DateTime?       @map("event_end") @db.Date
+  marketingEnd   DateTime?       @map("marketing_end") @db.Date
+  startTime      String?         @map("start_time")
+  endTime        String?         @map("end_time")
+  channels       String[]        @default([])
+  hosts          String[]        @default([])
+  offer          String?
+  promoCode      String?         @map("promo_code")
+  ctaLink        String?         @map("cta_link")
+  registrationLink String?       @map("registration_link")
+  replayLink     String?         @map("replay_link")
+  notes          String?
+  peakAttendance Int?            @map("peak_attendance")
+  avgAttendance  Int?            @map("avg_attendance")
+  registrations  Int?
+  newSubscribers Int?            @map("new_subscribers")
+  leads          Int?
+  orders         Int?
+  revenue        Float?
+  messages       Int?
+  seriesId       String?         @map("series_id") @db.Uuid
+  series         CalendarSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  createdById    String?         @map("created_by_id") @db.Uuid
+  updatedById    String?         @map("updated_by_id") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  deletedAt      DateTime?       @map("deleted_at")
+
+  @@index([organizationId, brandId, eventDate])
+  @@index([seriesId])
+  @@map("calendar_events")
+}
+
+/// One editorial issue of a publication.
+model CalendarIssue {
+  id              String             @id @default(uuid()) @db.Uuid
+  organizationId  String             @map("organization_id") @db.Uuid
+  brandId         String             @map("brand_id") @db.Uuid
+  publicationCode String             @map("publication_code")
+  mailDate        DateTime?          @map("mail_date") @db.Date
+  title           String
+  subjectLines    String[]           @default([]) @map("subject_lines")
+  status          String             @default("Planned")
+  issueType       String?            @map("issue_type")
+  writer          String?
+  body            String?
+  notes           String?
+  websiteLink     String?            @map("website_link")
+  ctaLink         String?            @map("cta_link")
+  offer           String?
+  createdById     String?            @map("created_by_id") @db.Uuid
+  updatedById     String?            @map("updated_by_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  deletedAt       DateTime?          @map("deleted_at")
+  stat            CalendarSendStat?
+
+  @@index([organizationId, brandId, mailDate])
+  @@index([brandId, publicationCode])
+  @@map("calendar_issues")
+}
+
+/// ESP send stats matched onto one issue. Rates are ratios (0.0423 = 4.23%).
+model CalendarSendStat {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  issueId        String        @unique @map("issue_id") @db.Uuid
+  issue          CalendarIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  importId       String?       @map("import_id") @db.Uuid
+  listLabel      String?       @map("list_label")
+  pubCode        String?       @map("pub_code")
+  mailDate       DateTime?     @map("mail_date") @db.Date
+  subject        String?
+  delivered      Int?
+  openRate       Float?        @map("open_rate")
+  clickRate      Float?        @map("click_rate")
+  clickToOpen    Float?        @map("click_to_open")
+  revenue        Float?
+  totalOpened    Int?          @map("total_opened")
+  totalClicked   Int?          @map("total_clicked")
+  unsubscribes   Int?
+  complaints     Int?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@index([organizationId, pubCode, mailDate])
+  @@map("calendar_send_stats")
+}
+
+/// One CSV upload of send stats, with what did and did not match.
+model CalendarStatImport {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  filename       String
+  rowsParsed     Int      @default(0) @map("rows_parsed")
+  matched        Int      @default(0)
+  unmatched      Int      @default(0)
+  unmatchedRows  Json?    @map("unmatched_rows")
+  mapping        Json?
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, brandId, createdAt])
+  @@map("calendar_stat_imports")
+}
+
+/// A stored "What's Working" AI summary of the last N days of sends.
+model CalendarInsight {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  windowDays     Int       @default(30) @map("window_days")
+  status         String    @default("QUEUED")
+  error          String?
+  model          String?
+  facts          Json?
+  content        Json?
+  issueCount     Int       @default(0) @map("issue_count")
+  dataFrom       DateTime? @map("data_from") @db.Date
+  dataTo         DateTime? @map("data_to") @db.Date
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId, brandId, createdAt])
+  @@map("calendar_insights")
+}
+
+/// A CUB peer-review round on a promo draft. Public pages are gated by the two tokens.
+model CalendarCubRound {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  brandId        String              @map("brand_id") @db.Uuid
+  promoName      String              @map("promo_name")
+  instructions   String?
+  draftFilename  String              @map("draft_filename")
+  draftMime      String              @map("draft_mime")
+  draftSize      Int                 @map("draft_size")
+  draftData      Bytes               @map("draft_data")
+  dueAt          DateTime            @map("due_at")
+  reviewToken    String              @unique @map("review_token")
+  ownerToken     String              @unique @map("owner_token")
+  closedAt       DateTime?           @map("closed_at")
+  createdById    String?             @map("created_by_id") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  reviews        CalendarCubReview[]
+
+  @@index([organizationId, brandId, createdAt])
+  @@map("calendar_cub_rounds")
+}
+
+/// One reviewer's marked-up file plus four 0-10 scores (only averages are ever shown).
+model CalendarCubReview {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  roundId        String           @map("round_id") @db.Uuid
+  round          CalendarCubRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  reviewerName   String           @map("reviewer_name")
+  filename       String
+  mimeType       String           @map("mime_type")
+  size           Int
+  data           Bytes
+  scoreHeadline  Int              @map("score_headline")
+  scoreStory     Int              @map("score_story")
+  scoreOffer     Int              @map("score_offer")
+  scoreOverall   Int              @map("score_overall")
+  comments       String?
+  submittedAt    DateTime         @default(now()) @map("submitted_at")
+
+  @@index([organizationId, roundId])
+  @@map("calendar_cub_reviews")
+}

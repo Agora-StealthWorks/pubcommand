@@ -63,6 +63,8 @@ export async function middleware(request: NextRequest) {
   else if (site.kind === "marketing") url.pathname = `/sites/marketing${suffix}`;
   else if (site.kind === "app") url.pathname = `/sites/app${suffix}`;
   else if (site.kind === "admin") url.pathname = `/sites/admin${suffix}`;
+  // Public, token-gated pages on an org host (no sign-in): /p/... → /sites/public/<slug>/...
+  else if (pathname === "/p" || pathname.startsWith("/p/")) url.pathname = `/sites/public/${site.slug}${pathname.slice(2)}`;
   else url.pathname = `/sites/org/${site.slug}${suffix}`;
 
   return NextResponse.rewrite(url, { request: { headers: requestHeaders } });

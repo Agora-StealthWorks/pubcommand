@@ -1,0 +1,105 @@
+import Link from "next/link";
+import { contrastInk, STAGE_COLORS, STAGE_LABELS, type StageKey } from "../../../../../modules/editorial/stages";
+
+export function PubChip({ code, color }: { code: string; color?: string | null }) {
+  const bg = color || STAGE_COLORS.issue;
+  return (
+    <span className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[11px] font-bold tracking-wide" style={{ background: bg, color: contrastInk(bg) }}>
+      {code}
+    </span>
+  );
+}
+
+export function StageDot({ stage }: { stage: StageKey | "issue" }) {
+  return <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: STAGE_COLORS[stage] }} aria-hidden />;
+}
+
+export function StageNow({ stage }: { stage: StageKey | null }) {
+  if (!stage) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: `${STAGE_COLORS[stage]}1a`, color: STAGE_COLORS[stage] }}>
+      <StageDot stage={stage} />
+      {STAGE_LABELS[stage]} now
+    </span>
+  );
+}
+
+export function StageLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+      {(["pre", "event", "post", "issue"] as const).map((key) => (
+        <span key={key} className="inline-flex items-center gap-1.5">
+          <StageDot stage={key} />
+          {key === "issue" ? "Editorial issue" : STAGE_LABELS[key]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-sm font-medium text-ink">{label}</span>
+      <span className="mt-1 block">{children}</span>
+      {hint ? <span className="mt-1 block text-xs text-muted">{hint}</span> : null}
+    </label>
+  );
+}
+
+export function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-line bg-white p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">{title}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-line bg-white px-3 py-2">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</dt>
+      <dd className="mt-0.5 break-words text-lg font-semibold tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+export function LinkButton({ href, children, primary }: { href: string; children: React.ReactNode; primary?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={
+        primary
+          ? "inline-flex min-h-11 items-center rounded-md bg-accent px-3 text-sm font-semibold text-white"
+          : "inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold hover:bg-canvas"
+      }
+    >
+      {children}
+    </Link>
+  );
+}
+
+export function ExternalLink({ href, children }: { href: string | null; children: React.ReactNode }) {
+  if (!href) return null;
+  return (
+    <a href={href} target="_blank" rel="noreferrer noopener" className="break-words [overflow-wrap:anywhere] font-medium text-accent hover:underline">
+      {children}
+    </a>
+  );
+}
+
+export function money(n: number | null | undefined): string {
+  return n == null ? "—" : `$${n.toLocaleString("en-US", { maximumFractionDigits: n >= 1000 ? 0 : 2 })}`;
+}
+
+export function count(n: number | null | undefined): string {
+  return n == null ? "—" : n.toLocaleString("en-US");
+}
+
+export function pct(ratio: number | null | undefined): string {
+  return ratio == null ? "—" : `${(ratio * 100).toFixed(2)}%`;
+}

@@ -4,7 +4,7 @@ export type WritingCompleter = (request: { system: string; prompt: string }) => 
 
 export type WritingAssistResult = AiTextResult | { status: "todo"; reason: string };
 
-const SYSTEM = "You help an editor draft a newsletter issue. Never invent opens, clicks, revenue, prices or returns.";
+const SYSTEM = "You help an editor draft an email or newsletter issue for the brand described in the request. Follow the brand's reader and compliance rules. Never invent numbers, statistics, results, quotes or claims; leave a [bracketed placeholder] where a fact is needed.";
 
 export async function writingAssist(
   input: { organizationId: string; issueTitle: string; prompt: string },

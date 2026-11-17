@@ -1,46 +1,24 @@
-# Editorial
+# Marketing Calendar
 
-Issue list and one issue detail for a single organization. Route: `/editorial`. Detail: `/editorial?issue=<id>`.
+Module id and route stay `editorial` / `/editorial`. One calendar per brand: live events, editorial issues, send stats, What's Working and the CUB Collector.
 
 | | |
 | --- | --- |
-| id / slug | `editorial` |
-| Plan entitlement | `editorial` |
-| Permissions | `editorial.read`, `editorial.write`, `editorial.publish` |
-| Nav | `/editorial` (`editorial.read`) |
+| Permissions | `editorial.read` (see everything), `editorial.write` (add, edit, import, CUB rounds) |
+| Tables | `packages/db/prisma/schema/marketing-calendar.prisma` (all per brand) |
+| Server code | `apps/web/src/features/calendar/` |
+| Pages | `apps/web/src/app/sites/org/[slug]/editorial/**`, public CUB pages in `apps/web/src/app/sites/public/[slug]/cub/**` |
 
-`editorial.read` sees issues and send stats. `editorial.write` can submit the writing-assist prompt. `editorial.publish` stays on the manifest for the module contract; this slice does not publish.
+## Pure logic (unit tested in `calendar.test.ts`)
 
-## Rows
+- `stages.ts`: the three stages (marketing start → event → marketing end), running-list filters, month-grid and timeline placement.
+- `recurrence.ts`: cadences and the two edit scopes. A "single" edit never touches the series. A "following" edit copies the shared copy to later occurrences, shifts their dates by the anchor's move, and never copies dates or results. A cadence change re-plans only the occurrences after the anchor.
+- `stats.ts`: CSV parsing, column guessing, matching by mail date + publication code with the subject line as the tie-breaker.
+- `analytics.ts`: week/month/quarter rollups with weighted rates (sums divided by sums, never averaged percentages).
+- `whats-working.ts`: ranks the last 30 days of sends from data; the AI only explains (prompt, schema, normalizer).
+- `cub.ts`: four anonymous 0–10 scores, averages, default deadline (2 business days, 3:30 pm Eastern), zip names.
+- `brain.ts`: Brain notes (`calendar-issue:<id>`, `calendar-event:<id>`).
 
-Every issue stores `organizationId`, title, subject, status, body, schedule, and send stats: `opens`, `clicks`, and `revenue`. `listIssues` and `getIssue` return only rows for the organization you pass.
+## Public CUB links
 
-## EXAMPLE seed
-
-The first read for an organization writes three `EXAMPLE` issues (one sent, one scheduled, one draft). The sent issue carries sample opens, clicks, and revenue. These numbers are seed data, not a live send.
-
-## Writing assist
-
-On an issue, a viewer with `editorial.write` can submit a prompt. The panel calls `@pubcommand/ai` when that package resolves, and otherwise calls the workspace AI package in this repo. Phase 1's provider does not call the network; the panel shows that result. If neither load works, the panel shows a TODO. The assist does not write the issue body yet.
-
-## TODO: ESP sync
-
-`syncSendStatsFromEsp` and the `editorial.esp.sync` job are placeholders. Opens, clicks, and revenue still need a real email-service sync per issue and organization.
-
-## UI
-
-`apps/web/src/app/sites/org/[slug]/editorial/page.tsx` renders `renderEditorialPage` at `/editorial`, so the org host does not use the foundation placeholder. Detail is `/editorial?issue=<id>`. A prompt is `prompt` on that same query. The page checks the `editorial` plan entitlement and an editorial permission before rendering. `canWrite` follows `editorial.write`.
-
-## Tests
-
-The modules package test script includes this folder. From the repo root:
-
-```
-pnpm --filter @pubcommand/modules test
-```
-
-To run only these tests, from `modules/`:
-
-```
-pnpm exec vitest run --config editorial/vitest.config.ts
-```
+`/p/cub/r/<token>` (reviewer) and `/p/cub/o/<token>` (owner) on the organization host. Middleware rewrites `/p/*` to `/sites/public/<slug>/*`, outside the signed-in org layout. The organization comes from the host; the 128-bit token is the credential.
