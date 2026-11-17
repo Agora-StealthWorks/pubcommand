@@ -8,12 +8,19 @@ type AppCard = {
   name: string;
   description: string;
   icon: string;
-  category: "Copy & Promos" | "Editorial" | "Research & Knowledge" | "Performance" | "Media & Audience";
+  category: "Setup" | "Copy & Promos" | "Editorial" | "Research & Knowledge" | "Performance" | "Media & Audience";
   /** Only show for brands in these niches. Omit to show for every brand. */
   niches?: Niche[];
 };
 
 const CARDS: AppCard[] = [
+  {
+    moduleId: "pubsetup",
+    name: "Publication Setup",
+    description: "Your publications, editors and branding in one place. Every app uses it.",
+    icon: "🏷️",
+    category: "Setup",
+  },
   {
     moduleId: "promo-studio",
     name: "Promo Analyzer",
@@ -89,6 +96,7 @@ const CARDS: AppCard[] = [
 ];
 
 export const CATEGORY_ORDER: AppCard["category"][] = [
+  "Setup",
   "Copy & Promos",
   "Editorial",
   "Research & Knowledge",
