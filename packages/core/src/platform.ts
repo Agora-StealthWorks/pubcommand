@@ -13,6 +13,7 @@ export const PLATFORM_PERMISSIONS = {
   manageModules: "platform.modules.manage",
   manageStaff: "platform.staff.manage",
   viewAudit: "platform.audit.view",
+  manageJobs: "platform.jobs.manage",
 } as const;
 
 export type PlatformPermission = (typeof PLATFORM_PERMISSIONS)[keyof typeof PLATFORM_PERMISSIONS];
@@ -40,6 +41,7 @@ const PLATFORM_ROLE_PERMISSIONS: Record<PlatformRole, readonly PlatformPermissio
     PLATFORM_PERMISSIONS.manageDomains,
     PLATFORM_PERMISSIONS.manageModules,
     PLATFORM_PERMISSIONS.viewAudit,
+    PLATFORM_PERMISSIONS.manageJobs,
   ],
 };
 

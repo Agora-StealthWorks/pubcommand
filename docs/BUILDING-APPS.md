@@ -118,3 +118,25 @@ Before you finish:
 - Unit tests for your pure logic in `modules/<id>/*.test.ts`.
 - Screenshots at 1360px and 375px of each main screen; at 375px `document.documentElement.scrollWidth` must be 375.
 - Commit to your branch in your worktree with a clear message. **Do not push. Do not touch `main`.**
+
+## Scheduled jobs
+
+Background work that runs on a schedule (syncs, reminders, digests, cleanups) is a job:
+
+1. Create `apps/web/src/jobs/<app>-<what>.ts` exporting `defineJob({ name, description, schedule, run })` (`@/lib/jobs/types`). `schedule` is a 5-field cron expression in America/New_York unless `timeZone` is set. Name jobs `<module>.<what>`, e.g. `intel.gmail-sync`.
+2. Add it to the `JOBS` array in `apps/web/src/jobs/index.ts` (one import, one entry, keep sorted).
+3. `run` must be idempotent and work across organizations: list org ids with `rawPrisma()`, then do every tenant read/write through `tenantDb(orgId)`. Return a small JSON summary (counts only, never PII).
+
+Each slot runs once across all servers; failures are retried at the next slot; platform staff see every job and its runs in Admin → Jobs and can "Run now". Do not add `setInterval` loops or new cron HTTP routes for scheduled work.
+
+## Email
+
+`sendEmail({ to, subject, html, text })` in `apps/web/src/lib/email.ts` sends through Resend when `RESEND_API_KEY` is set and returns `{ status: "logged" }` otherwise; show "email is not set up yet" in the UI in that case. `escapeHtml()` is there too. Only email people who expect it (reviewers someone named, the team, subscribers who opted in).
+
+## Web research in AI calls
+
+`runStructured({ ..., webSearch: { maxUses: 5 } })` lets the model search the web. When you use it, the prompt must ask for a source URL next to every fact, and the UI must show those sources.
+
+## Brain visibility (updated)
+
+The **main Brain is for PubCommand platform staff only** (Admin console). Organizations and brands never see it, never see a "main Brain" switch, and are never told their notes train it. Apps teach the brand's mini-brain with `teachBrain()`; propagation to the main Brain happens inside the Brain module. Best practices that flow down appear in a brand's Brain as ordinary notes.

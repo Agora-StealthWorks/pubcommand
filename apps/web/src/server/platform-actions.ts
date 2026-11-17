@@ -571,3 +571,12 @@ export async function stopImpersonation() {
   }
   redirect(await siteUrl({ kind: "admin" }, "/orgs"));
 }
+
+export async function runJob(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageJobs);
+  const name = String(formData.get("job") ?? "");
+  const { runJobNow } = await import("@/lib/jobs/runner");
+  const result = await runJobNow(name, auth.user.id);
+  await appendPlatformAudit({ actorId: auth.user.id, action: "job.run", targetType: "job", targetId: name });
+  redirect(result.ok ? `/jobs?notice=${encodeURIComponent(`${name} started.`)}` : `/jobs?error=${encodeURIComponent(result.reason ?? "Could not start.")}`);
+}

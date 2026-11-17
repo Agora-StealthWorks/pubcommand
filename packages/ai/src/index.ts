@@ -24,6 +24,8 @@ export type AiStructuredRequest = {
   effort?: AiEffort;
   maxTokens?: number;
   model?: string;
+  /** Let the model search the web (Anthropic's server-side web search). Facts it finds must be cited by the caller's prompt. */
+  webSearch?: { maxUses?: number; allowedDomains?: string[] };
 };
 
 export type AiStructuredResult<T> =
@@ -63,19 +65,38 @@ export async function runStructured<T>(request: AiStructuredRequest): Promise<Ai
   }
   const model = request.model ?? DEFAULT_MODEL;
   try {
-    const stream = anthropic().beta.messages.stream({
-      model,
-      max_tokens: request.maxTokens ?? 32000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      system: [{ type: "text", text: request.system, cache_control: { type: "ephemeral" } }],
-      output_config: {
-        effort: request.effort ?? "high",
-        format: { type: "json_schema", schema: request.schema },
-      },
-      messages: [{ role: "user", content: toContent(request.input) }],
-    });
-    const message = await stream.finalMessage();
+    const tools: Anthropic.Beta.BetaToolUnion[] = request.webSearch
+      ? [
+          {
+            type: "web_search_20260209",
+            name: "web_search",
+            max_uses: request.webSearch.maxUses ?? 5,
+            ...(request.webSearch.allowedDomains?.length ? { allowed_domains: request.webSearch.allowedDomains } : {}),
+          },
+        ]
+      : [];
+    const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: toContent(request.input) }];
+    let message: Anthropic.Beta.BetaMessage | null = null;
+    // Server tools can pause a long turn; continue it a few times.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const stream = anthropic().beta.messages.stream({
+        model,
+        max_tokens: request.maxTokens ?? 32000,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        system: [{ type: "text", text: request.system, cache_control: { type: "ephemeral" } }],
+        output_config: {
+          effort: request.effort ?? "high",
+          format: { type: "json_schema", schema: request.schema },
+        },
+        ...(tools.length ? { tools } : {}),
+        messages,
+      });
+      message = await stream.finalMessage();
+      if (message.stop_reason !== "pause_turn") break;
+      messages.push({ role: "assistant", content: message.content });
+    }
+    if (!message) return { status: "failed", reason: "The AI returned nothing." };
     const usage: AiUsage = {
       model: message.model,
       inputTokens: message.usage.input_tokens,

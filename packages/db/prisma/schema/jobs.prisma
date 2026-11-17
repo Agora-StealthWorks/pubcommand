@@ -1,0 +1,21 @@
+// Scheduled background jobs (platform-wide, not per tenant).
+
+/// One run of a scheduled or manually started job. The unique (job, scheduled_for)
+/// pair means only one server instance runs each scheduled slot.
+model JobRun {
+  id           String    @id @default(uuid()) @db.Uuid
+  job          String
+  scheduledFor DateTime  @map("scheduled_for")
+  trigger      String    @default("schedule")
+  status       String    @default("running")
+  startedAt    DateTime  @default(now()) @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  durationMs   Int?      @map("duration_ms")
+  error        String?
+  details      Json?
+  actorId      String?   @map("actor_id") @db.Uuid
+
+  @@unique([job, scheduledFor])
+  @@index([job, startedAt])
+  @@map("job_runs")
+}

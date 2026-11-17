@@ -23,6 +23,7 @@
     "@pubcommand/modules": "workspace:*",
     "@pubcommand/ui": "workspace:*",
     "@resvg/resvg-js": "^2.6.2",
+    "cron-parser": "^5.10.6",
     "docx": "^9.15.4",
     "fflate": "^0.8.3",
     "jpeg-js": "^0.4.4",
