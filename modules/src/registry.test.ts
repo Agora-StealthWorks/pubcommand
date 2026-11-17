@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PRODUCT_MODULE_IDS, moduleRegistry } from "./index";
 
 describe("module registry", () => {
-  it("loads the example stub, seven product modules, and settings", () => {
+  it("loads the example stub, the product modules, and settings", () => {
     const ids = moduleRegistry.all().map((manifest) => manifest.id);
     expect(ids).toEqual([
       "example",
@@ -10,6 +10,7 @@ describe("module registry", () => {
       "editorial",
       "performance",
       "promo-studio",
+      "research",
       "intel",
       "forms",
       "charts",
