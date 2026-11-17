@@ -18,6 +18,9 @@ import { performanceWeeklyReport } from "./performance-weekly-report";
 import { performanceWeeklySummary } from "./performance-weekly-summary";
 import { promoBulkReanalyze } from "./promo-bulk-reanalyze";
 import { promoSheetsSync } from "./promo-sheets-sync";
+import { supportPlatformSync } from "./support-platform-sync";
+import { supportPubsetupSync } from "./support-pubsetup-sync";
+import { supportWebsiteSheet } from "./support-website-sheet";
 
 /**
  * Every scheduled job. Apps add theirs here (one import + one entry each).
@@ -43,4 +46,7 @@ export const JOBS: JobDefinition[] = [
   performanceWeeklySummary,
   promoBulkReanalyze,
   promoSheetsSync,
+  supportPlatformSync,
+  supportPubsetupSync,
+  supportWebsiteSheet,
 ];
