@@ -10,7 +10,6 @@ import {
   createSeat,
   stripeEnvStatus,
 } from "../../../../modules/billing/index";
-import { loadIntelScreen } from "../../../../modules/intel/index";
 import { AdminShell } from "@/components/admin-shell";
 import { OrgShell } from "@/components/org-shell";
 import { NewOrganizationForm, OrganizationDetail, OrganizationsList } from "@/components/organizations-console";
@@ -631,36 +630,18 @@ export async function ViewportSurface({
   }
 
   if (route === "org/intel") {
-    const screen = loadIntelScreen({ organizationId: VIEWPORT_ORG_ID, callDate: "2026-06-04" });
     return (
       <div data-surface="intel">
         {orgFrame(
           "/intel",
           <div>
-            <PageHeader title={screen.title} description={screen.description} />
+            <PageHeader title="Intel" description="Competitor emails, AI extraction and the weekly Promo Radar." />
             <ul className="divide-y divide-line rounded-lg border border-line bg-white">
-              {screen.competitors.map((row) => (
-                <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-                  <span className="min-w-0 font-medium">{row.name}</span>
-                  <span className="pc-break min-w-0 text-muted">{row.domain}</span>
-                </li>
-              ))}
+              <li className="px-4 py-3">
+                <p className="text-sm font-semibold">The 3-minute morning habit most readers have never heard of</p>
+                <p className="pc-break mt-1 text-sm text-muted">editor.with.a.long.mailbox@send.northwind-publishing.example</p>
+              </li>
             </ul>
-            <ul className="mt-6 divide-y divide-line rounded-lg border border-line bg-white">
-              {screen.emails.map((row) => (
-                <li key={row.id} className="px-4 py-3">
-                  <p className="text-sm font-semibold">{row.subject}</p>
-                  <p className="pc-break mt-1 text-sm text-muted">{row.from}</p>
-                </li>
-              ))}
-            </ul>
-            <form className="pc-form-row mt-6 max-w-md">
-              <div>
-                <Label htmlFor="intel-call-date">Call date</Label>
-                <Input id="intel-call-date" type="date" defaultValue="2026-06-04" className="mt-1" />
-              </div>
-              <Button type="button" variant="secondary" className="w-full sm:w-auto">Look up</Button>
-            </form>
           </div>,
         )}
       </div>

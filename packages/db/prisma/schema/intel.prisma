@@ -1,0 +1,130 @@
+// Intel tables: competitor intelligence (competitors, their emails, Gmail inboxes, the weekly Promo Radar).
+// Foreign keys to organizations and brands are added by hand in the migration (ON DELETE CASCADE).
+
+/// A competing publisher this brand watches.
+model IntelCompetitor {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  brandId         String       @map("brand_id") @db.Uuid
+  name            String
+  /// Their brands, newsletters and products.
+  products        String[]     @default([])
+  websites        String[]     @default([])
+  /// Exact sender addresses, lowercased.
+  senderAddresses String[]     @default([]) @map("sender_addresses")
+  /// Sender domains, lowercased. A subdomain of one matches too.
+  senderDomains   String[]     @default([]) @map("sender_domains")
+  notes           String?
+  tags            String[]     @default([])
+  createdById     String?      @map("created_by_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+  emails          IntelEmail[]
+
+  @@index([organizationId, brandId])
+  @@map("intel_competitors")
+}
+
+/// One competitor email in a brand's inbox. The original message is kept in `raw`.
+model IntelEmail {
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String             @map("organization_id") @db.Uuid
+  brandId          String             @map("brand_id") @db.Uuid
+  competitorId     String?            @map("competitor_id") @db.Uuid
+  /// How the competitor was matched: address, domain, website, manual.
+  matchedBy        String?            @map("matched_by")
+  /// upload, mbox, paste, gmail
+  source           String
+  gmailAccountId   String?            @map("gmail_account_id") @db.Uuid
+  gmailMessageId   String?            @map("gmail_message_id")
+  messageId        String?            @map("message_id")
+  /// Message-ID, Gmail id or a content hash; one copy per brand.
+  dedupeKey        String             @map("dedupe_key")
+  subject          String
+  fromName         String?            @map("from_name")
+  fromAddress      String             @map("from_address")
+  toAddress        String?            @map("to_address")
+  receivedAt       DateTime           @map("received_at")
+  htmlBody         String?            @map("html_body")
+  textBody         String             @default("") @map("text_body")
+  snippet          String             @default("")
+  /// Links found in the body: [{ href, text }].
+  links            Json               @default("[]")
+  landingUrl       String?            @map("landing_url")
+  /// Gmail tab or folder (PRIMARY, PROMOTIONS, SPAM ...), when known.
+  placement        String?
+  raw              Bytes?
+  rawSize          Int                @default(0) @map("raw_size")
+  /// Copied from the extraction so the inbox can filter on it.
+  emailType        String?            @map("email_type")
+  /// NONE, QUEUED, RUNNING, DONE, FAILED
+  extractionStatus String             @default("NONE") @map("extraction_status")
+  extractionError  String?            @map("extraction_error")
+  extraction       Json?
+  extractionModel  String?            @map("extraction_model")
+  extractedAt      DateTime?          @map("extracted_at")
+  /// The Promo Analyzer promo made from this email, if any.
+  analyzerPromoId  String?            @map("analyzer_promo_id") @db.Uuid
+  createdById      String?            @map("created_by_id") @db.Uuid
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  deletedAt        DateTime?          @map("deleted_at")
+  competitor       IntelCompetitor?   @relation(fields: [competitorId], references: [id], onDelete: SetNull)
+  gmailAccount     IntelGmailAccount? @relation(fields: [gmailAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([brandId, dedupeKey])
+  @@index([organizationId, brandId, receivedAt])
+  @@index([organizationId, brandId, competitorId])
+  @@index([organizationId, extractionStatus])
+  @@map("intel_emails")
+}
+
+/// A Gmail inbox subscribed to competitor lists. Tokens are encrypted with AUTH_SECRET.
+model IntelGmailAccount {
+  id               String       @id @default(uuid()) @db.Uuid
+  organizationId   String       @map("organization_id") @db.Uuid
+  brandId          String       @map("brand_id") @db.Uuid
+  email            String
+  refreshTokenEnc  String       @map("refresh_token_enc")
+  accessTokenEnc   String?      @map("access_token_enc")
+  tokenExpiresAt   DateTime?    @map("token_expires_at")
+  /// Gmail search filter, e.g. "label:competitors". Blank = the whole inbox.
+  query            String?
+  historyId        String?      @map("history_id")
+  /// IDLE, RUNNING
+  syncStatus       String       @default("IDLE") @map("sync_status")
+  lastSyncAt       DateTime?    @map("last_sync_at")
+  lastSyncError    String?      @map("last_sync_error")
+  lastSyncAdded    Int          @default(0) @map("last_sync_added")
+  connectedById    String?      @map("connected_by_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  emails           IntelEmail[]
+
+  @@unique([brandId, email])
+  @@index([organizationId])
+  @@map("intel_gmail_accounts")
+}
+
+/// The Promo Radar for one brand and one week (Monday, UTC).
+model IntelRadarDigest {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  weekStart      DateTime  @map("week_start") @db.Date
+  /// Deterministic grouping of the week's emails (see modules/intel/radar.ts).
+  summary        Json
+  /// NONE, QUEUED, RUNNING, DONE, FAILED (the AI narrative)
+  status         String    @default("NONE")
+  error          String?
+  narrative      Json?
+  model          String?
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([brandId, weekStart])
+  @@index([organizationId, brandId])
+  @@map("intel_radar_digests")
+}
