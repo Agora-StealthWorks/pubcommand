@@ -1,83 +1,98 @@
-import { can } from "@pubcommand/core";
-import { moduleRegistry, performanceHome } from "@pubcommand/modules";
-import { notFound } from "next/navigation";
-import { TableScroll } from "@/components/table-scroll";
-import { Denied, PageHeader } from "@/components/ui";
-import { getOrgContext } from "@/lib/org";
+import { Button, Input, Label } from "@pubcommand/ui";
+import Link from "next/link";
+import { Denied, Flash } from "@/components/ui";
+import { createPortfolio } from "@/features/trackrecord/actions";
+import { trackAccess } from "@/features/trackrecord/context";
+import { marketConnected } from "@/features/trackrecord/prices";
+import { portfolioSummaries } from "@/features/trackrecord/server";
+import { GainText, MarketBanner } from "@/features/trackrecord/ui";
+import { formatPct } from "../../../../../../../../modules/performance/gain";
 
-export default async function PerformancePage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function TrackRecordHome({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
   const { slug } = await params;
-  const ctx = await getOrgContext(slug);
-  if (ctx.kind !== "ok") notFound();
-  const manifest = moduleRegistry.getBySlug("performance");
-  if (!manifest) notFound();
-  if (!ctx.subject.entitledModuleIds.includes(manifest.planEntitlement)) {
-    return (
-      <div>
-        <PageHeader title={manifest.name} description="This module is not included for the organization." />
-        <p className="rounded-lg border border-line bg-white p-6 text-sm text-muted">
-          Ask an admin to enable it if the plan allows it.
-        </p>
-      </div>
-    );
-  }
-  const allowed = manifest.permissions.some((permission) => can(ctx.subject, permission.key, ctx.scope));
-  if (!allowed) return <Denied />;
-  const home = performanceHome(ctx.resolved.id);
+  const query = await searchParams;
+  const access = await trackAccess("performance.read", slug);
+  if (!access.ok) return <Denied title={access.error} />;
+  const { scope } = access;
+  const summaries = await portfolioSummaries(scope);
+  const staleCount = summaries.reduce((sum, s) => sum + s.staleCount, 0);
+
   return (
-    <div>
-      <PageHeader title={manifest.name} description={manifest.description} />
-      <p className="mb-4 text-sm text-muted">
-        {home.example
-          ? "Example data for this organization. Broker import is not connected."
-          : "Example seed for this organization. Broker import is not connected."}
-      </p>
-      <h2 className="mb-2 text-sm font-semibold">Recommendations</h2>
-      <TableScroll>
-      <table className="w-full min-w-[36rem] border-collapse text-sm">
-        <thead className="bg-canvas text-left text-xs uppercase tracking-wide text-muted">
-          <tr>
-            <th className="px-3 py-2">Symbol</th>
-            <th className="px-3 py-2">Direction</th>
-            <th className="px-3 py-2">Opened</th>
-            <th className="px-3 py-2">Closed</th>
-            <th className="px-3 py-2">P&L</th>
-          </tr>
-        </thead>
-        <tbody>
-          {home.recommendations.map((row) => (
-            <tr key={row.id} className="border-t border-line">
-              <td className="px-3 py-2">{row.symbol}</td>
-              <td className="px-3 py-2">{row.direction}</td>
-              <td className="px-3 py-2">{row.openedOn}</td>
-              <td className="px-3 py-2">{row.closedOn}</td>
-              <td className="px-3 py-2">{row.pnl}</td>
-            </tr>
+    <div className="space-y-4">
+      <Flash error={query.error} notice={query.notice} />
+      <MarketBanner connected={marketConnected()} staleCount={staleCount} />
+      {summaries.length === 0 ? (
+        <p className="rounded-xl border border-line bg-white p-5 text-sm text-muted">
+          No portfolios yet for {scope.brandName}. Create one below, or <Link href="/performance/import" className="font-semibold text-accent">import a CSV</Link> of
+          recommendations.
+        </p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {summaries.map(({ portfolio, stats, staleCount: stale }) => (
+            <Link key={portfolio.id} href={`/performance/${portfolio.id}`} className="block min-w-0 rounded-xl border border-line bg-white p-4 hover:border-accent">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="truncate text-base font-semibold">{portfolio.name}</h2>
+                  <p className="truncate text-xs text-muted">{portfolio.publication || "No publication set"}</p>
+                </div>
+                {portfolio.publicEnabled ? <span className="shrink-0 rounded-full bg-[#dbe7ff] px-2 py-0.5 text-xs font-semibold text-[#1e3a8a]">Public</span> : null}
+              </div>
+              <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div>
+                  <dt className="text-xs text-muted">Open</dt>
+                  <dd className="font-semibold tabular-nums">{stats.open}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">Closed</dt>
+                  <dd className="font-semibold tabular-nums">{stats.closed}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">Win rate</dt>
+                  <dd className="font-semibold tabular-nums">{stats.winRate == null ? "—" : `${Math.round(stats.winRate * 100)}%`}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">Avg closed</dt>
+                  <dd>
+                    <GainText pct={stats.avgGain} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">Avg open</dt>
+                  <dd>
+                    <GainText pct={stats.avgOpenGain} />
+                    {stale ? <span className="text-[#b54708]">*</span> : null}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">Best</dt>
+                  <dd className="truncate text-xs">
+                    {stats.best ? (
+                      <>
+                        {stats.best.symbol} {formatPct(stats.best.gainPct, 0)}
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </Link>
           ))}
-        </tbody>
-      </table>
-      </TableScroll>
-      <p className="mb-6 mt-2 text-sm text-muted">Closed P&L {home.closedPnl}</p>
-      <h2 className="mb-2 text-sm font-semibold">Launch funnel</h2>
-      <p className="mb-2 text-sm text-muted">Placeholder metrics. Launch tracking is not connected.</p>
-      <TableScroll>
-      <table className="w-full min-w-[24rem] border-collapse text-sm">
-        <thead className="bg-canvas text-left text-xs uppercase tracking-wide text-muted">
-          <tr>
-            <th className="px-3 py-2">Visits</th>
-            <th className="px-3 py-2">Opt-ins</th>
-            <th className="px-3 py-2">Revenue</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr className="border-t border-line">
-            <td className="px-3 py-2">{home.funnel.visits}</td>
-            <td className="px-3 py-2">{home.funnel.optIns}</td>
-            <td className="px-3 py-2">{home.funnel.revenue}</td>
-          </tr>
-        </tbody>
-      </table>
-      </TableScroll>
+        </div>
+      )}
+      {scope.canWrite ? (
+        <form action={createPortfolio} className="grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <div>
+            <Label htmlFor="portfolio-name">New portfolio</Label>
+            <Input id="portfolio-name" name="name" required maxLength={120} placeholder="Portfolio name" />
+          </div>
+          <div>
+            <Label htmlFor="portfolio-publication">Publication</Label>
+            <Input id="portfolio-publication" name="publication" maxLength={120} placeholder="Newsletter or service" />
+          </div>
+          <Button type="submit">Create portfolio</Button>
+        </form>
+      ) : null}
     </div>
   );
 }
