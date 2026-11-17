@@ -6,6 +6,7 @@ import { Denied, Flash } from "@/components/ui";
 import { deletePortfolio, refreshPortfolioPrices, teachPortfolioWeek, updatePortfolio, updatePublicLink, updateWidget } from "@/features/trackrecord/actions";
 import { trackAccess } from "@/features/trackrecord/context";
 import { marketConnected } from "@/features/trackrecord/prices";
+import { editorOptions } from "@/features/trackrecord/editor-profile";
 import { getPortfolio, positionViews, refreshPositionHistory, toStat } from "@/features/trackrecord/server";
 import { MarketBanner, PositionTable, StatsGrid } from "@/features/trackrecord/ui";
 import { currentRequest } from "@/lib/request";
@@ -41,6 +42,7 @@ export default async function PortfolioPage({
   const connected = marketConnected();
   const due = views.filter((v) => v.priceSymbol && historyDue(v.peakCheckedAt, v.status === "CLOSED"));
   if (connected && due.length) after(() => refreshPositionHistory(scope.organizationId, due.slice(0, 25)).then(() => undefined));
+  const editorChoices = tab === "settings" && scope.canWrite ? await editorOptions(scope, portfolio.publication, [portfolio.defaultEditorId]) : null;
   const request = await currentRequest();
   const publicUrl = portfolio.publicToken ? `${request.origin}/p/track-record/${portfolio.publicToken}` : null;
   const widgetUrl = portfolio.widgetToken ? `${request.origin}/p/track-record/widget/${portfolio.widgetToken}` : null;
@@ -263,6 +265,23 @@ export default async function PortfolioPage({
                 <Label htmlFor="pf-pub">Publication</Label>
                 <Input id="pf-pub" name="publication" defaultValue={portfolio.publication} maxLength={120} />
               </div>
+              {editorChoices ? (
+                <div>
+                  <Label htmlFor="pf-editor">Default editor</Label>
+                  <select id="pf-editor" name="defaultEditorId" className="pc-control w-full" defaultValue={portfolio.defaultEditorId ?? ""}>
+                    <option value="">{editorChoices.publicationEditorIds.length === 1 ? "The publication's editor" : "None"}</option>
+                    {editorChoices.options.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted">
+                    Credited with recommendations that name no editor.{" "}
+                    {editorChoices.fromPublication ? "Choices are this publication's editors in Publication Setup." : "No editors are linked to this publication in Publication Setup, so every editor is listed."}
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <Label htmlFor="pf-desc">Description</Label>
                 <Textarea id="pf-desc" name="description" defaultValue={portfolio.description} rows={3} maxLength={1000} />

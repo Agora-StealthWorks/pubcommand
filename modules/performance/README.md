@@ -38,7 +38,15 @@ Permissions: `performance.read` (view everything), `performance.write` (add/edit
 - **Jobs**: `performance.price-refresh` (quotes, peaks, splits, weekdays every 30 min in market hours),
   `performance.weekly-summary` (Brain note, Fridays), `performance.weekly-report` (email, Fridays),
   `performance.import-sync` (hourly).
-- **Brain**: a weekly aggregate note per portfolio, `sourceRef trackrecord:<portfolioId>:<ISO week>`.
+- **Brain**: a weekly aggregate note per portfolio, `sourceRef trackrecord:<portfolioId>:<ISO week>`, with a
+  "By editor" block (aggregates per credited editor, no symbols).
+- **Editors** (`attribution.ts`): an archive expert can be linked to a Publication Setup editor
+  (`track_experts.editor_id`; old experts match by unambiguous name). A position's editor is the position's
+  `editor_id`, else the portfolio's `default_editor_id`, else the only editor linked to the portfolio's publication
+  (exact code/name/slug match), else nobody. Unattributed positions count for no one. The wiki editor profile shows
+  the editor's claims archive and one summary per publication from their positions only
+  (`features/trackrecord/editor-profile.ts`, `features/wiki/editor-track.tsx`). CSV/Sheets imports take an optional
+  `editor` column (name or slug).
 
 Numbers never come from the AI. Server code: `apps/web/src/features/trackrecord/`.
 Quotes are cached per org in `track_quotes` (10 minutes); responses also use ChartBuilder's `market_cache`.

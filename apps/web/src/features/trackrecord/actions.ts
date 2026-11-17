@@ -8,6 +8,8 @@ import { CALL_TYPES, CATEGORY_COLORS, FILE_ROLES } from "../../../../../modules/
 import { parseSplitFactor } from "../../../../../modules/performance/gain";
 import { pricesToCheck, storedProposal, PRICE_FIELDS } from "../../../../../modules/performance/backup-read";
 import { IMPORT_COLUMNS, parseCsv, parseDate, parseMoney, validatePosition, type ImportPlan, type RawPosition } from "../../../../../modules/performance/positions";
+import { editorForExpertName, expertForEditor } from "../../../../../modules/performance/attribution";
+import { getEditor, getEditors } from "@/features/pubsetup/read";
 import { AI_RUN_STALE_MS, runBackupRead } from "./backup-ai";
 import { trackAccess, type TrackScope } from "./context";
 import { closeWithFill, syncPositionFromFills } from "./fills";
@@ -25,6 +27,13 @@ function text(formData: FormData, key: string, max = 300): string {
 function go(path: string, message?: { error?: string; notice?: string }): never {
   const query = message?.error ? `?error=${encodeURIComponent(message.error)}` : message?.notice ? `?notice=${encodeURIComponent(message.notice)}` : "";
   redirect(`${path}${path.includes("?") && query ? query.replace("?", "&") : query}`);
+}
+
+/** A live Publication Setup editor of this brand, or null ("" and unknown ids both mean none). */
+async function brandEditorId(scope: TrackScope, raw: string): Promise<string | null> {
+  if (!UUID.test(raw)) return null;
+  const editor = await getEditor(scope.organizationId, scope.brandId, raw);
+  return editor && !editor.archived ? editor.id : null;
 }
 
 async function writer(back = "/performance"): Promise<TrackScope> {
@@ -60,9 +69,10 @@ export async function updatePortfolio(formData: FormData) {
   const portfolio = await getPortfolio(scope, text(formData, "portfolioId", 40));
   if (!portfolio) go("/performance", { error: "That portfolio no longer exists." });
   const name = text(formData, "name", 120) || portfolio.name;
+  const defaultEditorId = formData.has("defaultEditorId") ? await brandEditorId(scope, text(formData, "defaultEditorId", 40)) : portfolio.defaultEditorId;
   await tenantDb(scope.organizationId).trackPortfolio.updateMany({
     where: { id: portfolio.id },
-    data: { name, publication: text(formData, "publication", 120), description: text(formData, "description", 1000) },
+    data: { name, publication: text(formData, "publication", 120), description: text(formData, "description", 1000), defaultEditorId },
   });
   await auditTrack(scope, "trackrecord.portfolio.updated", "track_portfolio", portfolio.id);
   go(`/performance/${portfolio.id}?tab=settings`, { notice: "Saved." });
@@ -160,6 +170,7 @@ export async function savePosition(formData: FormData) {
     notes: draft.notes,
     recordedPrice: recordedPrice != null && recordedPrice > 0 ? recordedPrice : null,
     recordedAt: recordedAt instanceof Date ? recordedAt : null,
+    ...(formData.has("editorId") ? { editorId: await brandEditorId(scope, text(formData, "editorId", 40)) } : {}),
     ...(draft.splitFactor != null ? { splitFactor: draft.splitFactor, splitSource: "manual" } : {}),
   };
   const db = tenantDb(scope.organizationId);
@@ -294,14 +305,54 @@ export async function saveExpert(formData: FormData) {
   const id = text(formData, "expertId", 40);
   const name = text(formData, "name", 120);
   if (!name) go("/performance/archive/manage", { error: "Give the expert a name." });
+  // The editor this expert is: "" = none, "auto" = match by name when unambiguous, or an editor id.
+  const editorRaw = text(formData, "editorId", 40);
+  const experts = await db.trackExpert.findMany({ where: { brandId: scope.brandId, deletedAt: null }, select: { id: true, name: true, editorId: true } });
+  const others = experts.filter((e) => e.id !== id);
+  let editorId: string | null | undefined;
+  const current = experts.find((e) => e.id === id)?.editorId ?? null;
+  if (!formData.has("editorId")) editorId = undefined;
+  else if (current && editorRaw === current) editorId = current; // kept as is, even if that editor was archived
+  else if (editorRaw === "auto") editorId = editorForExpertName(name, await getEditors(scope.organizationId, scope.brandId), others)?.id ?? null;
+  else editorId = await brandEditorId(scope, editorRaw);
+  if (editorId) {
+    const taken = others.find((e) => e.editorId === editorId);
+    if (taken) go("/performance/archive/manage", { error: `${taken.name} is already linked to that editor. Unlink it first.` });
+  }
+  const link = editorId === undefined ? {} : { editorId };
   if (id) {
-    await db.trackExpert.updateMany({ where: { id, brandId: scope.brandId, deletedAt: null }, data: { name, bio: text(formData, "bio", 2000) } });
-    await auditTrack(scope, "trackrecord.expert.updated", "track_expert", id);
+    await db.trackExpert.updateMany({ where: { id, brandId: scope.brandId, deletedAt: null }, data: { name, bio: text(formData, "bio", 2000), ...link } });
+    await auditTrack(scope, "trackrecord.expert.updated", "track_expert", id, { editorId: editorId ?? null });
   } else {
-    const expert = await db.trackExpert.create({ data: { organizationId: scope.organizationId, brandId: scope.brandId, name, bio: text(formData, "bio", 2000) } });
-    await auditTrack(scope, "trackrecord.expert.created", "track_expert", expert.id);
+    const expert = await db.trackExpert.create({ data: { organizationId: scope.organizationId, brandId: scope.brandId, name, bio: text(formData, "bio", 2000), ...link } });
+    await auditTrack(scope, "trackrecord.expert.created", "track_expert", expert.id, { editorId: editorId ?? null });
   }
   go("/performance/archive/manage", { notice: `${name} saved.` });
+}
+
+/**
+ * The expert for a claim added from an editor's profile: the expert linked to that editor, else an unlinked
+ * expert with the same (unambiguous) name, which is linked now, else a new expert linked to the editor.
+ */
+async function expertFromEditor(scope: TrackScope, editorId: string): Promise<string | null> {
+  const db = tenantDb(scope.organizationId);
+  const editor = UUID.test(editorId) ? await getEditor(scope.organizationId, scope.brandId, editorId) : null;
+  if (!editor || editor.archived) return null;
+  const [experts, editors] = await Promise.all([
+    db.trackExpert.findMany({ where: { brandId: scope.brandId, deletedAt: null }, select: { id: true, name: true, editorId: true } }),
+    getEditors(scope.organizationId, scope.brandId),
+  ]);
+  const found = expertForEditor(experts, editor, editors);
+  if (found) {
+    if (!found.editorId) {
+      await db.trackExpert.updateMany({ where: { id: found.id, editorId: null }, data: { editorId: editor.id } });
+      await auditTrack(scope, "trackrecord.expert.updated", "track_expert", found.id, { editorId: editor.id });
+    }
+    return found.id;
+  }
+  const created = await db.trackExpert.create({ data: { organizationId: scope.organizationId, brandId: scope.brandId, name: editor.name, editorId: editor.id } });
+  await auditTrack(scope, "trackrecord.expert.created", "track_expert", created.id, { editorId: editor.id, via: "editor-profile" });
+  return created.id;
 }
 
 export async function deleteExpert(formData: FormData) {
@@ -351,10 +402,12 @@ export async function saveCall(formData: FormData) {
   const scope = await writer("/performance/archive");
   const db = tenantDb(scope.organizationId);
   const callId = text(formData, "callId", 40);
-  const back = callId ? `/performance/archive/${callId}` : "/performance/archive/new";
-  const expertId = text(formData, "expertId", 40);
-  const expert = UUID.test(expertId) ? await db.trackExpert.findFirst({ where: { id: expertId, brandId: scope.brandId, deletedAt: null } }) : null;
-  if (!expert) go(back, { error: "Pick the expert who made the call." });
+  const expertRaw = text(formData, "expertId", 60);
+  // "editor:<id>" = added from an editor's profile; the expert is found or created once the form is valid.
+  const fromEditor = !callId && expertRaw.startsWith("editor:") ? expertRaw.slice("editor:".length) : "";
+  const back = callId ? `/performance/archive/${callId}` : fromEditor ? `/performance/archive/new?editor=${encodeURIComponent(fromEditor)}` : "/performance/archive/new";
+  let expert = UUID.test(expertRaw) ? await db.trackExpert.findFirst({ where: { id: expertRaw, brandId: scope.brandId, deletedAt: null } }) : null;
+  if (!expert && !(fromEditor && (await brandEditorId(scope, fromEditor)))) go(back, { error: "Pick the expert who made the call." });
   const title = text(formData, "title", 200);
   if (!title) go(back, { error: "Give the call a title." });
   const ticker = text(formData, "ticker", 24).toUpperCase().replace(/^\$/, "") || null;
@@ -396,6 +449,11 @@ export async function saveCall(formData: FormData) {
   const splitFactor = splitText ? parseSplitFactor(splitText) : null;
   if (splitText && splitFactor == null) errors.push("Split must look like 4:1 or 1:20.");
   if (errors.length) go(back, { error: errors.join(" ") });
+  if (!expert) {
+    const resolved = await expertFromEditor(scope, fromEditor);
+    expert = resolved ? await db.trackExpert.findFirst({ where: { id: resolved, brandId: scope.brandId, deletedAt: null } }) : null;
+    if (!expert) go(back, { error: "Pick the expert who made the call." });
+  }
   const categories = await db.trackCategory.findMany({ where: { brandId: scope.brandId }, select: { id: true } });
   const allowed = new Set(categories.map((c) => c.id));
   const categoryIds = formData.getAll("categoryIds").map(String).filter((id) => allowed.has(id));

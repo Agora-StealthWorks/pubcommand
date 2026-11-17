@@ -1,6 +1,8 @@
 import { brandProfile } from "@pubcommand/core";
 import { appendOrgAudit, resolveOrgBySlug, tenantDb, type Prisma } from "@pubcommand/db";
 import { teachBrain } from "@/features/brain/teach";
+import { getEditors, getPublications } from "@/features/pubsetup/read";
+import { attributePositions, statsByEditor } from "../../../../../modules/performance/attribution";
 import { computeGain, holdDays, positionBasis, type Direction, type Gain, type GainBasis } from "../../../../../modules/performance/gain";
 import { computeStats, publicTrackRecord, weeklySummary, type PortfolioStats, type StatPosition } from "../../../../../modules/performance/stats";
 import { widgetPayload } from "../../../../../modules/performance/widget";
@@ -175,8 +177,19 @@ export async function refreshPositionHistory(organizationId: string, positions: 
 export async function teachWeeklySummary(scope: TrackWorkScope, portfolioId: string): Promise<string | null> {
   const portfolio = await getPortfolio(scope, portfolioId);
   if (!portfolio) return null;
-  const views = await positionViews(scope.organizationId, { portfolioId, brandId: scope.brandId }, { refresh: false });
-  const note = weeklySummary({ portfolioName: portfolio.name, publication: portfolio.publication, positions: views.map(toStat), today: new Date() });
+  const [views, editors, publications] = await Promise.all([
+    positionViews(scope.organizationId, { portfolioId, brandId: scope.brandId }, { refresh: false }),
+    getEditors(scope.organizationId, scope.brandId),
+    getPublications(scope.organizationId, scope.brandId),
+  ]);
+  // Credit each position to its editor (position > portfolio default > the publication's only editor).
+  const attributed = attributePositions(
+    views.map((view) => ({ ...toStat(view), portfolioId: view.portfolioId, editorId: view.editorId })),
+    [{ id: portfolio.id, name: portfolio.name, publication: portfolio.publication, defaultEditorId: portfolio.defaultEditorId }],
+    publications.map((p) => ({ id: p.id, code: p.code, name: p.name, slug: p.slug, editorIds: p.editors.map((e) => e.id) })),
+  );
+  const byEditor = statsByEditor(attributed, new Map(editors.map((e) => [e.id, e.name])));
+  const note = weeklySummary({ portfolioName: portfolio.name, publication: portfolio.publication, positions: views.map(toStat), today: new Date(), editors: byEditor });
   await teachBrain({
     organizationId: scope.organizationId,
     brandId: scope.brandId,

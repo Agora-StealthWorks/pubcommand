@@ -18,6 +18,8 @@ model TrackPortfolio {
   widgetEnabled     Boolean         @default(false) @map("widget_enabled")
   /// The widget shows open positions too (closed only by default).
   widgetIncludeOpen Boolean         @default(false) @map("widget_include_open")
+  /// Publication Setup editor (pubsetup_editors.id) credited with positions that name no editor. FK in SQL.
+  defaultEditorId   String?         @map("default_editor_id") @db.Uuid
   sortOrder         Int             @default(100) @map("sort_order")
   createdById       String?         @map("created_by_id") @db.Uuid
   createdAt         DateTime        @default(now()) @map("created_at")
@@ -26,6 +28,7 @@ model TrackPortfolio {
   positions         TrackPosition[]
 
   @@index([organizationId, brandId, deletedAt])
+  @@index([defaultEditorId])
   @@map("track_portfolios")
 }
 
@@ -77,6 +80,9 @@ model TrackPosition {
   realizedPnl    Float?         @map("realized_pnl")
   /// Number of fills; 0 = a simple single-entry recommendation.
   fillCount      Int            @default(0) @map("fill_count")
+  /// Publication Setup editor (pubsetup_editors.id) who made this recommendation. Null = the portfolio default,
+  /// else the publication's only editor (see attribution.ts). FK in SQL.
+  editorId       String?        @map("editor_id") @db.Uuid
   portfolio      TrackPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   legs           TrackLeg[]
   fills          TrackFill[]
@@ -84,6 +90,7 @@ model TrackPosition {
   @@index([organizationId, brandId, deletedAt])
   @@index([portfolioId, status, deletedAt])
   @@index([priceSymbol])
+  @@index([editorId])
   @@map("track_positions")
 }
 
@@ -111,12 +118,15 @@ model TrackExpert {
   name           String
   bio            String      @default("")
   sortOrder      Int         @default(100) @map("sort_order")
+  /// The Publication Setup editor (pubsetup_editors.id) this expert is. Null = not an editor. FK in SQL.
+  editorId       String?     @map("editor_id") @db.Uuid
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
   deletedAt      DateTime?   @map("deleted_at")
   calls          TrackCall[]
 
   @@index([organizationId, brandId, deletedAt])
+  @@index([editorId])
   @@map("track_experts")
 }
 

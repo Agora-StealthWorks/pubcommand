@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied } from "@/components/ui";
 import { wikiEditor } from "@/features/wiki/data";
+import { EditorTrackSections } from "@/features/wiki/editor-track";
 import { wikiPage } from "@/features/wiki/guard";
 import { Avatar, ExternalLink, Fact, PubLogo, Section, TestimonialCard } from "@/features/wiki/ui";
 import { EDITOR_ROLE_LABELS } from "../../../../../../../../../../modules/pubsetup/fields";
@@ -107,6 +108,8 @@ export default async function WikiEditorPage({ params }: { params: Promise<{ slu
           ) : null}
         </div>
       </div>
+
+      <EditorTrackSections slug={slug} editor={editor} />
     </div>
   );
 }

@@ -27,6 +27,8 @@ export type PositionDraft = {
   splitFactor: number | null;
   /** The symbol market data is fetched with (OCC for options). Null = not priced automatically. */
   priceSymbol: string | null;
+  /** The editor named in an import's editor column, as written. "" = none (see attribution.ts). */
+  editorName: string;
 };
 
 export type DraftResult = { ok: true; draft: PositionDraft } | { ok: false; errors: string[] };
@@ -166,6 +168,7 @@ export function validatePosition(raw: RawPosition, today: Date): DraftResult {
       notes: String(raw.notes ?? "").trim().slice(0, 4000),
       splitFactor,
       priceSymbol,
+      editorName: String(raw.editor ?? "").trim().slice(0, 120),
     },
   };
 }
@@ -230,6 +233,7 @@ const FIELD_ALIASES = {
   notes: ["notes", "note", "comments", "position notes"],
   splitFactor: ["split", "splits", "split factor"],
   priceSymbol: ["price symbol", "data symbol"],
+  editor: ["editor", "guru", "expert", "analyst", "author", "recommended by"],
 } as const;
 
 export type CanonicalField = keyof typeof FIELD_ALIASES;
@@ -253,6 +257,8 @@ export type ImportRowPlan = {
   message: string;
   draft: PositionDraft | null;
   existingId: string | null;
+  /** Publication Setup editor matched from the editor column (create rows only). */
+  editorId?: string | null;
 };
 
 export type ImportPlan = {
@@ -289,6 +295,8 @@ export function planImportTable(input: {
   portfolios: readonly string[];
   existing: readonly ExistingPosition[];
   today: Date;
+  /** The brand's editors, for the optional editor column (matched by name or slug, case-insensitive). */
+  editors?: readonly { id: string; name: string; slug?: string }[];
 }): ImportPlan {
   const table = input.table.filter((r) => r.some((cell) => String(cell ?? "").trim() !== ""));
   const empty: ImportPlan = { rows: [], newPortfolios: [], unknownColumns: [], counts: { create: 0, close: 0, skip: 0, error: 0 } };
@@ -336,7 +344,17 @@ export function planImportTable(input: {
       }
       continue;
     }
-    rows.push({ line, portfolio, action: "create", message: draft.exitPrice != null ? "New closed recommendation." : "New open recommendation.", draft, existingId: null });
+    const editor = matchEditor(draft.editorName, input.editors);
+    const editorNote = draft.editorName && input.editors ? (editor ? ` Editor: ${editor.name}.` : ` Editor "${draft.editorName}" is not in Publication Setup, so it is left unassigned.`) : "";
+    rows.push({
+      line,
+      portfolio,
+      action: "create",
+      message: `${draft.exitPrice != null ? "New closed recommendation." : "New open recommendation."}${editorNote}`,
+      draft,
+      existingId: null,
+      editorId: editor?.id ?? null,
+    });
   }
   if (table.length - 1 > MAX_IMPORT_ROWS) {
     rows.push({ line: MAX_IMPORT_ROWS + 2, portfolio: "", action: "error", message: `Only the first ${MAX_IMPORT_ROWS} rows are imported at once.`, draft: null, existingId: null });
@@ -345,6 +363,15 @@ export function planImportTable(input: {
   for (const row of rows) counts[row.action] += 1;
   const usedPortfolios = new Set(rows.filter((r) => r.action === "create").map((r) => r.portfolio));
   return { rows, newPortfolios: [...created].filter((name) => usedPortfolios.has(name)), unknownColumns, counts };
+}
+
+function matchEditor<E extends { id: string; name: string; slug?: string }>(name: string, editors: readonly E[] | undefined): E | null {
+  const wanted = name.trim().toLowerCase();
+  if (!wanted || !editors) return null;
+  const byName = editors.filter((e) => e.name.trim().toLowerCase() === wanted);
+  if (byName.length === 1) return byName[0] as E;
+  if (byName.length > 1) return null;
+  return editors.find((e) => (e.slug ?? "").toLowerCase() === wanted) ?? null;
 }
 
 /** A CSV cell: quoted when needed, and guarded against spreadsheet formula injection. */

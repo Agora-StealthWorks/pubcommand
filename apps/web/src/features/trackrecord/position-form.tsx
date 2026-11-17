@@ -21,8 +21,14 @@ function Field({ id, label, children, hint }: { id: string; label: string; child
   );
 }
 
+export type EditorPicker = {
+  options: { id: string; name: string }[];
+  /** What "no editor on the position" resolves to, in words (portfolio default, the publication's only editor, or nobody). */
+  fallbackLabel: string;
+};
+
 /** Add or edit a recommendation. Validation is the same pure validatePosition() the CSV import uses. */
-export function PositionForm({ portfolioId, position }: { portfolioId: string; position: PositionRow | null }) {
+export function PositionForm({ portfolioId, position, editors }: { portfolioId: string; position: PositionRow | null; editors?: EditorPicker }) {
   const p = position;
   return (
     <form action={savePosition} className="space-y-4 rounded-xl border border-line bg-white p-4">
@@ -69,6 +75,20 @@ export function PositionForm({ portfolioId, position }: { portfolioId: string; p
           <Input id="pos-weight" name="weight" inputMode="decimal" defaultValue={num(p?.weight ?? 1)} />
         </Field>
       </div>
+      {editors ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field id="pos-editor" label="Editor" hint="Whose recommendation this is, for their profile in the Wiki.">
+            <select id="pos-editor" name="editorId" className="pc-control w-full" defaultValue={p?.editorId ?? ""}>
+              <option value="">{editors.fallbackLabel}</option>
+              {editors.options.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      ) : null}
       <details className="rounded-lg border border-line p-3" open={p?.assetType === "OPTION"}>
         <summary className="cursor-pointer text-sm font-semibold text-accent">Option contract</summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">

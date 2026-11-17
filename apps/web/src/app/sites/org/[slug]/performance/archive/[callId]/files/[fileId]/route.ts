@@ -15,9 +15,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const file = await db.trackCallFile.findFirst({ where: { id: fileId, callId } });
   if (!file) return new Response("Not found", { status: 404 });
   const bytes = Buffer.from(file.data);
-  const inline = inlineMime(file.mimeType);
+  // ?download=1 asks for a download even for a type the browser could show.
+  const inline = inlineMime(file.mimeType) && new URL(request.url).searchParams.get("download") !== "1";
   const headers: Record<string, string> = {
-    "content-type": inline ? file.mimeType : "application/octet-stream",
+    "content-type": inlineMime(file.mimeType) ? file.mimeType : "application/octet-stream",
     "content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
     "cache-control": "private, max-age=300",
     "accept-ranges": "bytes",

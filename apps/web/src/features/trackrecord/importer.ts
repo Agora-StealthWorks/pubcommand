@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { tenantDb } from "@pubcommand/db";
 import { planImportTable, type ImportPlan } from "../../../../../modules/performance/positions";
+import { getEditors } from "@/features/pubsetup/read";
 import { closeWithFill } from "./fills";
 import { auditTrack, listPortfolios, type TrackWorkScope } from "./server";
 
@@ -12,7 +13,9 @@ export async function planTable(scope: TrackWorkScope, table: string[][], defaul
     where: { brandId: scope.brandId, deletedAt: null },
     select: { id: true, portfolioId: true, symbol: true, direction: true, entryDate: true, status: true },
   });
+  const editors = (await getEditors(scope.organizationId, scope.brandId)).map((e) => ({ id: e.id, name: e.name, slug: e.slug }));
   return planImportTable({
+    editors,
     table,
     defaultPortfolio,
     portfolios: portfolios.map((p) => p.name),
@@ -94,6 +97,7 @@ export async function applyImportPlan(scope: TrackWorkScope, plan: ImportPlan, v
         weight: draft.weight,
         notes: draft.notes,
         importBatch: batch,
+        editorId: row.editorId ?? null,
         createdById: scope.actorId,
         ...(draft.splitFactor != null ? { splitFactor: draft.splitFactor, splitSource: "manual" } : {}),
       },

@@ -20,7 +20,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
           One row per recommendation. Columns are matched by name: <code>portfolio</code>, <code>symbol</code>, <code>name</code>, <code>asset type</code> (stock, ETF,
           option), <code>direction</code> (long/short), <code>entry date</code>, <code>entry price</code>, <code>stop</code>, <code>target</code>,{" "}
           <code>exit date</code>, <code>exit price</code>, <code>notes</code>, <code>weight</code>, <code>split</code>; options add <code>option type</code>,{" "}
-          <code>strike</code> and <code>expiry</code>. A row matching a stored recommendation (portfolio, symbol, direction, entry date) is skipped, or closes it if
+          <code>strike</code> and <code>expiry</code>. An optional <code>editor</code> column credits the row to an editor from Publication Setup (by name). A row matching a stored recommendation (portfolio, symbol, direction, entry date) is skipped, or closes it if
           the row has an exit.
         </p>
       </div>

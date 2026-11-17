@@ -6,6 +6,7 @@ import { closePosition, deletePosition } from "@/features/trackrecord/actions";
 import { trackAccess } from "@/features/trackrecord/context";
 import { PositionForm } from "@/features/trackrecord/position-form";
 import { FillsPanel } from "@/features/trackrecord/fills-panel";
+import { positionEditorPicker } from "@/features/trackrecord/editor-profile";
 import { getPortfolio, positionViews } from "@/features/trackrecord/server";
 import { GainText, PriceNote, iso } from "@/features/trackrecord/ui";
 import { formatPct, formatPrice } from "../../../../../../../../../../../modules/performance/gain";
@@ -25,6 +26,7 @@ export default async function PositionPage({
   if (!portfolio || !/^[0-9a-f-]{36}$/i.test(positionId)) notFound();
   const [position] = await positionViews(access.scope.organizationId, { id: positionId, portfolioId: portfolio.id, brandId: access.scope.brandId }, { refresh: true });
   if (!position) notFound();
+  const editors = await positionEditorPicker(access.scope, portfolio, position.editorId);
   const gain = position.gain;
   const multiLeg = position.legs.length > 1;
   const today = new Date().toISOString().slice(0, 10);
@@ -85,7 +87,7 @@ export default async function PositionPage({
       ) : null}
       <h3 className="text-sm font-semibold">Edit</h3>
       {position.fills.length ? <p className="text-xs text-muted">Entry, exit and status follow the fills above; edit the fills to change them.</p> : null}
-      <PositionForm portfolioId={portfolio.id} position={position} />
+      <PositionForm portfolioId={portfolio.id} position={position} editors={editors} />
       <form action={deletePosition} className="rounded-xl border border-[#fecdca] bg-white p-4">
         <input type="hidden" name="portfolioId" value={portfolio.id} />
         <input type="hidden" name="positionId" value={position.id} />

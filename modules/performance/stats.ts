@@ -189,7 +189,14 @@ const rate = (value: number | null) => (value == null ? "n/a" : `${Math.round(va
  * The weekly Brain note for one portfolio: aggregates only (counts, rates, averages). No symbols, no
  * per-trade lines, no loser lists, so the note is safe to reuse in copy research.
  */
-export function weeklySummary(input: { portfolioName: string; publication: string; positions: readonly StatPosition[]; today: Date }): {
+export function weeklySummary(input: {
+  portfolioName: string;
+  publication: string;
+  positions: readonly StatPosition[];
+  today: Date;
+  /** Positions credited to each editor (see attribution.ts). Aggregates only, like the rest of the note. */
+  editors?: readonly { name: string; positions: readonly StatPosition[] }[];
+}): {
   week: string;
   title: string;
   body: string;
@@ -217,6 +224,16 @@ export function weeklySummary(input: { portfolioName: string; publication: strin
     `- Median gain: ${pct(all.medianGain)}`,
     `- Average holding period: ${all.avgHoldDays == null ? "n/a" : `${Math.round(all.avgHoldDays)} days`}`,
     `- Open positions: ${all.open}, average open gain ${pct(all.avgOpenGain)} across ${all.openPriced} priced`,
+    ...(input.editors?.length
+      ? [
+          "",
+          "By editor (since inception):",
+          ...input.editors.map((e) => {
+            const s = computeStats(e.positions);
+            return `- ${e.name}: ${s.closed} closed, win rate ${rate(s.winRate)}, average gain ${pct(s.avgGain)}; ${s.open} open`;
+          }),
+        ]
+      : []),
     "",
     "All figures are computed from stored entries, exits and market prices. Past results do not promise future results.",
   ].join("\n");
