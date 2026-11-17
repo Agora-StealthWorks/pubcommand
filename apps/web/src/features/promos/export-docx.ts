@@ -59,9 +59,16 @@ export async function analysisDocx(input: { title: string; brand: string; score:
     label("Urgency", r.offer.urgency),
     ...r.offer.bonuses.map(bullet),
     p(r.offer.summary),
-    h("Stock tease"),
-    p(r.stockTease.teased ? "A stock is teased. Guesses below are from clues, not facts." : "No stock tease detected."),
-    ...r.stockTease.guesses.map((g) => bullet(`${g.ticker} (${g.company}) — ${g.confidence}: ${g.why}`)),
+    h("Tease"),
+    p(r.tease.teased ? `The promo teases a ${r.tease.subject || "secret"}. Guesses below come from clues, not facts.` : "No tease detected."),
+    ...r.tease.guesses.map((g) => bullet(`${g.name}${g.detail ? ` (${g.detail})` : ""} — ${g.confidence}: ${g.why}`)),
+    h("Compliance"),
+    ...(r.compliance.length
+      ? r.compliance.flatMap((c, i) => [
+          new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${c.risk.toUpperCase()} — ${c.rule}: `, bold: true }), new TextRun({ text: `“${c.quote}”`, italics: true })] }),
+          p(`Rewrite: ${c.fix}`),
+        ])
+      : [p("No compliance problems found.")]),
     h("Lessons"),
     ...r.lessons.map(bullet),
   ];

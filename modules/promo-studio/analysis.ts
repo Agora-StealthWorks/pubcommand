@@ -85,7 +85,10 @@ export type PromoAnalysisResult = {
     urgency: string;
     summary: string;
   };
-  stockTease: { teased: boolean; clues: string[]; guesses: { ticker: string; company: string; confidence: "low" | "medium" | "high"; why: string }[] };
+  /** What the promo teases without naming (a stock, an ingredient, a protocol...). */
+  tease: { teased: boolean; subject: string; clues: string[]; guesses: { name: string; detail: string; confidence: "low" | "medium" | "high"; why: string }[] };
+  /** Claims that break the brand's compliance rules. */
+  compliance: { quote: string; rule: string; risk: "high" | "medium" | "low"; fix: string }[];
   scores: { name: string; score: number; note: string }[];
   strengths: string[];
   fixes: string[];
@@ -106,7 +109,7 @@ const strList = { type: "array", items: str };
 export const ANALYSIS_SCHEMA: Record<string, unknown> = {
   type: "object",
   additionalProperties: false,
-  required: ["summary", "detected", "headline", "outline", "sixteenWord", "cub", "offer", "stockTease", "scores", "strengths", "fixes", "lessons"],
+  required: ["summary", "detected", "headline", "outline", "sixteenWord", "cub", "offer", "tease", "compliance", "scores", "strengths", "fixes", "lessons"],
   properties: {
     summary: str,
     detected: {
@@ -199,26 +202,41 @@ export const ANALYSIS_SCHEMA: Record<string, unknown> = {
       required: ["product", "price", "term", "bonuses", "guarantee", "urgency", "summary"],
       properties: { product: str, price: str, term: str, bonuses: strList, guarantee: str, urgency: str, summary: str },
     },
-    stockTease: {
+    tease: {
       type: "object",
       additionalProperties: false,
-      required: ["teased", "clues", "guesses"],
+      required: ["teased", "subject", "clues", "guesses"],
       properties: {
         teased: { type: "boolean" },
+        subject: str,
         clues: strList,
         guesses: {
           type: "array",
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["ticker", "company", "confidence", "why"],
+            required: ["name", "detail", "confidence", "why"],
             properties: {
-              ticker: str,
-              company: str,
+              name: str,
+              detail: str,
               confidence: { type: "string", enum: ["low", "medium", "high"] },
               why: str,
             },
           },
+        },
+      },
+    },
+    compliance: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["quote", "rule", "risk", "fix"],
+        properties: {
+          quote: str,
+          rule: str,
+          risk: { type: "string", enum: ["high", "medium", "low"] },
+          fix: str,
         },
       },
     },
@@ -238,34 +256,35 @@ export const ANALYSIS_SCHEMA: Record<string, unknown> = {
 };
 
 /** Stable instructions (cached by the AI). Brand context goes in the user message. */
-export const ANALYSIS_SYSTEM = `You are a senior direct-response copy chief reviewing a financial newsletter sales promo (a sales letter, video sales letter script, or webinar script).
+export const ANALYSIS_SYSTEM = `You are a senior direct-response copy chief reviewing a sales promo: a sales letter, video sales letter script, webinar script or long-form email for a newsletter, subscription or product.
 
-Default reader: financially literate men and women aged 50 to 75 who invest their own money. They are not professional traders. They are skeptical of hype and have seen many promos.
+The user message names the brand, its niche, who it writes for, and its compliance rules. Judge the copy for that reader. Readers of these promos have seen many before and are skeptical of hype.
 
-Judge the copy as written. Quote it exactly when you cite it. Never invent facts about the promo, and never supply market facts, prices, or returns of your own.
+Judge the copy as written. Quote it exactly when you cite it. Never invent facts about the promo, and never supply prices, returns, study results or statistics of your own.
 
 Answer every part of the JSON schema:
 
 - summary: two or three plain sentences on what this promo sells and how.
-- detected: publisher, gurus (the named editors or experts), product, headline price as a number (null if none), and promo type. Front-end means a low-priced newsletter offer. Backend means a higher-priced service sold to existing buyers, either by live webinar or video sales letter. Mega-Bundle means many services sold together. Use Unknown when unclear.
-- headline: copy the eyebrow, headline and subhead exactly (empty string if missing). Rate the headline 1 to 10 on each of the 4 U's (urgent, unique, ultra-specific, useful) with one line each. Give a verdict and three stronger alternative headlines in the same voice.
+- detected: publisher, gurus (the named experts, editors or doctors), product, headline price as a number (null if none), and promo type. Front-end means a low-priced first offer. Backend means a higher-priced offer sold to existing buyers, by live webinar or video sales letter. Mega-Bundle means many products sold together. Use Unknown when unclear.
+- headline: copy the eyebrow, headline and subhead exactly (empty string if missing). Rate the headline 1 to 10 on each of the 4 U's (urgent, unique, ultra-specific, useful) with one line each. Give a verdict and three stronger alternative headlines in the same voice that obey the compliance rules.
 - outline: the promo's structure as an ordered list of sections, each with a one-line summary.
 - sixteenWord: the big idea in one sentence. For each of the 10 reader questions of the 16-Word Sales Letter framework, say whether the copy answers it strongly, weakly, or not at all, quote the evidence, and say how to improve it. Then for each close step, say whether it is present with a note.
 - cub: the most important places where the copy is Confusing, Unbelievable, or Boring. Each entry quotes an exact passage of 5 to 40 words copied character for character from the promo, says why it fails, and gives a fix. Give 6 to 15 entries, most important first.
 - offer: product, price, term, bonuses, guarantee, urgency device, and a short summary.
-- stockTease: whether the promo teases a stock without naming it, the clues it gives, and up to three ticker guesses with confidence and reasoning. Mark low confidence unless the clues are unmistakable.
+- tease: whether the promo teases a secret it holds back until purchase (for example a stock, an ingredient, a protocol, a device or a strategy). subject says what kind of thing it is. List the clues, and up to three guesses (name, detail, confidence, why). Mark low confidence unless the clues are unmistakable.
+- compliance: every passage that breaks the brand's compliance rules. Quote it exactly, name the rule, rate the risk, and give a compliant rewrite. Empty if none.
 - scores: each of the 8 dimensions scored 1 to 10 with a one-line reason. A 5 is an ordinary promo; reserve 9 and 10 for copy you would hold up as a model.
 - strengths: the three to five things that work best.
 - fixes: the three to five changes that would lift response most, most important first.
 - lessons: two to four reusable copywriting lessons this promo teaches, written so they make sense without the promo.`;
 
 /** Brand context and the copy, as the user message. */
-export function analysisPrompt(input: { brandName: string; title: string; text: string; trainingNotes?: string[] }): string {
+export function analysisPrompt(input: { brandContext: string; title: string; text: string; trainingNotes?: string[] }): string {
   const notes = input.trainingNotes?.length
     ? `\n\nNotes from this publisher's past reviews (use them to calibrate, not as facts about this promo):\n${input.trainingNotes.map((note) => `- ${note}`).join("\n")}`
     : "";
   const body = input.text.trim() ? `\n\n<promo>\n${input.text}\n</promo>` : "\n\nThe promo is the attached PDF.";
-  return `Brand: ${input.brandName}\nPromo: ${input.title}${notes}${body}`;
+  return `${input.brandContext}\n\nPromo: ${input.title}${notes}${body}`;
 }
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));

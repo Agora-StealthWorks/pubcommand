@@ -49,7 +49,7 @@ function startAnalysis(ctx: Awaited<ReturnType<typeof promoContext>>, promoId: s
     runPromoAnalysis({
       organizationId: ctx.resolved.id,
       promoId,
-      brandName: ctx.brand.name,
+      brand: ctx.brand,
       actorId: ctx.auth.user.id,
     }),
   );

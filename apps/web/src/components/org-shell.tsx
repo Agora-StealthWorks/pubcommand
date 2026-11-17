@@ -1,5 +1,5 @@
 import type { AccessSubject } from "@pubcommand/core";
-import { can } from "@pubcommand/core";
+import { brandProfile, can } from "@pubcommand/core";
 import Link from "next/link";
 import { appForPath, CATEGORY_ORDER, visibleApps } from "@/lib/apps";
 import { stopImpersonation } from "@/server/platform-actions";
@@ -7,7 +7,7 @@ import { AppFrame } from "./app-frame";
 import { BrandSwitcher } from "./brand-switcher";
 import { CommandPalette } from "./command-palette";
 
-type Brand = { id: string; name: string };
+type Brand = { id: string; name: string; niche?: string | null };
 
 /**
  * Sidebar with the apps grouped by area, and one Settings link at the bottom.
@@ -33,7 +33,7 @@ export function OrgShell({
   children: React.ReactNode;
 }) {
   const scope = { organizationId: organization.id, brandId: subject.membershipBrandId ?? brand?.id ?? null };
-  const apps = visibleApps(subject, scope);
+  const apps = visibleApps(subject, scope, brandProfile({ name: brand?.name ?? "", niche: brand?.niche }).niche);
   const current = appForPath(apps, pathname);
   const inSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const canSettings = can(subject, "settings.manage", scope);

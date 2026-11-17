@@ -1,6 +1,6 @@
 "use server";
 
-import { buildSiteUrl, can, slugifyName } from "@pubcommand/core";
+import { buildSiteUrl, can, isNiche, slugifyName } from "@pubcommand/core";
 import { appendOrgAudit, appendPlatformAudit, changeOrganizationSlug, rawPrisma, tenantDb } from "@pubcommand/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -192,6 +192,15 @@ export async function toggleModule(formData: FormData) {
   redirect("/settings/modules?notice=App updated.");
 }
 
+function brandFields(formData: FormData) {
+  const niche = String(formData.get("niche") ?? "general");
+  return {
+    niche: isNiche(niche) ? niche : "general",
+    audience: String(formData.get("audience") ?? "").trim().slice(0, 1000) || null,
+    complianceNotes: String(formData.get("complianceNotes") ?? "").trim().slice(0, 2000) || null,
+  };
+}
+
 export async function createBrand(formData: FormData) {
   const ctx = await orgMutation("settings.manage");
   const name = String(formData.get("name") ?? "").trim();
@@ -201,19 +210,20 @@ export async function createBrand(formData: FormData) {
   const taken = new Set((await db.brand.findMany({ select: { slug: true } })).map((row) => row.slug));
   let slug = base;
   for (let n = 2; taken.has(slug); n += 1) slug = `${base.slice(0, 36)}-${n}`;
-  const brand = await db.brand.create({ data: { organizationId: ctx.resolved.id, name, slug } });
+  const brand = await db.brand.create({ data: { organizationId: ctx.resolved.id, name, slug, ...brandFields(formData) } });
   await db.workspace.create({ data: { organizationId: ctx.resolved.id, brandId: brand.id, name: "General", slug: "general" } });
   await audit(ctx, "brand.created", "brand", brand.id, { name });
   redirect(`/settings/brands?notice=${encodeURIComponent(`${name} added.`)}`);
 }
 
-export async function renameBrand(formData: FormData) {
+export async function updateBrand(formData: FormData) {
   const ctx = await orgMutation("settings.manage");
   const brandId = String(formData.get("brandId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!name || name.length > 80) redirect("/settings/brands?error=Enter a brand name (up to 80 characters).");
-  const result = await tenantDb(ctx.resolved.id).brand.updateMany({ where: { id: brandId }, data: { name } });
+  const fields = brandFields(formData);
+  const result = await tenantDb(ctx.resolved.id).brand.updateMany({ where: { id: brandId }, data: { name, ...fields } });
   if (result.count === 0) redirect("/settings/brands?error=Unknown brand.");
-  await audit(ctx, "brand.renamed", "brand", brandId, { name });
-  redirect("/settings/brands?notice=Brand renamed.");
+  await audit(ctx, "brand.updated", "brand", brandId, { name, niche: fields.niche });
+  redirect(`/settings/brands?notice=${encodeURIComponent(`${name} saved.`)}`);
 }

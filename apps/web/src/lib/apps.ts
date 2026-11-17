@@ -1,4 +1,4 @@
-import type { AccessScope, AccessSubject } from "@pubcommand/core";
+import type { AccessScope, AccessSubject, Niche } from "@pubcommand/core";
 import { can } from "@pubcommand/core";
 import { moduleRegistry } from "@pubcommand/modules";
 
@@ -9,6 +9,8 @@ type AppCard = {
   description: string;
   icon: string;
   category: "Copy & Promos" | "Editorial" | "Research & Knowledge" | "Performance" | "Media & Audience";
+  /** Only show for brands in these niches. Omit to show for every brand. */
+  niches?: Niche[];
 };
 
 const CARDS: AppCard[] = [
@@ -36,7 +38,7 @@ const CARDS: AppCard[] = [
   {
     moduleId: "intel",
     name: "Intel",
-    description: "Competitor emails, promos and historical calls.",
+    description: "Competitor emails and promos in your market.",
     icon: "🔎",
     category: "Research & Knowledge",
   },
@@ -46,6 +48,7 @@ const CARDS: AppCard[] = [
     description: "Recommendations, portfolios and gains from real prices.",
     icon: "📈",
     category: "Performance",
+    niches: ["finance"],
   },
   {
     moduleId: "charts",
@@ -53,6 +56,7 @@ const CARDS: AppCard[] = [
     description: "Stock charts for promos, social and publications.",
     icon: "📊",
     category: "Media & Audience",
+    niches: ["finance"],
   },
   {
     moduleId: "forms",
@@ -74,9 +78,10 @@ export const CATEGORY_ORDER: AppCard["category"][] = [
 export type VisibleApp = AppCard & { href: string };
 
 /** Apps this person can open in this organization and brand. */
-export function visibleApps(subject: AccessSubject, scope: AccessScope): VisibleApp[] {
+export function visibleApps(subject: AccessSubject, scope: AccessScope, niche: Niche = "general"): VisibleApp[] {
   const manifests = new Map(moduleRegistry.all().map((manifest) => [manifest.id, manifest]));
   return CARDS.flatMap((card) => {
+    if (card.niches && !card.niches.includes(niche)) return [];
     const manifest = manifests.get(card.moduleId);
     if (!manifest || !subject.entitledModuleIds.includes(manifest.planEntitlement)) return [];
     const entry = manifest.nav[0];
@@ -89,6 +94,12 @@ export function visibleApps(subject: AccessSubject, scope: AccessScope): Visible
 /** The app whose pages contain this path, for the top bar title. */
 export function appForPath(apps: VisibleApp[], pathname: string): VisibleApp | null {
   return apps.find((app) => pathname === app.href || pathname.startsWith(`${app.href}/`)) ?? null;
+}
+
+/** True when an app makes sense for this niche (e.g. charts are finance only). */
+export function appFitsNiche(moduleId: string, niche: Niche): boolean {
+  const card = CARDS.find((item) => item.moduleId === moduleId);
+  return !card?.niches || card.niches.includes(niche);
 }
 
 /** Every app card, in dashboard order, for the Settings › Apps page. */

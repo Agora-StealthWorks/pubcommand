@@ -260,12 +260,12 @@ export function OfferTab({ result }: { result: PromoAnalysisResult }) {
   );
 }
 
-export function StockTab({ result }: { result: PromoAnalysisResult }) {
-  const t = result.stockTease;
+export function TeaseTab({ result }: { result: PromoAnalysisResult }) {
+  const t = result.tease;
   return (
     <div className="space-y-4">
-      <Section title={t.teased ? "Teased stock" : "No stock tease detected"}>
-        <p className="mb-3 text-xs text-muted">These are AI guesses from the clues in the copy, not facts. Check before using.</p>
+      <Section title={t.teased ? `Teased ${t.subject || "secret"}` : "No tease detected"}>
+        <p className="mb-3 text-xs text-muted">Guesses come from the clues in the copy. They are not facts; check before using.</p>
         <List items={t.clues} />
       </Section>
       {t.guesses.length ? (
@@ -273,9 +273,9 @@ export function StockTab({ result }: { result: PromoAnalysisResult }) {
           <ul className="space-y-3">
             {t.guesses.map((guess, index) => (
               <li key={index} className="text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-semibold">{guess.ticker}</span>
-                  <span>{guess.company}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{guess.name}</span>
+                  {guess.detail ? <span className="text-muted">{guess.detail}</span> : null}
                   <Badge tone={guess.confidence === "high" ? "ok" : guess.confidence === "medium" ? "accent" : "neutral"}>{guess.confidence}</Badge>
                 </div>
                 <p className="mt-1 text-muted">{guess.why}</p>
@@ -284,6 +284,37 @@ export function StockTab({ result }: { result: PromoAnalysisResult }) {
           </ul>
         </Section>
       ) : null}
+    </div>
+  );
+}
+
+const RISK = { high: "danger", medium: "warn", low: "neutral" } as const;
+
+export function ComplianceTab({ result, rules }: { result: PromoAnalysisResult; rules: string[] }) {
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <Section title={result.compliance.length ? `${result.compliance.length} claim${result.compliance.length === 1 ? "" : "s"} to fix` : "No compliance problems found"}>
+        {result.compliance.length === 0 ? (
+          <p className="text-sm text-muted">The AI found nothing that breaks this brand&apos;s rules. A person should still do the final legal review.</p>
+        ) : (
+          <ol className="space-y-4">
+            {result.compliance.map((flag, index) => (
+              <li key={index} className="text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{index + 1}.</span>
+                  <Badge tone={RISK[flag.risk]}>{flag.risk} risk</Badge>
+                  <span className="text-muted">{flag.rule}</span>
+                </div>
+                <p className="mt-1 italic text-muted">“{flag.quote}”</p>
+                <p className="mt-1"><span className="font-semibold">Rewrite: </span>{flag.fix}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Section>
+      <Section title="Rules checked">
+        <List items={rules} />
+      </Section>
     </div>
   );
 }

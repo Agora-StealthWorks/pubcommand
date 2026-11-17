@@ -41,7 +41,10 @@ export default async function ModulesPage({
                 </span>
                 <div className="min-w-0">
                   <p className="font-semibold">{app.name}</p>
-                  <p className="pc-break text-muted">{app.description}</p>
+                  <p className="pc-break text-muted">
+                    {app.description}
+                    {app.niches ? <span className="ml-1 text-xs">· Shows for {app.niches.join(", ")} brands only</span> : null}
+                  </p>
                 </div>
               </div>
               {onPlan ? (

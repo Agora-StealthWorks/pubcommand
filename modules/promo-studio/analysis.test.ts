@@ -28,7 +28,8 @@ function sample(): PromoAnalysisResult {
     sixteenWord: { bigIdea: "Big", questions: [], close: [] },
     cub: [],
     offer: { product: "p", price: "$49", term: "1 year", bonuses: [], guarantee: "60 days", urgency: "", summary: "s" },
-    stockTease: { teased: false, clues: [], guesses: [] },
+    tease: { teased: false, subject: "", clues: [], guesses: [] },
+    compliance: [],
     scores: [
       { name: "Hook strength", score: 8, note: "" },
       { name: "Believability", score: 6, note: "" },

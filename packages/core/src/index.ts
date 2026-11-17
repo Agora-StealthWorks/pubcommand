@@ -33,6 +33,7 @@ export {
 } from "./plans";
 export { canManagePlatformStaff, PLATFORM_STAFF_MANAGER_EMAIL, selfLockoutMessage } from "./staff";
 export { RESERVED_SLUGS, slugifyName, validateSlug, type SlugValidation } from "./slug";
+export { NICHES, NICHE_LABELS, brandProfile, brandPromptContext, isNiche, type BrandProfile, type Niche } from "./brand";
 export {
   defaultOrganizationPlaces,
   firstAdminMembershipStatus,

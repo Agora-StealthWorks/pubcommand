@@ -1,4 +1,5 @@
 import { runStructured } from "@pubcommand/ai";
+import { brandProfile, brandPromptContext } from "@pubcommand/core";
 import { tenantDb, type Prisma } from "@pubcommand/db";
 import { logAiUsage } from "../ai/usage";
 import { teachBrain } from "../brain/teach";
@@ -70,7 +71,7 @@ const running = new Set<string>();
 export async function runPromoAnalysis(input: {
   organizationId: string;
   promoId: string;
-  brandName: string;
+  brand: { name: string; niche?: string | null; audience?: string | null; complianceNotes?: string | null };
   actorId: string | null;
 }): Promise<void> {
   const key = `${input.organizationId}:${input.promoId}`;
@@ -100,7 +101,7 @@ export async function runPromoAnalysis(input: {
         const scores = [row.myScore != null ? `reviewer score ${row.myScore}` : "", row.performanceScore != null ? `real-world score ${row.performanceScore}` : ""].filter(Boolean).join(", ");
         return `${row.title}${scores ? ` (${scores})` : ""}: ${row.trainingNotes!.trim().slice(0, 400)}`;
       });
-    parts.push({ type: "text", text: analysisPrompt({ brandName: input.brandName, title: promo.title, text: promo.sourceText, trainingNotes }) });
+    parts.push({ type: "text", text: analysisPrompt({ brandContext: brandPromptContext(brandProfile(input.brand)), title: promo.title, text: promo.sourceText, trainingNotes }) });
 
     const answer = await runStructured<PromoAnalysisResult>({
       system: ANALYSIS_SYSTEM,
@@ -151,7 +152,7 @@ export async function runPromoAnalysis(input: {
         pricePoint: promo.pricePoint ?? (price != null && Number.isFinite(price) ? price : null),
       },
     });
-    const note = brainNote({ title: promo.title, brandName: input.brandName, score, result });
+    const note = brainNote({ title: promo.title, brandName: input.brand.name, score, result });
     await teachBrain({
       organizationId: input.organizationId,
       brandId: promo.brandId,

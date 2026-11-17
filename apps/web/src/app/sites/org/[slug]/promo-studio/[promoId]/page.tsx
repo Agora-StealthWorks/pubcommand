@@ -1,10 +1,10 @@
-import { can } from "@pubcommand/core";
+import { brandProfile, can } from "@pubcommand/core";
 import { Badge, Button, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Flash } from "@/components/ui";
 import { addPromoFile, deletePromo, reanalyzePromo, removePromoFile, updatePromoDetails, updatePromoTraining } from "@/features/promos/actions";
-import { CubTab, HeadlineTab, OfferTab, OutlineTab, OverviewTab, SixteenWordTab, StockTab } from "@/features/promos/analysis-view";
+import { ComplianceTab, CubTab, HeadlineTab, OfferTab, OutlineTab, OverviewTab, SixteenWordTab, TeaseTab } from "@/features/promos/analysis-view";
 import { AutoRefresh } from "@/features/promos/auto-refresh";
 import { loadPromo } from "@/features/promos/data";
 import { PromoDetailsFields } from "@/features/promos/details-fields";
@@ -17,7 +17,8 @@ const ANALYSIS_TABS = [
   ["sixteen", "16-Word"],
   ["cub", "CUB"],
   ["offer", "Offer"],
-  ["stock", "Stock tease"],
+  ["tease", "Tease"],
+  ["compliance", "Compliance"],
 ] as const;
 const OTHER_TABS = [
   ["copy", "Copy"],
@@ -114,6 +115,7 @@ export default async function PromoPage({
           >
             {label}
             {key === "cub" && result ? <span className="ml-1 text-xs text-muted">{result.cub.length}</span> : null}
+            {key === "compliance" && result?.compliance.length ? <span className="ml-1 rounded-full bg-[#fee4e2] px-1.5 text-xs text-[#912018]">{result.compliance.length}</span> : null}
             {key === "files" ? <span className="ml-1 text-xs text-muted">{files.length}</span> : null}
           </Link>
         ))}
@@ -125,7 +127,8 @@ export default async function PromoPage({
       {result && tab === "sixteen" ? <SixteenWordTab result={result} /> : null}
       {result && tab === "cub" ? <CubTab result={result} sourceText={promo.sourceText} /> : null}
       {result && tab === "offer" ? <OfferTab result={result} /> : null}
-      {result && tab === "stock" ? <StockTab result={result} /> : null}
+      {result && tab === "tease" ? <TeaseTab result={result} /> : null}
+      {result && tab === "compliance" ? <ComplianceTab result={result} rules={brandProfile(ctx.brand).complianceRules} /> : null}
 
       {tab === "copy" ? (
         <section className="rounded-xl border border-line bg-white p-5">

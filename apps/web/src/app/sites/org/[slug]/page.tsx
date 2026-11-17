@@ -1,3 +1,4 @@
+import { brandProfile } from "@pubcommand/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppThumbnail } from "@/components/app-thumbnail";
@@ -42,7 +43,7 @@ export default async function Dashboard({
   const { slug } = await params;
   const ctx = await getOrgContext(slug);
   if (ctx.kind !== "ok") notFound();
-  const apps = visibleApps(ctx.subject, ctx.scope);
+  const apps = visibleApps(ctx.subject, ctx.scope, brandProfile({ name: ctx.brand?.name ?? "", niche: ctx.brand?.niche }).niche);
   const sections = CATEGORY_ORDER.map((category) => ({
     category,
     apps: apps.filter((app) => app.category === category),
