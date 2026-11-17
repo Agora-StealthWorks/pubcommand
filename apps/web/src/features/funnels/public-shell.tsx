@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { googleCalendarUrl, type CalendarEvent } from "../../../../../modules/funnels/calendar";
-import { deadlineBar, deadlineText } from "../../../../../modules/funnels/deadline";
+import { reactAttrs, splitHeadCode } from "../../../../../modules/funnels/code";
+import { deadlineBar, deadlineButtonHref, deadlineShowsOn, deadlineText, type DeadlinePage } from "../../../../../modules/funnels/deadline";
+import { RichContentStyles } from "@/components/rich-text-editor/content-css";
 import { safeColor } from "../../../../../modules/funnels/checks";
 import { navStrip } from "../../../../../modules/funnels/nav";
 import type { DayState } from "../../../../../modules/funnels/state";
@@ -12,11 +14,15 @@ import { DeadlineBarClient } from "./site-client";
 import { navItemThumb, pageHref, type FunnelTheme } from "./site-data";
 import { RICH } from "./public-view";
 
+/** Which kind of page a public funnel page is (the deadline bar is set per kind). */
+export type FunnelPageKind = DeadlinePage | "close";
+
 /** The deadline ribbon for this viewer, or null. */
-export function DeadlineBar({ loaded, viewer, position }: { loaded: LoadedFunnel; viewer: ViewerCookie | null; position: "top" | "bottom" }) {
+export function DeadlineBar({ loaded, viewer, position, page, base = "" }: { loaded: LoadedFunnel; viewer: ViewerCookie | null; position: "top" | "bottom"; page: FunnelPageKind; base?: string }) {
   const { funnel } = loaded;
   const barPosition = funnel.deadlineBarPosition === "top" ? "top" : "bottom";
   if (barPosition !== position) return null;
+  if (page === "close" || !deadlineShowsOn(funnel.deadlineBarPages, page)) return null;
   const timing = deadlineBar(
     funnelRules(funnel),
     { enabled: funnel.deadlineBarEnabled, target: funnel.deadlineBarTarget === "start" ? "start" : funnel.deadlineBarTarget === "custom" ? "custom" : "end", at: funnel.deadlineBarAt, withinHours: funnel.deadlineBarWithinHours },
@@ -34,6 +40,9 @@ export function DeadlineBar({ loaded, viewer, position }: { loaded: LoadedFunnel
       position={position}
       sticky={funnel.deadlineBarSticky}
       nowOffset={loaded.preview ? loaded.now.getTime() - Date.now() : 0}
+      funnelId={funnel.id}
+      dismissible={funnel.deadlineBarDismiss}
+      button={funnel.deadlineBarButtonText.trim() ? { text: funnel.deadlineBarButtonText.trim(), href: deadlineButtonHref(funnel.deadlineBarButtonUrl, base, loaded.carry) } : null}
     />
   );
 }
@@ -46,6 +55,8 @@ export function FunnelShell({
   preview,
   nav,
   showDeadline = true,
+  page,
+  base,
   children,
 }: {
   theme: FunnelTheme;
@@ -54,6 +65,10 @@ export function FunnelShell({
   preview?: ReactNode;
   nav?: ReactNode;
   showDeadline?: boolean;
+  /** The page kind, for the deadline bar's "show on" setting. */
+  page: FunnelPageKind;
+  /** The link base (`/l/<slug>`, or "" on a custom domain). */
+  base: string;
   children: ReactNode;
 }) {
   const { branding } = theme;
@@ -65,9 +80,11 @@ export function FunnelShell({
   return (
     <div className="pcf flex min-h-screen flex-col">
       <style dangerouslySetInnerHTML={{ __html: theme.css }} />
+      <RichContentStyles />
       {theme.fontHref ? <link rel="stylesheet" href={theme.fontHref} /> : null}
+      <FunnelCode loaded={loaded} where="head" />
       {preview}
-      {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="top" /> : null}
+      {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="top" page={page} base={base} /> : null}
       <header className="pcf-header">
         <div className="pcf-header-inner">
           {theme.logoHref ? (
@@ -105,9 +122,37 @@ export function FunnelShell({
           </p>
         </div>
       </footer>
-      {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="bottom" /> : null}
+      {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="bottom" page={page} base={base} /> : null}
+      <FunnelCode loaded={loaded} where="footer" />
     </div>
   );
+}
+
+/**
+ * The funnel's header / footer code (admin-pasted tracking code). Public
+ * visitors only: never in previews, the builder's live preview or time travel.
+ * <meta>/<link> tags are rendered as head elements (React hoists them); the
+ * rest is placed as is, so its scripts run when the page loads.
+ */
+export function FunnelCode({ loaded, where }: { loaded: LoadedFunnel; where: "head" | "footer" }) {
+  if (loaded.preview) return null;
+  const code = where === "head" ? loaded.funnel.headCode : loaded.funnel.footerCode;
+  if (!code.trim()) return null;
+  if (where === "footer") return <div data-funnel-code="footer" style={{ display: "contents" }} dangerouslySetInnerHTML={{ __html: code }} />;
+  const { headTags, bodyHtml } = splitHeadCode(code);
+  return (
+    <>
+      {headTags.map((item, index) => (item.tag === "meta" ? <meta key={`m${index}`} {...reactAttrs(item.attrs)} /> : <link key={`l${index}`} {...reactAttrs(item.attrs)} />))}
+      {bodyHtml ? <div data-funnel-code="head" style={{ display: "contents" }} dangerouslySetInnerHTML={{ __html: bodyHtml }} /> : null}
+    </>
+  );
+}
+
+/** Browser-tab icon for every public funnel page (Next metadata). */
+export function funnelIcons(funnel: Pick<FunnelRow, "slug" | "faviconAssetId" | "faviconUrl" | "updatedAt">): { icon: string } | undefined {
+  if (funnel.faviconAssetId) return { icon: `/l/${funnel.slug}/asset/${funnel.faviconAssetId}?v=${funnel.updatedAt.getTime()}` };
+  if (funnel.faviconUrl && /^https:\/\//i.test(funnel.faviconUrl)) return { icon: funnel.faviconUrl };
+  return undefined;
 }
 
 function LockBadge() {

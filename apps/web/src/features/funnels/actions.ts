@@ -1,20 +1,23 @@
 "use server";
 
+import { can } from "@pubcommand/core";
 import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { starterBlocks } from "../../../../../modules/funnels/blocks";
 import { checkFunnel, isValidSlug, newUnlockKey, normalizeSlug, parseResources } from "../../../../../modules/funnels/checks";
-import { DEADLINE_TARGETS } from "../../../../../modules/funnels/deadline";
+import { DEADLINE_PAGES, DEADLINE_TARGETS, normalizeDeadlineButtonUrl, normalizeDeadlinePages } from "../../../../../modules/funnels/deadline";
 import { CLOSE_MODES, CTA_REVEALS, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, SITE_TYPES, TIMING_MODES } from "../../../../../modules/funnels/state";
+import { isValidEmail } from "../../../../../modules/funnels/sms";
 import { parseVideo } from "../../../../../modules/funnels/video";
 import { teachFunnel } from "./brain";
 import { UUID_RE, orgTimezone } from "./data";
 import { bool, color, int, optional, optionalInt, pickOne, storeImage, text, url, zoned } from "./form-input";
 import { funnelCheckInput, homeBlocks } from "./site-data";
-import { funnelsAction, withMessage, type FunnelsCtx } from "./guard";
+import { funnelAction, funnelsAction, withMessage, type FunnelsCtx } from "./guard";
 import { refreshVideoMeta } from "./oembed";
 import { richFromInput } from "./sanitize";
+import { ownSmsFormId } from "./sms-data";
 
 function audit(ctx: FunnelsCtx, action: string, targetType: string, targetId: string, metadata?: Prisma.InputJsonValue) {
   return appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action, targetType, targetId, metadata });
@@ -74,7 +77,7 @@ export async function saveFunnel(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const section = text(formData, "section", 20);
   const back = builder(funnelId, section || "setup");
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId);
   const db = tenantDb(ctx.resolved.id);
   const timeZone = await orgTimezone(ctx.resolved.id);
@@ -104,10 +107,13 @@ export async function saveFunnel(formData: FormData) {
       brainSyncEnabled: bool(formData, "brainSyncEnabled"),
     };
   } else if (section === "waitlist") {
-    const optinMode = pickOne(formData, "optinMode", ["none", "email", "form"] as const, "none");
+    const optinMode = pickOne(formData, "optinMode", ["none", "email", "form", "sms"] as const, "none");
     const formSlug = text(formData, "optinFormSlug", 80);
     const form = optinMode === "form" && formSlug ? await db.form.findFirst({ where: { slug: formSlug, brandId: ctx.brand.id, deletedAt: null }, select: { slug: true } }) : null;
+    const smsFormId = optinMode === "sms" ? await ownSmsFormId(ctx.resolved.id, funnel.id, text(formData, "optinSmsFormId", 40)) : null;
+    if (optinMode === "sms" && !smsFormId) redirect(withMessage(back, "error", "Pick one of this funnel's SMS forms (SMS forms tab)."));
     data = {
+      optinSmsFormId: smsFormId,
       waitlistEnabled: bool(formData, "waitlistEnabled"),
       waitlistHeadline: text(formData, "waitlistHeadline", 160),
       waitlistSubheadline: text(formData, "waitlistSubheadline", 400),
@@ -130,6 +136,28 @@ export async function saveFunnel(formData: FormData) {
       deadlineBarBg: color(formData, "deadlineBarBg", "#b42318"),
       deadlineBarColor: color(formData, "deadlineBarColor", "#ffffff"),
       deadlineBarWithinHours: int(formData, "deadlineBarWithinHours", 0, 0, 24 * 60),
+      deadlineBarPages: normalizeDeadlinePages(formData.getAll("deadlineBarPages").map(String)).filter((page) => (DEADLINE_PAGES as readonly string[]).includes(page)),
+      deadlineBarButtonText: text(formData, "deadlineBarButtonText", 40),
+      deadlineBarButtonUrl: normalizeDeadlineButtonUrl(text(formData, "deadlineBarButtonUrl", 500)),
+      deadlineBarDismiss: bool(formData, "deadlineBarDismiss"),
+    };
+    if (data.deadlineBarButtonText && !data.deadlineBarButtonUrl) redirect(withMessage(back, "error", "The bar button needs a web address (https://…) or a module (module:1)."));
+  } else if (section === "emails") {
+    const replyTo = text(formData, "emailReplyTo", 254).toLowerCase();
+    if (replyTo && !isValidEmail(replyTo)) redirect(withMessage(back, "error", "The reply-to address is not a valid email."));
+    data = { emailFromName: text(formData, "emailFromName", 80), emailReplyTo: replyTo || null };
+  } else if (section === "advanced") {
+    // Header/footer code runs on public pages: funnels.publish only, never delegates.
+    if (!can(ctx.subject, "funnels.publish", ctx.scope)) redirect(withMessage(back, "error", "Header and footer code need the funnels.publish permission."));
+    const favicon = await storeImage(ctx.resolved.id, funnel.id, "favicon", formData.get("favicon"));
+    if (favicon && "error" in favicon) redirect(withMessage(back, "error", favicon.error));
+    const faviconUrl = text(formData, "faviconUrl", 1000);
+    if (faviconUrl && !/^https:\/\/[^\s"<>]+$/i.test(faviconUrl)) redirect(withMessage(back, "error", "The favicon link must start with https://."));
+    data = {
+      faviconUrl: faviconUrl || null,
+      ...(favicon && "id" in favicon ? { faviconAssetId: favicon.id } : bool(formData, "removeFavicon") ? { faviconAssetId: null } : {}),
+      headCode: String(formData.get("headCode") ?? "").slice(0, 50_000),
+      footerCode: String(formData.get("footerCode") ?? "").slice(0, 50_000),
     };
   } else if (section === "close") {
     data = {
@@ -157,14 +185,14 @@ export async function saveFunnel(formData: FormData) {
   }
 
   await db.funnel.updateMany({ where: { id: funnel.id }, data });
-  await audit(ctx, "funnels.funnel.updated", "funnel", funnel.id, { section });
+  await audit(ctx, section === "advanced" ? "funnels.code.updated" : "funnels.funnel.updated", "funnel", funnel.id, { section, ...(section === "advanced" ? { headCodeLength: String(formData.get("headCode") ?? "").length, footerCodeLength: String(formData.get("footerCode") ?? "").length } : {}) });
   if (funnel.status === "published") after(() => teachFunnel({ organizationId: ctx.resolved.id, funnelId: funnel.id, actorId: ctx.actorId }));
   redirect(withMessage(back, "notice", "Saved."));
 }
 
 export async function addDay(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
-  const ctx = await funnelsAction(builder(funnelId, "days"), "funnels.write");
+  const ctx = await funnelAction(builder(funnelId, "days"), funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId);
   const db = tenantDb(ctx.resolved.id);
   const count = await db.funnelDay.count({ where: { funnelId: funnel.id } });
@@ -180,7 +208,7 @@ export async function saveDay(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const dayId = text(formData, "dayId", 40);
   const back = `${builder(funnelId, "days")}&day=${dayId}`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId);
   const db = tenantDb(ctx.resolved.id);
   const day = UUID_RE.test(dayId) ? await db.funnelDay.findFirst({ where: { id: dayId, funnelId: funnel.id } }) : null;
@@ -225,6 +253,7 @@ export async function saveDay(formData: FormData) {
       ctaSeconds: int(formData, "ctaSeconds", 0, 0, 60 * 60 * 6),
       ctaAt: zoned(formData, "ctaAt", timeZone),
       ctaSubtext: text(formData, "ctaSubtext", 200),
+      smsFormId: await ownSmsFormId(ctx.resolved.id, funnel.id, text(formData, "smsFormId", 40)),
     },
   });
   await db.funnel.updateMany({ where: { id: funnel.id }, data: { updatedAt: new Date() } });
@@ -242,7 +271,7 @@ async function renumber(organizationId: string, funnelId: string, orderedIds: st
 
 export async function moveDay(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
-  const ctx = await funnelsAction(builder(funnelId, "days"), "funnels.write");
+  const ctx = await funnelAction(builder(funnelId, "days"), funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId);
   const dayId = text(formData, "dayId", 40);
   const direction = text(formData, "direction", 6) === "up" ? -1 : 1;
@@ -260,7 +289,7 @@ export async function moveDay(formData: FormData) {
 
 export async function deleteDay(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
-  const ctx = await funnelsAction(builder(funnelId, "days"), "funnels.write");
+  const ctx = await funnelAction(builder(funnelId, "days"), funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId);
   const dayId = text(formData, "dayId", 40);
   const db = tenantDb(ctx.resolved.id);
@@ -311,7 +340,7 @@ export async function deleteFunnel(formData: FormData) {
 
 export async function refreshFunnelBrain(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
-  const ctx = await funnelsAction(`/funnels/${funnelId}/stats`, "funnels.write");
+  const ctx = await funnelAction(`/funnels/${funnelId}/stats`, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId);
   if (funnel.status !== "published") redirect(withMessage(`/funnels/${funnel.id}/stats`, "error", "Publish the funnel first."));
   await teachFunnel({ organizationId: ctx.resolved.id, funnelId: funnel.id, actorId: ctx.actorId });

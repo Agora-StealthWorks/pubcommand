@@ -1,47 +1,111 @@
 import { buildSiteUrl, can } from "@pubcommand/core";
+import { tenantDb } from "@pubcommand/db";
 import { redirect } from "next/navigation";
 import { rootDomain } from "@/lib/auth";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
+import { canOpenFunnels, funnelAccess, type RoleAccess } from "../../../../../modules/funnels/delegates";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type Ctx = Extract<Awaited<ReturnType<typeof getOrgContext>>, { kind: "ok" }>;
+
+function roleAccess(ctx: Ctx): RoleAccess {
+  return { read: can(ctx.subject, "funnels.read", ctx.scope), write: can(ctx.subject, "funnels.write", ctx.scope), publish: can(ctx.subject, "funnels.publish", ctx.scope) };
+}
+
+/** Is the signed-in member (or the person being impersonated) a delegate of this funnel? */
+async function isDelegate(ctx: Ctx, funnelId: string | undefined): Promise<boolean> {
+  if (!funnelId || !UUID.test(funnelId)) return false;
+  return (await tenantDb(ctx.resolved.id).funnelDelegate.count({ where: { funnelId, userId: ctx.effectiveUserId } })) > 0;
+}
+
+/** Funnel ids this member is a delegate of (for the list page). */
+export async function delegatedFunnelIds(organizationId: string, userId: string): Promise<string[]> {
+  const rows = await tenantDb(organizationId).funnelDelegate.findMany({ where: { userId }, select: { funnelId: true } });
+  return rows.map((row) => row.funnelId);
+}
 
 export type FunnelsPermission = "funnels.read" | "funnels.write" | "funnels.publish";
 
-/** Page/route guard: org, entitlement, permission and brand. Called by every page and route handler. */
-export async function funnelsAccess(slug: string, permission: FunnelsPermission = "funnels.read") {
+/**
+ * Page/route guard: org, entitlement, permission and brand. Called by every
+ * page and route handler. With `funnelId`, a delegate of that funnel passes for
+ * read and write (never publish). Without it, a member with no funnels.read
+ * passes only if they are a delegate of some funnel (`delegateOnly`).
+ */
+export async function funnelsAccess(slug: string, permission: FunnelsPermission = "funnels.read", funnelId?: string) {
   const ctx = await getOrgContext(slug);
   if (ctx.kind !== "ok") return { kind: "missing" as const };
   if (!ctx.subject.entitledModuleIds.includes("funnels")) return { kind: "denied" as const, title: "Funnels is turned off for this organization" };
-  if (!can(ctx.subject, "funnels.read", ctx.scope) || !can(ctx.subject, permission, ctx.scope)) return { kind: "denied" as const, title: "You do not have access" };
   if (!ctx.brand) return { kind: "denied" as const, title: "Add a brand in Settings → Brands first" };
+  const role = roleAccess(ctx);
+  const access = funnelAccess(role, await isDelegate(ctx, funnelId));
+  let delegateOnly = false;
+  if (!access.read) {
+    const delegated = funnelId ? [] : await delegatedFunnelIds(ctx.resolved.id, ctx.effectiveUserId);
+    if (!canOpenFunnels(role, delegated.length)) return { kind: "denied" as const, title: "You do not have access" };
+    delegateOnly = true;
+  }
+  const allowed = permission === "funnels.read" ? access.read || delegateOnly : permission === "funnels.write" ? access.write : access.publish;
+  if (!allowed) return { kind: "denied" as const, title: "You do not have access" };
   return {
     kind: "ok" as const,
     ctx: { ...ctx, brand: ctx.brand },
-    canWrite: can(ctx.subject, "funnels.write", ctx.scope),
-    canPublish: can(ctx.subject, "funnels.publish", ctx.scope),
+    canRead: role.read,
+    canWrite: access.write,
+    canPublish: access.publish,
+    /** Editing this funnel only because they were made a delegate. */
+    delegate: access.delegate,
+    /** No funnels.read: the list shows only their delegated funnels. */
+    delegateOnly,
   };
 }
 
-/** Server-action guard. Redirects with a message instead of throwing. */
+/** Server-action guard. Redirects with a message instead of throwing. Role permissions only (no delegates). */
 export async function funnelsAction(back: string, ...permissions: FunnelsPermission[]) {
+  return funnelAction(back, undefined, ...permissions);
+}
+
+/**
+ * Server-action guard for one funnel: a delegate of `funnelId` passes for
+ * read and write, never publish. The action must still load the funnel
+ * itself (brand and deletion checks).
+ */
+export async function funnelAction(back: string, funnelId: string | undefined, ...permissions: FunnelsPermission[]) {
   const request = await currentRequest();
   if (request.site.kind !== "org") redirect("/");
   const ctx = await getOrgContext(request.site.slug);
   if (ctx.kind !== "ok") redirect("/");
-  const allowed = ctx.subject.entitledModuleIds.includes("funnels") && ["funnels.read", ...permissions].every((permission) => can(ctx.subject, permission, ctx.scope));
+  const access = funnelAccess(roleAccess(ctx), ctx.subject.entitledModuleIds.includes("funnels") ? await isDelegate(ctx, funnelId) : false);
+  const allowed = ctx.subject.entitledModuleIds.includes("funnels") && access.read && permissions.every((permission) => (permission === "funnels.read" ? access.read : permission === "funnels.write" ? access.write : access.publish));
   if (!allowed) redirect(withMessage(back, "error", "You do not have permission to do that."));
   if (!ctx.brand) redirect(withMessage(back, "error", "Add a brand in Settings first."));
-  return { ...ctx, brand: ctx.brand, actorId: ctx.auth.user.id, request };
+  return { ...ctx, brand: ctx.brand, actorId: ctx.auth.user.id, request, delegate: access.delegate };
+}
+
+/** For actions the builder calls from the browser: the same checks, returning null instead of redirecting. */
+export async function funnelWriteCtx(funnelId: string) {
+  const request = await currentRequest();
+  if (request.site.kind !== "org") return null;
+  const ctx = await getOrgContext(request.site.slug);
+  if (ctx.kind !== "ok" || !ctx.brand || !ctx.subject.entitledModuleIds.includes("funnels")) return null;
+  const access = funnelAccess(roleAccess(ctx), await isDelegate(ctx, funnelId));
+  if (!access.read || !access.write) return null;
+  return { ...ctx, brand: ctx.brand, access };
 }
 
 export type FunnelsCtx = Awaited<ReturnType<typeof funnelsAction>>;
 
 export function withMessage(path: string, kind: "error" | "notice", message: string): string {
-  const [base, query = ""] = path.split("?");
+  // Keep a #fragment at the end, where browsers read it (not inside the query).
+  const [beforeHash, hash = ""] = path.split("#");
+  const [base, query = ""] = (beforeHash ?? "").split("?");
   const params = new URLSearchParams(query);
   params.delete("error");
   params.delete("notice");
   params.set(kind, message);
-  return `${base}?${params.toString()}`;
+  return `${base}?${params.toString()}${hash ? `#${hash}` : ""}`;
 }
 
 /** Absolute public link on the org host, e.g. https://acme.pubcommand.com/l/launch. */

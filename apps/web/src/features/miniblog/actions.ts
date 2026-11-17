@@ -9,7 +9,8 @@ import { teachPost } from "./brain";
 import { syncPostToCalendar } from "./calendar";
 import { UUID_RE, orgTimezone } from "./data";
 import { bool, color, int, optional, storeLogo, text, url, zoned } from "./form-input";
-import { miniblogAction, orgPublicUrl, withMessage, type MiniBlogCtx } from "./guard";
+import { syncPostLinks } from "./links";
+import { miniblogAction, miniblogWriteCtx, orgPublicUrl, withMessage, type MiniBlogCtx } from "./guard";
 import { richFromInput } from "./sanitize";
 
 function audit(ctx: MiniBlogCtx, action: string, targetType: string, targetId: string, metadata?: Prisma.InputJsonValue) {
@@ -148,6 +149,7 @@ export async function savePost(formData: FormData) {
   const status = publishing ? "published" : intent === "unpublish" ? "draft" : post.status;
   const buttonText = optional(formData, "buttonText", 60);
   const buttonUrl = url(formData, "buttonUrl");
+  const bodyHtml = richFromInput(text(formData, "bodyHtml", 100_000));
   await db.textPost.updateMany({
     where: { id: post.id },
     data: {
@@ -155,12 +157,14 @@ export async function savePost(formData: FormData) {
       slug,
       publishAt,
       status,
-      bodyHtml: richFromInput(text(formData, "bodyHtml", 100_000)),
+      bodyHtml,
       actionToTake: optional(formData, "actionToTake", 1000),
       buttonText: buttonText && buttonUrl ? buttonText : null,
       buttonUrl: buttonText && buttonUrl ? buttonUrl : null,
     },
   });
+  // Every link becomes a tracked link (click counts per post).
+  await syncPostLinks(ctx.resolved.id, { id: post.id, siteId: site.id, bodyHtml, buttonUrl: buttonText && buttonUrl ? buttonUrl : null, buttonText }).catch((error: unknown) => console.error("[miniblog] link sync failed", post.id, error));
   await audit(ctx, publishing ? "miniblog.post.published" : intent === "unpublish" ? "miniblog.post.unpublished" : "miniblog.post.updated", "text_post", post.id);
   let notice = intent === "unpublish" ? "Moved back to draft." : "Saved.";
   if (status === "published") {
@@ -188,4 +192,19 @@ export async function deletePost(formData: FormData) {
   await tenantDb(ctx.resolved.id).textPost.updateMany({ where: { id: postId, siteId: site.id }, data: { deletedAt: new Date(), slug: `deleted-${postId.slice(0, 8)}-${Date.now().toString(36)}` } });
   await audit(ctx, "miniblog.post.deleted", "text_post", postId);
   redirect(withMessage(`/mini-blog/${site.id}`, "notice", "Post deleted."));
+}
+
+/** Upload an image from the post editor. Stored on this Mini-Blog (funnel_assets, kind post_image) and served at /b/<site>/asset/<id>. */
+export async function uploadPostImage(formData: FormData): Promise<{ ok: true; src: string } | { ok: false; error: string }> {
+  const ctx = await miniblogWriteCtx();
+  if (!ctx) return { ok: false, error: "You do not have permission to do that." };
+  const siteId = text(formData, "siteId", 40);
+  const site = UUID_RE.test(siteId) ? await tenantDb(ctx.resolved.id).textSite.findFirst({ where: { id: siteId, brandId: ctx.brand.id, deletedAt: null } }) : null;
+  if (!site) return { ok: false, error: "That Mini-Blog no longer exists." };
+  const stored = await storeLogo(ctx.resolved.id, site.id, formData.get("file"));
+  if (!stored) return { ok: false, error: "Choose an image first." };
+  if ("error" in stored) return { ok: false, error: stored.error };
+  await tenantDb(ctx.resolved.id).funnelAsset.updateMany({ where: { id: stored.id }, data: { kind: "post_image" } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "miniblog.asset.uploaded", targetType: "funnel_asset", targetId: stored.id });
+  return { ok: true, src: miniBlogPath(site.slug, `asset/${stored.id}`) };
 }

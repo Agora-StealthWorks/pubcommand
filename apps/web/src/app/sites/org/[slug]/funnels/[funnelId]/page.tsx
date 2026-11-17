@@ -1,4 +1,4 @@
-import { richToInput } from "@/features/funnels/sanitize";
+import { RichTextArea } from "@/features/funnels/rich-text-area";
 import { tenantDb } from "@pubcommand/db";
 import { Badge, Button, Input, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
@@ -6,11 +6,15 @@ import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { addDay, deleteDay, deleteFunnel, moveDay, publishFunnel, saveDay, saveFunnel } from "@/features/funnels/actions";
 import { DeadlineTab, DesignTab, HomeTab, HostsTab, PagesTab } from "@/features/funnels/builder-tabs";
-import { dayLabel, dayThumb, dayVideo, loadFunnelForBrand, orgTimezone, statusBadge, type DayRow, type FunnelRow } from "@/features/funnels/data";
+import { dayLabel, dayThumb, dayVideo, loadFunnelForBrand, orgTimezone, statusBadge, type DayRow, type FunnelRow, type NavItemRow } from "@/features/funnels/data";
 import { Check, Field, LinkBox, Section } from "@/features/funnels/fields";
 import { funnelCheckInput } from "@/features/funnels/site-data";
 import { funnelsAccess, orgPublicUrl } from "@/features/funnels/guard";
 import { SectionTabs } from "@/features/funnels/tabs";
+import { AdvancedTab, DelegatesTab, EmailsTab, SmsFormsTab } from "@/features/funnels/more-tabs";
+import { listSmsForms, type SmsFormRow } from "@/features/funnels/sms-data";
+import { emailConfigured, emailSendCounts, funnelSessions } from "@/features/funnels/emails";
+import { acceptsEmailOptin } from "@/features/funnels/site-data";
 import { checkFunnel, resourcesText } from "../../../../../../../../../modules/funnels/checks";
 import { PROGRESSIONS, PROGRESSION_LABELS, SITE_TYPE_LABELS, type Progression } from "../../../../../../../../../modules/funnels/state";
 import { utcToZonedLocal, zoneLabel } from "../../../../../../../../../modules/funnels/time";
@@ -26,6 +30,10 @@ const TABS = [
   { key: "deadline", label: "Deadline bar" },
   { key: "design", label: "Design" },
   { key: "close", label: "Close & messages" },
+  { key: "emails", label: "Invites & reminders" },
+  { key: "sms", label: "SMS forms" },
+  { key: "advanced", label: "Advanced" },
+  { key: "delegates", label: "Delegates" },
   { key: "publish", label: "Publish" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
@@ -44,14 +52,14 @@ export default async function FunnelBuilderPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; funnelId: string }>;
-  searchParams: Promise<{ tab?: string; day?: string; host?: string; item?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ tab?: string; day?: string; host?: string; item?: string; email?: string; form?: string; error?: string; notice?: string }>;
 }) {
   const { slug, funnelId } = await params;
   const query = await searchParams;
-  const access = await funnelsAccess(slug);
+  const access = await funnelsAccess(slug, "funnels.read", funnelId);
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
-  const { ctx, canWrite, canPublish } = access;
+  const { ctx, canWrite, canPublish, delegate } = access;
   const loaded = await loadFunnelForBrand(ctx.resolved.id, ctx.brand.id, funnelId);
   if (!loaded) notFound();
   const { funnel, days, hosts, navItems } = loaded;
@@ -64,7 +72,8 @@ export default async function FunnelBuilderPage({
   ]);
   const microsite = funnel.siteType === "microsite";
   // A microsite's front door is the home page; a launch funnel's is the waitlist.
-  const tabs = TABS.filter((item) => (microsite ? item.key !== "waitlist" : item.key !== "home"));
+  // Delegates edit content only: no delegates or code tab for them.
+  const tabs = TABS.filter((item) => (microsite ? item.key !== "waitlist" : item.key !== "home")).filter((item) => canPublish || (item.key !== "delegates" && item.key !== "advanced"));
   const wanted = query.tab === "branding" ? "design" : query.tab === "home" && !microsite ? "waitlist" : query.tab === "waitlist" && microsite ? "home" : query.tab ?? "";
   const tab: Tab = (tabs.map((item) => item.key) as readonly string[]).includes(wanted) ? (wanted as Tab) : "setup";
   const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, `/l/${funnel.slug}`);
@@ -73,6 +82,8 @@ export default async function FunnelBuilderPage({
   const badge = statusBadge(funnel.status);
   const theme = funnel.formThemeId ? await db.formTheme.findFirst({ where: { id: funnel.formThemeId, deletedAt: null }, select: { privacyPolicyUrl: true } }) : null;
   const checks = checkFunnel(funnelCheckInput(funnel, days, navItems, theme?.privacyPolicyUrl ?? null));
+  const smsForms = await listSmsForms(ctx.resolved.id, funnel.id);
+  const smsOptions = smsForms.map((form) => ({ id: form.id, name: form.name }));
 
   return (
     <div>
@@ -100,6 +111,7 @@ export default async function FunnelBuilderPage({
         </div>
       </div>
       <Flash error={query.error} notice={query.notice} />
+      {delegate ? <p className="mb-4 rounded-lg border border-[#c7d7fe] bg-[#eef4ff] px-4 py-3 text-sm text-[#1e3a8a]">You are a delegate of this funnel: you can edit it, and someone with publish rights takes it live.</p> : null}
       <SectionTabs label="Builder sections" active={tab} items={tabs.map((item) => ({ key: item.key, label: item.label, href: `/funnels/${funnel.id}?tab=${item.key}` }))} />
 
       {tab === "setup" ? (
@@ -184,7 +196,7 @@ export default async function FunnelBuilderPage({
       {tab === "days" ? (
         <div className="space-y-3">
           {days.map((day, index) => (
-            <DayEditor key={day.id} funnel={funnel} day={day} open={query.day === day.id || (days.length === 1 && !query.day)} first={index === 0} last={index === days.length - 1} canWrite={canWrite} local={local} zone={zone} />
+            <DayEditor key={day.id} funnel={funnel} day={day} smsForms={smsOptions} open={query.day === day.id || (days.length === 1 && !query.day)} first={index === 0} last={index === days.length - 1} canWrite={canWrite} local={local} zone={zone} />
           ))}
           {canWrite ? (
             <form action={addDay}>
@@ -221,8 +233,23 @@ export default async function FunnelBuilderPage({
                   <option value="form" disabled={forms.length === 0}>
                     A published form{forms.length === 0 ? " (none published yet)" : ""}
                   </option>
+                  <option value="sms" disabled={smsForms.length === 0}>
+                    An SMS opt-in form{smsForms.length === 0 ? " (add one on the SMS forms tab)" : ""}
+                  </option>
                 </select>
               </Field>
+              {smsForms.length ? (
+                <Field label="SMS form" htmlFor="optinSmsFormId" hint="Phone + consent. Built on the SMS forms tab.">
+                  <select id="optinSmsFormId" name="optinSmsFormId" defaultValue={funnel.optinSmsFormId ?? ""} className="pc-control w-full text-sm">
+                    <option value="">Pick an SMS form</option>
+                    {smsOptions.map((form) => (
+                      <option key={form.id} value={form.id}>
+                        {form.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : null}
               {forms.length ? (
                 <Field label="Form" htmlFor="optinFormSlug" hint="Embedded from Forms; responses are stored there.">
                   <select id="optinFormSlug" name="optinFormSlug" defaultValue={funnel.optinFormSlug ?? ""} className="pc-control w-full text-sm">
@@ -249,10 +276,14 @@ export default async function FunnelBuilderPage({
         </form>
       ) : null}
 
-      {tab === "home" ? <HomeTab funnel={funnel} days={days} navItems={navItems} hosts={hosts} forms={forms} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
+      {tab === "home" ? <HomeTab funnel={funnel} days={days} navItems={navItems} hosts={hosts} forms={forms} smsForms={smsOptions} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
       {tab === "hosts" ? <HostsTab funnel={funnel} hosts={hosts} openId={query.host} canWrite={canWrite} /> : null}
-      {tab === "pages" ? <PagesTab funnel={funnel} days={days} navItems={navItems} forms={forms} openId={query.item} canWrite={canWrite} publicUrl={publicUrl} /> : null}
-      {tab === "deadline" ? <DeadlineTab funnel={funnel} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
+      {tab === "pages" ? <PagesTab funnel={funnel} days={days} navItems={navItems} forms={forms} smsForms={smsOptions} openId={query.item} canWrite={canWrite} publicUrl={publicUrl} /> : null}
+      {tab === "deadline" ? <DeadlineTab funnel={funnel} days={days} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
+      {tab === "emails" ? await emailsTab(ctx.resolved.id, funnel, navItems, timeZone, canWrite, query.email) : null}
+      {tab === "sms" ? await smsTab(ctx.resolved.id, funnel, smsForms, canWrite, canPublish, query.form) : null}
+      {tab === "advanced" && canPublish ? <AdvancedTab funnel={funnel} canPublish={canPublish} faviconSrc={funnel.faviconAssetId ? `/l/${funnel.slug}/asset/${funnel.faviconAssetId}` : funnel.faviconUrl} /> : null}
+      {tab === "delegates" && canPublish ? await delegatesTab(ctx.resolved.id, funnel) : null}
       {tab === "design" ? <DesignTab funnel={funnel} days={days} navItems={navItems} themes={themes} otherFunnels={otherFunnels} canWrite={canWrite} /> : null}
 
       {tab === "close" ? (
@@ -274,7 +305,7 @@ export default async function FunnelBuilderPage({
                 <Input id="closeHeadline" name="closeHeadline" defaultValue={funnel.closeHeadline} maxLength={160} />
               </Field>
               <Field label="Message" htmlFor="closeMessageHtml">
-                <Textarea id="closeMessageHtml" name="closeMessageHtml" defaultValue={richToInput(funnel.closeMessageHtml)} className="min-h-24" />
+                <RichTextArea funnelId={funnel.id} id="closeMessageHtml" name="closeMessageHtml" defaultValue={funnel.closeMessageHtml} rows={5} disabled={!canWrite} />
               </Field>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Button text" htmlFor="closeButtonText" hint="e.g. the order page. Optional.">
@@ -385,9 +416,16 @@ export default async function FunnelBuilderPage({
           </Section>
           {canPublish ? (
             <Section title="Opt-ins" description="Email opt-ins captured on the waitlist. They are personal data: the CSV is for this team only.">
-              <a href={`/funnels/${funnel.id}/optins`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
-                Download opt-ins (CSV)
-              </a>
+              <div className="flex flex-wrap gap-2">
+                <a href={`/funnels/${funnel.id}/optins`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
+                  Download email opt-ins (CSV)
+                </a>
+                {smsForms.length ? (
+                  <a href={`/funnels/${funnel.id}/sms-optins`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
+                    Download SMS sign-ups (CSV)
+                  </a>
+                ) : null}
+              </div>
             </Section>
           ) : null}
           {canPublish ? (
@@ -412,6 +450,7 @@ export default async function FunnelBuilderPage({
 function DayEditor({
   funnel,
   day,
+  smsForms,
   open,
   first,
   last,
@@ -421,6 +460,7 @@ function DayEditor({
 }: {
   funnel: FunnelRow;
   day: DayRow;
+  smsForms: { id: string; name: string }[];
   open: boolean;
   first: boolean;
   last: boolean;
@@ -476,9 +516,23 @@ function DayEditor({
             <Field label="Agenda topics" htmlFor={`topics-${day.id}`} hint="One per line. Shown in the waitlist agenda.">
               <Textarea id={`topics-${day.id}`} name="topics" defaultValue={day.topics.join("\n")} className="min-h-20" />
             </Field>
-            <Field label="Notes under the video" htmlFor={`body-${day.id}`} hint="Plain text or simple HTML (sanitized).">
-              <Textarea id={`body-${day.id}`} name="bodyHtml" defaultValue={richToInput(day.bodyHtml)} className="min-h-20" />
+            <Field label="Notes under the video" htmlFor={`body-${day.id}`}>
+              <RichTextArea funnelId={funnel.id} id={`body-${day.id}`} name="bodyHtml" defaultValue={day.bodyHtml} rows={5} disabled={!canWrite} />
             </Field>
+            {smsForms.length ? (
+              <Field label="SMS opt-in under the video" htmlFor={`sms-${day.id}`} hint="One of the forms on the SMS forms tab.">
+                <select id={`sms-${day.id}`} name="smsFormId" defaultValue={day.smsFormId ?? ""} className="pc-control w-full text-sm">
+                  <option value="">None</option>
+                  {smsForms.map((form) => (
+                    <option key={form.id} value={form.id}>
+                      {form.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <input type="hidden" name="smsFormId" value={day.smsFormId ?? ""} />
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Resources heading" htmlFor={`resh-${day.id}`}>
                 <Input id={`resh-${day.id}`} name="resourcesHeading" defaultValue={day.resourcesHeading} maxLength={80} />
@@ -593,4 +647,46 @@ function DayEditor({
       </div>
     </details>
   );
+}
+
+async function emailsTab(organizationId: string, funnel: FunnelRow, navItems: NavItemRow[], timeZone: string, canWrite: boolean, openId?: string) {
+  const db = tenantDb(organizationId);
+  const [emails, counts, sessions, optinCount] = await Promise.all([
+    db.funnelEmail.findMany({ where: { funnelId: funnel.id }, orderBy: { createdAt: "asc" } }),
+    emailSendCounts(organizationId, funnel.id),
+    funnelSessions(organizationId, funnel),
+    db.funnelOptin.count({ where: { funnelId: funnel.id, unsubscribedAt: null } }),
+  ]);
+  return <EmailsTab funnel={funnel} emails={emails} counts={counts} sessions={sessions} timeZone={timeZone} openId={openId} canWrite={canWrite} emailReady={emailConfigured()} optinCount={optinCount} usesEmailOptin={acceptsEmailOptin(funnel, navItems)} />;
+}
+
+async function smsTab(organizationId: string, funnel: FunnelRow, forms: SmsFormRow[], canWrite: boolean, canPublish: boolean, openId?: string) {
+  const db = tenantDb(organizationId);
+  const rows = await db.funnelSmsOptin.findMany({ where: { funnelId: funnel.id }, select: { id: true, formId: true, phone: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 5000 });
+  const counts = new Map<string, number>();
+  for (const row of rows) counts.set(row.formId, (counts.get(row.formId) ?? 0) + 1);
+  return <SmsFormsTab funnel={funnel} forms={forms} counts={counts} recent={rows.slice(0, 200)} openId={openId} canWrite={canWrite} canPublish={canPublish} />;
+}
+
+async function delegatesTab(organizationId: string, funnel: FunnelRow) {
+  const db = tenantDb(organizationId);
+  const [rows, members] = await Promise.all([
+    db.funnelDelegate.findMany({ where: { funnelId: funnel.id }, orderBy: { createdAt: "asc" } }),
+    db.membership.findMany({ where: { status: "ACTIVE" }, include: { user: true, role: { include: { grants: true } } }, orderBy: { createdAt: "asc" } }),
+  ]);
+  const byUser = new Map(members.map((member) => [member.userId, member]));
+  const delegates = rows.map((row) => ({ id: row.id, name: byUser.get(row.userId)?.user.name ?? "", email: byUser.get(row.userId)?.user.email ?? "(no longer a member)", createdAt: row.createdAt }));
+  const taken = new Set(rows.map((row) => row.userId));
+  // Offer members whose role cannot already write funnels.
+  const candidates = members
+    .filter((member) => !taken.has(member.userId) && !roleWrites(member.role))
+    .map((member) => ({ userId: member.userId, label: `${member.user.name || member.user.email} (${member.role.name})` }));
+  return <DelegatesTab funnel={funnel} delegates={delegates} candidates={candidates} canPublish />;
+}
+
+/** Does this role allow funnels.write (or everything)? Approximates `can` without loading each member's full subject. */
+function roleWrites(role: { grants: { permission: string; effect: string }[] }): boolean {
+  const allow = role.grants.filter((grant) => grant.effect === "ALLOW").map((grant) => grant.permission);
+  const deny = role.grants.some((grant) => grant.effect === "DENY" && grant.permission === "funnels.write");
+  return !deny && allow.some((permission) => permission === "funnels.write" || permission === "*" || permission === "funnels.*");
 }

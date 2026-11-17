@@ -1,15 +1,18 @@
 import { tenantDb } from "@pubcommand/db";
-import { isValidEmail } from "../../../../../modules/funnels/sms";
+import { after } from "next/server";
+import { verifyUnsubscribeToken } from "../../../../../modules/funnels/emails";
+import { captureSmsOptin, isValidEmail } from "../../../../../modules/funnels/sms";
+import { classifyTraffic, clientIpOf } from "../../../../../modules/funnels/traffic";
 import { ensureStart, recordWatch, rememberKey } from "../../../../../modules/funnels/viewer";
 import { eventBoxEvent, icsFile, liveSessionEvent } from "../../../../../modules/funnels/calendar";
 import { effectiveStart } from "../../../../../modules/funnels/state";
 import { dayLabel, emailConsent, funnelBranding, funnelRules } from "./data";
+import { sendConfirmation, unsubscribeOptin, unsubscribeSecret } from "./emails";
 import { acceptsEmailOptin, homeBlocks } from "./site-data";
 import {
   clientIp,
   hashIp,
   loadPublicFunnel,
-  looksLikeBot,
   publicSiteMatches,
   readViewer,
   safeBack,
@@ -48,7 +51,7 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
   if (loaded.preview) return json({ ok: true, preview: true });
   const raw = await request.text();
   if (raw.length > 2000) return json({ ok: false }, 413);
-  let body: { kind?: unknown; dayId?: unknown; percent?: unknown; key?: unknown };
+  let body: { kind?: unknown; dayId?: unknown; percent?: unknown; key?: unknown; wd?: unknown };
   try {
     body = JSON.parse(raw || "{}");
   } catch {
@@ -61,7 +64,9 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
   const { funnel, now } = loaded;
   let viewer = ensureStart(startViewer(await readViewer(funnel.id, false)), now);
   const db = tenantDb(loaded.organizationId);
-  const bot = looksLikeBot(request.headers.get("user-agent"));
+  // Flag (never drop) automated traffic: bot user agents, cloud / data-center networks, automated browsers.
+  const botReason = classifyTraffic({ userAgent: request.headers.get("user-agent"), ip: clientIpOf(request.headers), webdriver: body.wd === true });
+  const bot = botReason !== null;
   let unlocked = false;
 
   if (kind === "view") {
@@ -70,9 +75,9 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
       viewer = rememberKey(viewer, day.id);
       unlocked = true;
     }
-    if (!bot) {
+    {
       const recent = await db.funnelEvent.count({ where: { funnelId: funnel.id, dayId, visitorId: viewer.visitorId, kind: "view", createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
-      if (!recent) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, kind: "view", visitorId: viewer.visitorId } });
+      if (!recent) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, kind: "view", visitorId: viewer.visitorId, botReason } });
     }
   } else if (kind === "watch") {
     const percent = Number(body.percent);
@@ -91,8 +96,8 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
         await db.funnelWatch.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId: day.id, visitorId: viewer.visitorId, percent: value } }).catch(() => undefined);
       }
     }
-  } else if (!bot) {
-    await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, kind: "cta", visitorId: viewer.visitorId } });
+  } else {
+    await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, kind: "cta", visitorId: viewer.visitorId, botReason } });
   }
 
   const cookie = viewerCookieHeader(funnel.id, viewer, isSecure(request));
@@ -124,7 +129,7 @@ export async function handleFunnelOptin(request: Request, orgSlug: string, funne
   const branding = await funnelBranding(loaded.organizationId, loaded.funnel, "");
   const existing = await db.funnelOptin.findFirst({ where: { funnelId: loaded.funnel.id, email }, select: { id: true } });
   if (!existing) {
-    await db.funnelOptin
+    const created = await db.funnelOptin
       .create({
         data: {
           organizationId: loaded.organizationId,
@@ -134,8 +139,15 @@ export async function handleFunnelOptin(request: Request, orgSlug: string, funne
           ipHash,
           pageUrl: (request.headers.get("referer") ?? "").slice(0, 500) || null,
         },
+        select: { id: true },
       })
-      .catch(() => undefined);
+      .catch(() => null);
+    // The registration confirmation (if the funnel has one switched on), after the response.
+    if (created) {
+      const origin = requestOrigin(request);
+      const base = back.startsWith(`/l/${loaded.funnel.slug}`) ? `/l/${loaded.funnel.slug}` : "";
+      after(() => sendConfirmation({ organizationId: loaded.organizationId, funnelId: loaded.funnel.id, optinId: created.id, origin, base }).catch((error: unknown) => console.error("[funnels] confirmation failed", error)));
+    }
   }
   return seeOther(withQuery(back, { joined: "1" }));
 }
@@ -232,4 +244,102 @@ export async function funnelIcs(request: Request, orgSlug: string, funnelSlug: s
   const start = block.at ? new Date(block.at) : effectiveStart(rules, { watched: {}, keys: [], ...(viewer?.start ? { start: viewer.start } : {}) }, loaded.now);
   const event = eventBoxEvent({ funnelId: funnel.id, blockId: block.id, title: block.title || funnel.name, start, minutes: block.minutes, pageUrl: `${origin}/l/${funnel.slug}`, timeZone });
   return event ? icsResponse(icsFile([event], { timeZone, calendarName: funnel.name, domain: host }), funnel.slug) : new Response("Not found", { status: 404 });
+}
+
+function requestOrigin(request: Request): string {
+  const url = new URL(request.url);
+  const host = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || request.headers.get("host") || url.host;
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(":", "");
+  return `${proto}://${host}`;
+}
+
+/**
+ * POST /l/<funnel>/sms: an SMS opt-in. The form must belong to this funnel and
+ * be placed somewhere on it; the consent text must match the form's current
+ * wording, and it is stored word for word. Nothing is texted (no provider yet).
+ */
+export async function handleSmsOptin(request: Request, orgSlug: string, funnelSlug: string): Promise<Response> {
+  if (!(await publicSiteMatches(orgSlug)) || !sameOrigin(request)) return new Response("Not found", { status: 404 });
+  const loaded = await loadPublicFunnel(orgSlug, funnelSlug);
+  if (!loaded) return new Response("Not found", { status: 404 });
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return new Response("Bad request", { status: 400 });
+  }
+  const back = safeBack(form.get("back"), "/").replace(/#.*$/, "");
+  const formId = String(form.get("formId") ?? "");
+  const db = tenantDb(loaded.organizationId);
+  const sms = UUID.test(formId) ? await db.funnelSmsForm.findFirst({ where: { id: formId, funnelId: loaded.funnel.id } }) : null;
+  if (!sms) return new Response("Not found", { status: 404 });
+  const result = captureSmsOptin(
+    {
+      phone: String(form.get("phone") ?? ""),
+      email: String(form.get("email") ?? ""),
+      consentChecked: form.get("consent") === "yes",
+      shownConsent: String(form.get("consentShown") ?? ""),
+      honeypot: String(form.get("website") ?? ""),
+    },
+    sms,
+  );
+  if (!result.ok) return seeOther(withQuery(back, result.spam ? { sms_done: sms.id } : { sms_form: sms.id, sms_error: result.error }));
+  if (loaded.preview) return seeOther(withQuery(back, { sms_done: sms.id }));
+  const ipHash = hashIp(clientIp(request.headers));
+  if (ipHash) {
+    const recent = await db.funnelSmsOptin.count({ where: { funnelId: loaded.funnel.id, ipHash, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
+    if (recent >= 10) return seeOther(withQuery(back, { sms_form: sms.id, sms_error: "Too many sign-ups from this connection. Try again later." }));
+  }
+  await db.funnelSmsOptin.create({
+    data: {
+      organizationId: loaded.organizationId,
+      funnelId: loaded.funnel.id,
+      formId: sms.id,
+      phone: result.phone,
+      email: result.email,
+      consentText: result.consentText,
+      ipHash,
+      pageUrl: (request.headers.get("referer") ?? "").slice(0, 500) || null,
+      userAgent: (request.headers.get("user-agent") ?? "").slice(0, 300) || null,
+    },
+  });
+  return seeOther(withQuery(back, { sms_done: sms.id }));
+}
+
+function page(title: string, body: string, status = 200): Response {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><style>body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f5f6f8;color:#1f2937}main{max-width:28rem;margin:12vh auto;padding:0 16px}div{background:#fff;border:1px solid #e1e4ea;border-radius:12px;padding:24px}h1{font-size:1.25rem;margin:0 0 .5rem}p{line-height:1.5}button{min-height:44px;padding:0 18px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-weight:600;font-size:1rem;cursor:pointer}</style></head><body><main><div>${body}</div></main></body></html>`;
+  return new Response(html, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", "referrer-policy": "no-referrer" } });
+}
+
+function esc(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * GET/POST /l/<funnel>/unsubscribe?o=<opt-in>&t=<token>. GET shows a confirm
+ * button (link scanners open GET links, so they never unsubscribe anyone);
+ * POST, or a mail client's one-click POST, unsubscribes. Signed links only.
+ */
+export async function handleUnsubscribe(request: Request, orgSlug: string, funnelSlug: string): Promise<Response> {
+  if (!(await publicSiteMatches(orgSlug))) return new Response("Not found", { status: 404 });
+  const url = new URL(request.url);
+  const loaded = await loadPublicFunnel(orgSlug, funnelSlug, { preview: "1" });
+  if (!loaded) return new Response("Not found", { status: 404 });
+  const name = esc(loaded.funnel.name);
+  if (url.searchParams.get("test") === "1") return page("Unsubscribe", `<h1>Unsubscribe</h1><p>This is the unsubscribe link from a test email. Real emails carry a personal link here.</p>`);
+  const optinId = url.searchParams.get("o") ?? "";
+  const token = url.searchParams.get("t") ?? "";
+  const secret = unsubscribeSecret();
+  if (!UUID.test(optinId) || !verifyUnsubscribeToken(optinId, token, secret)) return page("Link not valid", `<h1>This link is not valid</h1><p>It may have been cut off. Use the unsubscribe link in your latest email from ${name}.</p>`, 404);
+  if (request.method === "POST") {
+    await unsubscribeOptin(loaded.organizationId, loaded.funnel.id, optinId);
+    return page("Unsubscribed", `<h1>You're unsubscribed</h1><p>You will not get any more emails about ${name}.</p>`);
+  }
+  const optin = await tenantDb(loaded.organizationId).funnelOptin.findFirst({ where: { id: optinId, funnelId: loaded.funnel.id }, select: { unsubscribedAt: true } });
+  if (!optin) return page("Link not valid", `<h1>This link is not valid</h1>`, 404);
+  if (optin.unsubscribedAt) return page("Unsubscribed", `<h1>You're already unsubscribed</h1><p>You will not get any more emails about ${name}.</p>`);
+  return page(
+    "Unsubscribe",
+    `<h1>Unsubscribe from ${name}?</h1><p>You will stop getting invites and reminders for this event.</p><form method="post" action="${esc(url.pathname + url.search)}"><button type="submit">Unsubscribe</button></form>`,
+  );
 }

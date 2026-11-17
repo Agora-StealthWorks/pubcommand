@@ -1,25 +1,12 @@
-import sanitizeHtml from "sanitize-html";
+import { sanitizeRichText } from "@/components/rich-text-editor/sanitize";
 
 /**
  * Rich text written in the builder (footers, close message, day notes, posts).
  * Sanitized on save AND again on render, so an old row can never carry script.
+ * The rules are the shared rich-text editor's (`components/rich-text-editor/sanitize.ts`).
  */
-const OPTIONS: sanitizeHtml.IOptions = {
-  allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li", "h2", "h3", "h4", "blockquote", "hr", "img", "span", "small"],
-  allowedAttributes: { a: ["href", "target", "rel"], img: ["src", "alt", "width", "height"], span: ["style"] },
-  allowedStyles: { span: { color: [/^#[0-9a-f]{3,6}$/i], "font-weight": [/^(bold|[4-9]00)$/] } },
-  allowedSchemes: ["http", "https", "mailto", "tel"],
-  allowedSchemesByTag: { img: ["https"] },
-  transformTags: {
-    a: (tagName, attribs) => ({
-      tagName,
-      attribs: { ...attribs, rel: "noopener noreferrer", ...(attribs.target === "_blank" ? { target: "_blank" } : {}) },
-    }),
-  },
-};
-
 export function sanitizeRich(html: string | null | undefined, max = 100_000): string {
-  return sanitizeHtml(String(html ?? "").slice(0, max), OPTIONS).trim();
+  return sanitizeRichText(html, max);
 }
 
 /**
@@ -29,7 +16,7 @@ export function sanitizeRich(html: string | null | undefined, max = 100_000): st
 export function richFromInput(input: string | null | undefined, max = 100_000): string {
   const text = String(input ?? "").replace(/\r\n?/g, "\n").trim();
   if (!text) return "";
-  if (/<\/?(p|br|strong|b|em|i|u|s|a|ul|ol|li|h[1-6]|blockquote|div|span|img|hr|small)\b[^>]*>/i.test(text)) return sanitizeRich(text, max);
+  if (/<\/?(p|br|strong|b|em|i|u|s|a|ul|ol|li|h[1-6]|blockquote|div|span|img|hr|small|mark|iframe)\b[^>]*>/i.test(text)) return sanitizeRich(text, max);
   const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const linkify = (value: string) => value.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
   const html = text

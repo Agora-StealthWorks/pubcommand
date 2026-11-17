@@ -1,20 +1,18 @@
 "use server";
 
-import { can } from "@pubcommand/core";
 import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
-import { getOrgContext } from "@/lib/org";
-import { currentRequest } from "@/lib/request";
 import { isHttpUrl, isValidSlug, normalizeSlug } from "../../../../../modules/funnels/checks";
 import { designAssetIds, normalizeDesign, remapDesignAssets } from "../../../../../modules/funnels/design";
 import { NAV_KINDS, RESERVED_PAGE_SLUGS, TITLE_PLACEMENTS, moveItem } from "../../../../../modules/funnels/nav";
 import { teachFunnel } from "./brain";
 import { UUID_RE } from "./data";
 import { bool, optional, optionalInt, pickOne, storeImage, text, url } from "./form-input";
-import { funnelsAction, withMessage, type FunnelsCtx } from "./guard";
+import { funnelAction, funnelWriteCtx, withMessage, type FunnelsCtx } from "./guard";
 import { richFromInput, sanitizeRich } from "./sanitize";
 import { parseDesignDraft, parseHomeDraft } from "./site-data";
+import { ownSmsFormId } from "./sms-data";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -27,16 +25,13 @@ function audit(organizationId: string, actorId: string | null, action: string, t
 
 /**
  * Guard for actions the builder calls from the browser (JSON in, result out).
- * Same checks as `funnelsAction` (org, entitlement, funnels.write, brand, own
- * funnel) but it returns an error instead of redirecting.
+ * Same checks as `funnelAction` (org, entitlement, funnels.write or a delegate
+ * of this funnel, brand, own funnel) but it returns an error instead of redirecting.
  */
 async function writeAccess(funnelId: string) {
-  const request = await currentRequest();
-  if (request.site.kind !== "org") return { error: "Not found." } as const;
-  const ctx = await getOrgContext(request.site.slug);
-  if (ctx.kind !== "ok") return { error: "Sign in again." } as const;
-  if (!ctx.subject.entitledModuleIds.includes("funnels") || !can(ctx.subject, "funnels.read", ctx.scope) || !can(ctx.subject, "funnels.write", ctx.scope)) return { error: "You do not have permission to do that." } as const;
-  if (!ctx.brand || !UUID_RE.test(funnelId)) return { error: "That funnel no longer exists." } as const;
+  if (!UUID_RE.test(funnelId)) return { error: "That funnel no longer exists." } as const;
+  const ctx = await funnelWriteCtx(funnelId);
+  if (!ctx) return { error: "You do not have permission to do that." } as const;
   const funnel = await tenantDb(ctx.resolved.id).funnel.findFirst({ where: { id: funnelId, brandId: ctx.brand.id, deletedAt: null } });
   if (!funnel) return { error: "That funnel no longer exists." } as const;
   return { organizationId: ctx.resolved.id, actorId: ctx.auth.user.id, funnel } as const;
@@ -160,7 +155,7 @@ export async function uploadFunnelImage(formData: FormData): Promise<{ ok: true;
 export async function copyDesignFrom(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const back = `/funnels/${funnelId}?tab=design`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const db = tenantDb(ctx.resolved.id);
   const sourceId = text(formData, "sourceId", 40);
   const [target, source] = await Promise.all([
@@ -216,7 +211,7 @@ async function ownFunnel(ctx: FunnelsCtx, funnelId: string, back: string) {
 export async function addHost(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const back = `/funnels/${funnelId}?tab=hosts`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId, back);
   const db = tenantDb(ctx.resolved.id);
   const count = await db.funnelHost.count({ where: { funnelId: funnel.id } });
@@ -230,7 +225,7 @@ export async function saveHost(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const hostId = text(formData, "hostId", 40);
   const back = `/funnels/${funnelId}?tab=hosts&host=${hostId}`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId, back);
   const db = tenantDb(ctx.resolved.id);
   const host = UUID_RE.test(hostId) ? await db.funnelHost.findFirst({ where: { id: hostId, funnelId: funnel.id } }) : null;
@@ -261,7 +256,7 @@ async function renumberHosts(organizationId: string, funnelId: string, ids: stri
 export async function moveHost(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const back = `/funnels/${funnelId}?tab=hosts`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId, back);
   const rows = await tenantDb(ctx.resolved.id).funnelHost.findMany({ where: { funnelId: funnel.id }, orderBy: { position: "asc" }, select: { id: true } });
   const hostId = text(formData, "hostId", 40);
@@ -274,7 +269,7 @@ export async function moveHost(formData: FormData) {
 export async function deleteHost(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const back = `/funnels/${funnelId}?tab=hosts`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId, back);
   const hostId = text(formData, "hostId", 40);
   const db = tenantDb(ctx.resolved.id);
@@ -304,7 +299,7 @@ async function uniquePageSlug(organizationId: string, funnelId: string, wanted: 
 export async function addNavItem(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const back = `/funnels/${funnelId}?tab=pages`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId, back);
   const db = tenantDb(ctx.resolved.id);
   const kind = pickOne(formData, "kind", NAV_KINDS, "page");
@@ -331,7 +326,7 @@ export async function saveNavItem(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const itemId = text(formData, "itemId", 40);
   const back = `/funnels/${funnelId}?tab=pages&item=${itemId}`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId, back);
   const db = tenantDb(ctx.resolved.id);
   const item = UUID_RE.test(itemId) ? await db.funnelNavItem.findFirst({ where: { id: itemId, funnelId: funnel.id } }) : null;
@@ -349,9 +344,10 @@ export async function saveNavItem(formData: FormData) {
   if (item.kind === "page") {
     const wanted = normalizeSlug(text(formData, "slug", 80));
     if (!isValidSlug(wanted)) redirect(withMessage(back, "error", "The page link name must be lowercase letters, numbers and dashes."));
-    const optinMode = pickOne(formData, "optinMode", ["none", "email", "form"] as const, "none");
+    const optinMode = pickOne(formData, "optinMode", ["none", "email", "form", "sms"] as const, "none");
     const formSlug = text(formData, "optinFormSlug", 80);
     const form = optinMode === "form" && formSlug ? await db.form.findFirst({ where: { slug: formSlug, brandId: ctx.brand.id, deletedAt: null }, select: { slug: true } }) : null;
+    const smsFormId = optinMode === "sms" ? await ownSmsFormId(ctx.resolved.id, funnel.id, text(formData, "smsFormId", 40)) : null;
     Object.assign(data, {
       title: text(formData, "title", 160),
       slug: await uniquePageSlug(ctx.resolved.id, funnel.id, wanted, item.id),
@@ -360,8 +356,9 @@ export async function saveNavItem(formData: FormData) {
       bodyHtml: richFromInput(text(formData, "bodyHtml", 100_000)),
       // Raw HTML only ever renders inside a sandboxed iframe.
       html: String(formData.get("html") ?? "").slice(0, 100_000),
-      optinMode,
+      optinMode: optinMode === "sms" && !smsFormId ? "none" : optinMode,
       optinFormSlug: form?.slug ?? null,
+      smsFormId,
     });
   } else if (item.kind === "link") {
     const link = text(formData, "url", 1000);
@@ -387,7 +384,7 @@ export async function saveNavItem(formData: FormData) {
 export async function moveNavItem(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const back = `/funnels/${funnelId}?tab=pages`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId, back);
   const db = tenantDb(ctx.resolved.id);
   const rows = await db.funnelNavItem.findMany({ where: { funnelId: funnel.id }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }], select: { id: true } });
@@ -401,7 +398,7 @@ export async function moveNavItem(formData: FormData) {
 export async function deleteNavItem(formData: FormData) {
   const funnelId = text(formData, "funnelId", 40);
   const back = `/funnels/${funnelId}?tab=pages`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const ctx = await funnelAction(back, funnelId, "funnels.write");
   const funnel = await ownFunnel(ctx, funnelId, back);
   const itemId = text(formData, "itemId", 40);
   if (UUID_RE.test(itemId)) {

@@ -33,7 +33,7 @@ export default async function SubscribePage({ params, searchParams }: { params: 
       <section className="rounded-xl border border-black/10 bg-white p-5 sm:p-7">
         <h1 className="text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere]">Get {site.programName || site.name} by text</h1>
         {site.tagline ? <p className="mt-1 text-[#475467]">{site.tagline}</p> : null}
-        {intro ? <div className={`${RICH} mt-4 [overflow-wrap:anywhere]`} dangerouslySetInnerHTML={{ __html: intro }} /> : null}
+        {intro ? <div className={`${RICH} rte-content mt-4 [overflow-wrap:anywhere]`} dangerouslySetInnerHTML={{ __html: intro }} /> : null}
         {query.done === "1" ? (
           <div className="mt-6 rounded-lg border border-[#abefc6] bg-[#ecfdf3] p-4 text-[#067647]" role="status">
             <p className="font-bold">You're subscribed.</p>

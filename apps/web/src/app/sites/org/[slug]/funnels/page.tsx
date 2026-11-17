@@ -5,7 +5,8 @@ import { Denied, Flash, PageHeader } from "@/components/ui";
 import { TableScroll } from "@/components/table-scroll";
 import { createFunnel } from "@/features/funnels/actions";
 import { listFunnels, orgTimezone, statusBadge } from "@/features/funnels/data";
-import { funnelsAccess } from "@/features/funnels/guard";
+import { delegatedFunnelIds, funnelsAccess } from "@/features/funnels/guard";
+import { visibleFunnelIds } from "../../../../../../../../modules/funnels/delegates";
 import { formatZoned } from "../../../../../../../../modules/funnels/time";
 
 export default async function FunnelsPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
@@ -14,12 +15,15 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
   const access = await funnelsAccess(slug);
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
-  const { ctx, canWrite } = access;
-  const [funnels, timeZone] = await Promise.all([listFunnels(ctx.resolved.id, ctx.brand.id), orgTimezone(ctx.resolved.id)]);
+  const { ctx, canWrite, delegateOnly } = access;
+  const [all, timeZone, delegated] = await Promise.all([listFunnels(ctx.resolved.id, ctx.brand.id), orgTimezone(ctx.resolved.id), delegateOnly ? delegatedFunnelIds(ctx.resolved.id, ctx.effectiveUserId) : Promise.resolve([])]);
+  // A delegate without funnels.read sees only the funnels they were given.
+  const visible = new Set(visibleFunnelIds({ read: !delegateOnly, write: canWrite, publish: false }, all.map((funnel) => funnel.id), delegated));
+  const funnels = all.filter((funnel) => visible.has(funnel.id));
 
   return (
     <div>
-      <PageHeader title="Launch funnels" description={`Video-series launches and microsites for ${ctx.brand.name}: a waitlist with a countdown or a block-built home page, day-by-day videos, then a close or order page.`} />
+      <PageHeader title="Launch funnels" description={delegateOnly ? `The ${ctx.brand.name} funnels you were made a delegate of.` : `Video-series launches and microsites for ${ctx.brand.name}: a waitlist with a countdown or a block-built home page, day-by-day videos, then a close or order page.`} />
       <Flash error={query.error} notice={query.notice} />
       <div className="space-y-4">
         {canWrite ? (

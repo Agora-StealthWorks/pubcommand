@@ -1,6 +1,7 @@
-import { richToInput } from "@/features/miniblog/sanitize";
+import { clickTotals } from "@/features/miniblog/links";
+import { MiniBlogRichText } from "@/features/miniblog/rich-text";
 import { tenantDb } from "@pubcommand/db";
-import { Badge, Button, Input, Textarea } from "@pubcommand/ui";
+import { Badge, Button, Input } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
@@ -31,12 +32,13 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
   if (!site) notFound();
   const db = tenantDb(ctx.resolved.id);
   const tab = query.tab === "settings" || query.tab === "subscribers" ? query.tab : "posts";
-  const [timeZone, posts, optinCount, recentOptins, publications] = await Promise.all([
+  const [timeZone, posts, optinCount, recentOptins, publications, clicks] = await Promise.all([
     orgTimezone(ctx.resolved.id),
     db.textPost.findMany({ where: { siteId: site.id, deletedAt: null }, orderBy: { publishAt: "desc" }, take: 200 }),
     db.textOptin.count({ where: { siteId: site.id } }),
     tab === "subscribers" ? db.textOptin.findMany({ where: { siteId: site.id }, orderBy: { createdAt: "desc" }, take: 20, select: { id: true, phone: true, createdAt: true } }) : [],
     ctx.subject.entitledModuleIds.includes("editorial") ? db.calendarPublication.findMany({ where: { brandId: ctx.brand.id, active: true }, orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }) : [],
+    tab === "posts" ? clickTotals(ctx.resolved.id, site.id) : new Map<string, number>(),
   ]);
   const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug));
   const badge = statusBadge(site.status);
@@ -84,6 +86,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                     <th className="px-4 py-2.5">Post</th>
                     <th className="px-4 py-2.5">Status</th>
                     <th className="px-4 py-2.5">Publish time</th>
+                    <th className="px-4 py-2.5 text-right">Link clicks</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -104,12 +107,13 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                           <Badge tone={state.tone}>{state.label}</Badge>
                         </td>
                         <td className="px-4 py-3 text-muted">{formatZoned(post.publishAt, timeZone, { weekday: false })}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{clicks.get(post.id) ?? 0}</td>
                       </tr>
                     );
                   })}
                   {posts.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="px-4 py-8 text-center text-muted">
+                      <td colSpan={4} className="px-4 py-8 text-center text-muted">
                         No posts yet.
                       </td>
                     </tr>
@@ -138,8 +142,8 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                     <Input id="tagline" name="tagline" defaultValue={site.tagline} maxLength={200} placeholder="One line about what subscribers get" />
                   </Field>
                 </div>
-                <Field label="Subscribe page intro" htmlFor="introHtml" hint="Plain text or simple HTML (sanitized).">
-                  <Textarea id="introHtml" name="introHtml" defaultValue={richToInput(site.introHtml)} className="min-h-20" />
+                <Field label="Subscribe page intro" htmlFor="introHtml">
+                  <MiniBlogRichText siteId={site.id} id="introHtml" name="introHtml" defaultValue={site.introHtml} minHeight={120} disabled={!canWrite} />
                 </Field>
                 <Check name="archivesEnabled" label="Show the archive of older posts on the home page" defaultChecked={site.archivesEnabled} />
               </Section>

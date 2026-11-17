@@ -34,3 +34,17 @@ describe("Mini-Blog public routing on an org host", () => {
     expect(await rewriteOf("/blog")).toBe("/sites/org/acme/blog");
   });
 });
+
+describe("Mini-Blog tracked links and post images", () => {
+  it("routes /go/<id> and /asset/<id> to the public handlers", async () => {
+    const id = "11111111-2222-4333-8444-555555555555";
+    expect(await rewriteOf(`/b/alerts/go/${id}`)).toBe(`/sites/public/acme/b/alerts/go/${id}`);
+    expect(await rewriteOf(`/t/alerts/go/${id}`)).toBe(`/sites/public/acme/t/alerts/go/${id}`);
+    expect(await rewriteOf(`/b/alerts/asset/${id}`)).toBe(`/sites/public/acme/b/alerts/asset/${id}`);
+  });
+
+  it("routes the funnel SMS and unsubscribe endpoints to the public site", async () => {
+    expect(await rewriteOf("/l/launch/sms")).toBe("/sites/public/acme/l/launch/sms");
+    expect(await rewriteOf("/l/launch/unsubscribe")).toBe("/sites/public/acme/l/launch/unsubscribe");
+  });
+});

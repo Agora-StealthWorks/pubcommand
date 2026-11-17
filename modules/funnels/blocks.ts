@@ -20,7 +20,7 @@ export const BLOCK_INFO: Record<BlockType, { label: string; description: string 
   event: { label: "Event box", description: "Title, date, countdown and add-to-calendar" },
   countdown: { label: "Countdown", description: "Counts down to the start, the close or a set time" },
   agenda: { label: "Agenda", description: "The schedule, built from your modules: a list or thumbnail cards" },
-  optin: { label: "Opt-in", description: "A published form, or the simple email capture" },
+  optin: { label: "Opt-in", description: "A published form, the simple email capture, or an SMS opt-in form" },
   hosts: { label: "Meet your hosts", description: "The hosts from the Hosts tab" },
   button: { label: "Button", description: "A button to any web address, a module or a page" },
   image: { label: "Image", description: "One image, optionally linked" },
@@ -53,7 +53,8 @@ export type TextBlock = Base<"text"> & { html: string };
 export type EventBlock = Base<"event"> & { eyebrow: string; title: string; when: string; at: string; minutes: number; countdown: boolean; calendar: boolean };
 export type CountdownBlock = Base<"countdown"> & { heading: string; target: "start" | "end" | "custom"; at: string };
 export type AgendaBlock = Base<"agenda"> & { heading: string; layout: "list" | "cards"; linkModules: boolean };
-export type OptinBlock = Base<"optin"> & { heading: string; intro: string; mode: "email" | "form"; formSlug: string; buttonText: string };
+/** mode "sms": `smsFormId` is one of the funnel's SMS opt-in forms. */
+export type OptinBlock = Base<"optin"> & { heading: string; intro: string; mode: "email" | "form" | "sms"; formSlug: string; smsFormId: string; buttonText: string };
 export type HostsBlock = Base<"hosts"> & { heading: string; layout: "grid" | "stacked" };
 /** `target` = an http(s) URL, `module:<n>` or `page:<slug>`. */
 export type ButtonBlock = Base<"button"> & { label: string; target: string; newTab: boolean };
@@ -86,7 +87,7 @@ export const BLOCK_DEFAULTS = {
   event: { eyebrow: "The main event", title: "", when: "", at: "", minutes: 60, countdown: true, calendar: true },
   countdown: { heading: "", target: "start", at: "" },
   agenda: { heading: "Schedule", layout: "cards", linkModules: true },
-  optin: { heading: "Save your seat", intro: "", mode: "email", formSlug: "", buttonText: "Sign me up" },
+  optin: { heading: "Save your seat", intro: "", mode: "email", formSlug: "", smsFormId: "", buttonText: "Sign me up" },
   hosts: { heading: "Meet your hosts", layout: "grid" },
   button: { label: "Watch the first video", target: "module:1", newTab: false },
   image: { assetId: "", src: "", alt: "", href: "", newTab: false, widthPercent: 100 },
@@ -212,8 +213,9 @@ export function normalizeBlock(raw: unknown, options: NormalizeOptions = {}): Bl
         style,
         heading: line(input.heading, 200, d.optin.heading),
         intro: str(input.intro, 1000).trim(),
-        mode: oneOf(input.mode, ["email", "form"] as const, "email"),
+        mode: oneOf(input.mode, ["email", "form", "sms"] as const, "email"),
         formSlug: /^[a-z0-9-]{1,60}$/.test(String(input.formSlug ?? "")) ? String(input.formSlug) : "",
+        smsFormId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(input.smsFormId ?? "")) ? String(input.smsFormId).toLowerCase() : "",
         buttonText: line(input.buttonText, 40, d.optin.buttonText) || d.optin.buttonText,
       };
     case "hosts":
@@ -337,7 +339,7 @@ export function blockSummary(block: Block): string {
     case "agenda":
       return `${block.heading || "Agenda"} · ${block.layout === "cards" ? "cards" : "list"}`;
     case "optin":
-      return `${block.heading || "Opt-in"} · ${block.mode === "form" ? block.formSlug || "pick a form" : "email"}`;
+      return `${block.heading || "Opt-in"} · ${block.mode === "form" ? block.formSlug || "pick a form" : block.mode === "sms" ? "SMS" : "email"}`;
     case "hosts":
       return block.heading || "Hosts";
     case "button":

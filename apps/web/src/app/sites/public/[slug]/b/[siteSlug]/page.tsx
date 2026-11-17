@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { siteBranding } from "@/features/miniblog/data";
 import { loadPublicSite, publicBase, publicSiteMatches, recordSiteView } from "@/features/miniblog/public";
+import { trackedHrefs } from "@/features/miniblog/links";
 import { PostBody, SubscribeCard, BlogShell } from "@/features/miniblog/view";
 import { tenantDb } from "@pubcommand/db";
 import { excerpt, postState } from "../../../../../../../../../modules/miniblog/site";
@@ -33,13 +34,14 @@ export default async function MiniBlogHome({ params, searchParams }: { params: P
   });
   await recordSiteView(loaded, null);
   const [latest, ...older] = posts;
+  const hrefs = latest ? (await trackedHrefs(loaded.organizationId, [latest.id], base, loaded.preview)).get(latest.id) : undefined;
   return (
     <BlogShell site={site} branding={branding} base={base} preview={loaded.preview}>
       <div className="space-y-5">
         {latest ? (
           <>
             {loaded.preview && postState(latest, now) === "scheduled" ? <p className="text-xs font-semibold text-[#b54708]">Scheduled: visitors see this from its publish time.</p> : null}
-            <PostBody post={latest} branding={branding} timeZone={timeZone} />
+            <PostBody post={latest} branding={branding} timeZone={timeZone} hrefs={hrefs} />
           </>
         ) : (
           <div className="rounded-xl border border-black/10 bg-white p-6 text-center">

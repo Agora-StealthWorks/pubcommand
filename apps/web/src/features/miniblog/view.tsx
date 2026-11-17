@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { RichContentStyles } from "@/components/rich-text-editor/content-css";
+import { rewriteLinks } from "../../../../../modules/miniblog/links";
 import { complianceLines } from "../../../../../modules/miniblog/sms";
 import { formatZonedDate } from "../../../../../modules/miniblog/time";
 import type { Branding, PostRow, SiteRow } from "./data";
@@ -12,6 +14,7 @@ export const RICH =
 export function BlogShell({ site, branding, base, children, preview }: { site: SiteRow; branding: Branding; base: string; children: ReactNode; preview?: boolean }) {
   return (
     <div className="flex min-h-screen flex-col bg-[#f5f6f8] text-[#1f2937]">
+      <RichContentStyles />
       {preview ? <div className="bg-[#fef0c7] px-4 py-2 text-center text-xs font-semibold text-[#93370d]">Preview. This Mini-Blog is {site.status === "live" ? "live" : "not live yet"}; visitors cannot see drafts or scheduled posts.</div> : null}
       <header style={{ background: branding.headerBg, color: branding.headerText }}>
         <div className="mx-auto flex max-w-2xl items-center justify-center px-4 py-3.5">
@@ -61,13 +64,16 @@ export function SubscribeCard({ site, branding, base }: { site: SiteRow; brandin
   );
 }
 
-export function PostBody({ post, branding, timeZone }: { post: PostRow; branding: Branding; timeZone: string }) {
-  const html = sanitizeRich(post.bodyHtml);
+/** A post. `hrefs` (stored URL → tracked /go/ path) turns its links into counted links. */
+export function PostBody({ post, branding, timeZone, hrefs }: { post: PostRow; branding: Branding; timeZone: string; hrefs?: Map<string, string> }) {
+  const clean = sanitizeRich(post.bodyHtml);
+  const html = hrefs?.size ? rewriteLinks(clean, (url) => hrefs.get(url) ?? null) : clean;
+  const buttonHref = post.buttonUrl ? hrefs?.get(post.buttonUrl.trim()) ?? post.buttonUrl : null;
   return (
     <article className="rounded-xl border border-black/10 bg-white p-5 sm:p-7">
       <p className="text-xs font-semibold uppercase tracking-wider text-[#475467]">{formatZonedDate(post.publishAt, timeZone)}</p>
       <h1 className="mt-1 text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">{post.title}</h1>
-      {html ? <div className={`${RICH} mt-4 text-base leading-relaxed [overflow-wrap:anywhere]`} dangerouslySetInnerHTML={{ __html: html }} /> : null}
+      {html ? <div className={`${RICH} rte-content mt-4 text-base leading-relaxed [overflow-wrap:anywhere]`} dangerouslySetInnerHTML={{ __html: html }} /> : null}
       {post.actionToTake ? (
         <div className="mt-6 rounded-lg border-2 p-4" style={{ borderColor: branding.accentColor }}>
           <p className="text-xs font-bold uppercase tracking-wider" style={{ color: branding.accentColor }}>
@@ -76,9 +82,9 @@ export function PostBody({ post, branding, timeZone }: { post: PostRow; branding
           <p className="mt-1 whitespace-pre-line text-base font-semibold [overflow-wrap:anywhere]">{post.actionToTake}</p>
         </div>
       ) : null}
-      {post.buttonText && post.buttonUrl ? (
+      {post.buttonText && buttonHref ? (
         <div className="mt-6 text-center">
-          <a href={post.buttonUrl} rel="noopener" className="inline-flex min-h-12 max-w-full items-center justify-center rounded-lg px-6 text-base font-bold" style={{ background: branding.accentColor, color: branding.accentText }}>
+          <a href={buttonHref} rel="noopener" className="inline-flex min-h-12 max-w-full items-center justify-center rounded-lg px-6 text-base font-bold" style={{ background: branding.accentColor, color: branding.accentText }}>
             {post.buttonText}
           </a>
         </div>

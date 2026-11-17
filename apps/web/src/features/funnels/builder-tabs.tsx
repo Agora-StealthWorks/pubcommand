@@ -1,6 +1,7 @@
 import { Button, Input, Textarea } from "@pubcommand/ui";
 import { normalizeBlocks } from "../../../../../modules/funnels/blocks";
 import { safeColor } from "../../../../../modules/funnels/checks";
+import { DEADLINE_PAGES, DEADLINE_PAGE_LABELS, normalizeDeadlinePages } from "../../../../../modules/funnels/deadline";
 import { navSequence } from "../../../../../modules/funnels/nav";
 import { utcToZonedLocal } from "../../../../../modules/funnels/time";
 import { copyDesignFrom, addHost, addNavItem, deleteHost, deleteNavItem, moveHost, moveNavItem, saveHost, saveNavItem } from "./site-actions";
@@ -11,7 +12,6 @@ import { Check, ColorField, Field, Section } from "./fields";
 import { HomeBuilder } from "./home-builder";
 import { hostPhoto } from "./home-view";
 import { RichTextArea } from "./rich-text-area";
-import { richToInput } from "./sanitize";
 import { hasDraft as hasDraftValue, navItemThumb, parseDesignDraft, parseHomeDraft } from "./site-data";
 
 type Option = { value: string; label: string };
@@ -59,11 +59,10 @@ function MoveDelete({ funnel, idName, id, first, last, move, remove, removeLabel
 
 // ---------------------------------------------------------------------------
 
-export function HomeTab({ funnel, days, navItems, hosts, forms, timeZone, zone, canWrite }: { funnel: FunnelRow; days: DayRow[]; navItems: NavItemRow[]; hosts: HostRow[]; forms: { slug: string; title: string }[]; timeZone: string; zone: string; canWrite: boolean }) {
+export function HomeTab({ funnel, days, navItems, hosts, forms, smsForms = [], timeZone, zone, canWrite }: { funnel: FunnelRow; days: DayRow[]; navItems: NavItemRow[]; hosts: HostRow[]; forms: { slug: string; title: string }[]; smsForms?: { id: string; name: string }[]; timeZone: string; zone: string; canWrite: boolean }) {
   const hasDraft = hasDraftValue(funnel.homeBlocksDraft);
   const state = hasDraft ? parseHomeDraft(funnel.homeBlocksDraft, funnel) : { blocks: normalizeBlocks(funnel.homeBlocks), shell: funnel.homeShell, title: funnel.homeTitle };
-  // Show text blocks the way they were typed (plain paragraphs back to plain text).
-  const blocks = state.blocks.map((block) => (block.type === "text" ? { ...block, html: richToInput(block.html) } : block));
+  const blocks = state.blocks;
   return (
     <>
       {funnel.siteType !== "microsite" ? (
@@ -76,6 +75,7 @@ export function HomeTab({ funnel, days, navItems, hosts, forms, timeZone, zone, 
         zone={zone}
         initial={{ ...state, blocks }}
         forms={forms.map((form) => ({ value: form.slug, label: form.title }))}
+        smsForms={smsForms.map((form) => ({ value: form.id, label: form.name }))}
         modules={days.map((day) => ({ value: String(day.position), label: `${dayLabel(day)}${day.title ? `: ${day.title}` : ""}` }))}
         pages={navItems.filter((item) => item.kind === "page").map((item) => ({ value: item.slug, label: item.title || item.label || item.slug }))}
         hostCount={hosts.length}
@@ -135,7 +135,7 @@ export function HostsTab({ funnel, hosts, openId, canWrite }: { funnel: FunnelRo
                   </div>
                   {host.photoAssetId ? <Check name="removePhoto" label="Remove the uploaded photo" defaultChecked={false} /> : null}
                   <Field label="Bio" htmlFor={`hb-${host.id}`}>
-                    <RichTextArea funnelId={funnel.id} id={`hb-${host.id}`} name="bioHtml" defaultValue={richToInput(host.bioHtml)} rows={5} />
+                    <RichTextArea funnelId={funnel.id} id={`hb-${host.id}`} name="bioHtml" defaultValue={host.bioHtml} rows={5} />
                   </Field>
                   {canWrite ? <Button type="submit">Save host</Button> : null}
                 </fieldset>
@@ -161,7 +161,7 @@ export function HostsTab({ funnel, hosts, openId, canWrite }: { funnel: FunnelRo
 
 const KIND_LABEL = { page: "Custom page", link: "Link", placeholder: "Coming soon" } as const;
 
-export function PagesTab({ funnel, days, navItems, forms, openId, canWrite, publicUrl }: { funnel: FunnelRow; days: DayRow[]; navItems: NavItemRow[]; forms: { slug: string; title: string }[]; openId?: string; canWrite: boolean; publicUrl: string }) {
+export function PagesTab({ funnel, days, navItems, forms, smsForms = [], openId, canWrite, publicUrl }: { funnel: FunnelRow; days: DayRow[]; navItems: NavItemRow[]; forms: { slug: string; title: string }[]; smsForms?: { id: string; name: string }[]; openId?: string; canWrite: boolean; publicUrl: string }) {
   const order = navSequence(days, navItems);
   const places: Option[] = [{ value: "0", label: "Before the first module" }, ...days.map((day, index) => ({ value: String(index + 1), label: `After ${dayLabel(day)}` })), { value: "", label: "At the end" }];
   return (
@@ -250,7 +250,7 @@ export function PagesTab({ funnel, days, navItems, forms, openId, canWrite, publ
                         </select>
                       </Field>
                       <Field label="Rich text" htmlFor={id("body")} hint="Used when Content is rich text.">
-                        <RichTextArea funnelId={funnel.id} id={id("body")} name="bodyHtml" defaultValue={richToInput(item.bodyHtml)} rows={8} />
+                        <RichTextArea funnelId={funnel.id} id={id("body")} name="bodyHtml" defaultValue={item.bodyHtml} rows={8} />
                       </Field>
                       <Field label="Custom HTML" htmlFor={id("html")} hint="Used when Content is custom HTML. Scripts and forms run in a sandbox and cannot reach the page.">
                         <Textarea id={id("html")} name="html" defaultValue={item.html} className="min-h-32 font-mono text-[12.5px]" spellCheck={false} />
@@ -263,8 +263,23 @@ export function PagesTab({ funnel, days, navItems, forms, openId, canWrite, publ
                             <option value="form" disabled={!forms.length}>
                               A published form{forms.length ? "" : " (none yet)"}
                             </option>
+                            <option value="sms" disabled={!smsForms.length}>
+                              An SMS opt-in form{smsForms.length ? "" : " (add one on the SMS forms tab)"}
+                            </option>
                           </select>
                         </Field>
+                        {smsForms.length ? (
+                          <Field label="SMS form" htmlFor={id("sms")}>
+                            <select id={id("sms")} name="smsFormId" defaultValue={item.smsFormId ?? ""} className="pc-control w-full text-sm">
+                              <option value="">Pick an SMS form</option>
+                              {smsForms.map((form) => (
+                                <option key={form.id} value={form.id}>
+                                  {form.name}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                        ) : null}
                         {forms.length ? (
                           <Field label="Form" htmlFor={id("form")}>
                             <select id={id("form")} name="optinFormSlug" defaultValue={item.optinFormSlug ?? ""} className="pc-control w-full text-sm">
@@ -340,12 +355,14 @@ export function PagesTab({ funnel, days, navItems, forms, openId, canWrite, publ
 
 // ---------------------------------------------------------------------------
 
-export function DeadlineTab({ funnel, timeZone, zone, canWrite }: { funnel: FunnelRow; timeZone: string; zone: string; canWrite: boolean }) {
+export function DeadlineTab({ funnel, days, timeZone, zone, canWrite }: { funnel: FunnelRow; days: DayRow[]; timeZone: string; zone: string; canWrite: boolean }) {
+  const pages = normalizeDeadlinePages(funnel.deadlineBarPages);
+  const pageKinds = DEADLINE_PAGES.filter((page) => (funnel.siteType === "microsite" ? page !== "waitlist" : page !== "home"));
   return (
     <form action={saveFunnel} className="space-y-4">
       <Hidden funnel={funnel} section="deadline" />
       <fieldset disabled={!canWrite} className="space-y-4">
-        <Section title="Deadline bar" description="A countdown ribbon across every page (home, waitlist, modules and custom pages). It hides itself when the deadline passes.">
+        <Section title="Deadline bar" description="A countdown ribbon across the pages you pick. It hides itself when the deadline passes, and never shows on the close page.">
           <Check name="deadlineBarEnabled" label="Show the deadline bar" defaultChecked={funnel.deadlineBarEnabled} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Counts down to" htmlFor="deadlineBarTarget" hint="The close is per viewer on per-viewer evergreen funnels.">
@@ -372,6 +389,32 @@ export function DeadlineTab({ funnel, timeZone, zone, canWrite }: { funnel: Funn
             </Field>
           </div>
           <Check name="deadlineBarSticky" label="Sticky (stays on screen while scrolling)" defaultChecked={funnel.deadlineBarSticky} />
+          <Check name="deadlineBarDismiss" label="Visitors can close it" defaultChecked={funnel.deadlineBarDismiss} hint="Adds a × button. Closing it is remembered for the rest of the visit, until the deadline changes." />
+          <fieldset className="rounded-lg border border-line p-3">
+            <legend className="px-1 text-sm font-semibold">Show on</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {pageKinds.map((page) => (
+                <label key={page} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="deadlineBarPages" value={page} defaultChecked={pages.includes(page)} className="h-4 w-4 accent-accent" /> {DEADLINE_PAGE_LABELS[page]}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Button text" htmlFor="deadlineBarButtonText" hint="Optional. Empty = no button.">
+              <Input id="deadlineBarButtonText" name="deadlineBarButtonText" defaultValue={funnel.deadlineBarButtonText} maxLength={40} />
+            </Field>
+            <Field label="Button goes to" htmlFor="deadlineBarButtonUrl" hint="A web address, or a module.">
+              <Input id="deadlineBarButtonUrl" name="deadlineBarButtonUrl" defaultValue={funnel.deadlineBarButtonUrl} list="deadline-targets" placeholder="https:// or module:1" maxLength={500} />
+              <datalist id="deadline-targets">
+                {days.map((day) => (
+                  <option key={day.id} value={`module:${day.position}`}>
+                    {dayLabel(day)}
+                  </option>
+                ))}
+              </datalist>
+            </Field>
+          </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <ColorField name="deadlineBarBg" label="Background" value={safeColor(funnel.deadlineBarBg, "#b42318")} />
             <ColorField name="deadlineBarColor" label="Text" value={safeColor(funnel.deadlineBarColor, "#ffffff")} />
@@ -433,7 +476,7 @@ export function DesignTab({ funnel, days, navItems, themes, otherFunnels, canWri
     <DesignEditor
       funnelId={funnel.id}
       publicPath={`/l/${funnel.slug}`}
-      initial={{ ...initial, footerHtml: richToInput(initial.footerHtml) }}
+      initial={initial}
       themes={themes.map((theme) => ({ value: theme.id, label: theme.name }))}
       previewPaths={paths}
       canWrite={canWrite}

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { tenantDb } from "@pubcommand/db";
 import { siteBranding } from "@/features/miniblog/data";
 import { loadPublicSite, publicBase, publicSiteMatches, recordSiteView } from "@/features/miniblog/public";
+import { trackedHrefs } from "@/features/miniblog/links";
 import { PostBody, SubscribeCard, BlogShell } from "@/features/miniblog/view";
 
 type Params = Promise<{ slug: string; siteSlug: string; postSlug: string }>;
@@ -33,11 +34,12 @@ export default async function MiniBlogPostPage({ params, searchParams }: { param
   const base = await publicBase(siteSlug);
   const branding = siteBranding(loaded.site, loaded.brandName, base);
   await recordSiteView(loaded, post.id);
+  const hrefs = (await trackedHrefs(loaded.organizationId, [post.id], base, loaded.preview)).get(post.id);
   return (
     <BlogShell site={loaded.site} branding={branding} base={base} preview={loaded.preview}>
       <div className="space-y-5">
         {loaded.preview && post.status !== "published" ? <p className="text-xs font-semibold text-[#b54708]">Draft preview.</p> : null}
-        <PostBody post={post} branding={branding} timeZone={loaded.timeZone} />
+        <PostBody post={post} branding={branding} timeZone={loaded.timeZone} hrefs={hrefs} />
         <SubscribeCard site={loaded.site} branding={branding} base={base} />
         <p className="text-center text-sm">
           <a href={base || "/"} className="font-semibold underline">

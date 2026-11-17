@@ -14,8 +14,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const rows = await tenantDb(ctx.resolved.id).funnelOptin.findMany({ where: { funnelId: loaded.funnel.id }, orderBy: { createdAt: "asc" } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "funnels.optins.exported", targetType: "funnel", targetId: loaded.funnel.id, metadata: { rows: rows.length } });
   const csv = toCsv(
-    ["email", "opted_in_at_utc", "consent_text", "page_url"],
-    rows.map((row) => [row.email, row.createdAt, row.consentText, row.pageUrl ?? ""]),
+    ["email", "opted_in_at_utc", "consent_text", "page_url", "unsubscribed_at_utc"],
+    rows.map((row) => [row.email, row.createdAt, row.consentText, row.pageUrl ?? "", row.unsubscribedAt ?? ""]),
   );
   return new Response(csv, {
     headers: {

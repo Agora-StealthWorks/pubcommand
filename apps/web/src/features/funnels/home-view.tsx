@@ -15,6 +15,7 @@ import { HtmlFrame } from "./site-client";
 import { pageHref, type FunnelTheme } from "./site-data";
 import type { ViewerCookie } from "../../../../../modules/funnels/viewer";
 import { sanitizeRich } from "./sanitize";
+import { SmsSlot, smsFormFor } from "./sms-slot";
 
 /** Agenda entries: the modules with placeholders marked "list in the agenda" placed among them. */
 export function agendaEntries(days: DayRow[], navItems: NavItemRow[]): (DayRow | AgendaPlaceholder)[] {
@@ -70,7 +71,7 @@ type HomeContext = {
   base: string;
   /** Absolute origin for invite links. */
   origin: string;
-  query: { joined?: string; error?: string; block?: string };
+  query: { joined?: string; error?: string; block?: string; sms_done?: string; sms_form?: string; sms_error?: string };
   host: string;
 };
 
@@ -220,6 +221,17 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
       );
     }
     case "optin": {
+      if (block.mode === "sms") {
+        const sms = smsFormFor(ctx.loaded, block.smsFormId);
+        if (!sms) return null;
+        return (
+          <div id={`block-${block.id}`}>
+            <Heading text={block.heading} />
+            {block.intro ? <p className="mx-auto mb-4 max-w-xl whitespace-pre-line [overflow-wrap:anywhere]">{block.intro}</p> : null}
+            <SmsSlot loaded={ctx.loaded} form={sms} base={ctx.base} back={ctx.base || "/"} query={ctx.query} />
+          </div>
+        );
+      }
       const formReady = block.mode === "form" && block.formSlug;
       if (!formReady && block.mode === "form") return null;
       const back = ctx.base || "/";
