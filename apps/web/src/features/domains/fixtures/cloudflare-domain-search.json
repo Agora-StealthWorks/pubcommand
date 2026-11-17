@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "domains": [
+      { "name": "gazettedaily.com", "registrable": true, "pricing": { "currency": "USD", "registration_cost": "10.46", "renewal_cost": "10.46" } },
+      { "name": "gazettedaily.dev", "registrable": true, "pricing": { "currency": "USD", "registration_cost": "12.00", "renewal_cost": "12.00" } },
+      { "name": "gazette.com", "registrable": false }
+    ]
+  }
+}

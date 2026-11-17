@@ -1,0 +1,82 @@
+// Custom domains (Settings → Domains). An organization buys or brings a domain
+// and points it at one of its public pages. Pure rules live in
+// modules/settings/domains; server code in apps/web/src/features/domains.
+
+enum CustomDomainStatus {
+  PENDING_DNS
+  VERIFYING
+  ACTIVE
+  ERROR
+}
+
+enum CustomDomainProvider {
+  /// Bought in PubCommand through the Cloudflare Registrar; DNS is managed for you.
+  CLOUDFLARE_PURCHASED
+  /// Registered elsewhere; the owner adds the DNS records we show.
+  EXTERNAL
+}
+
+enum DomainPurchaseResult {
+  STARTED
+  /// The registrar accepted the order and is still working on it (HTTP 202).
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+model CustomDomain {
+  id               String               @id @default(uuid()) @db.Uuid
+  organizationId   String               @map("organization_id") @db.Uuid
+  brandId          String?              @map("brand_id") @db.Uuid
+  /// Lowercased ASCII hostname. Unique across the whole platform.
+  hostname         String               @unique
+  /// Public page on the org site, e.g. /f/my-form, /l/my-launch, /t/my-site.
+  targetPath       String               @map("target_path")
+  /// What the target was when chosen ("Form: Reader survey"), for the list.
+  targetLabel      String?              @map("target_label")
+  status           CustomDomainStatus   @default(PENDING_DNS)
+  provider         CustomDomainProvider @default(EXTERNAL)
+  /// Set on www.<apex> when it should redirect to the apex instead of serving.
+  redirectToHost   String?              @map("redirect_to_host")
+  railwayDomainId  String?              @map("railway_domain_id")
+  cloudflareZoneId String?              @map("cloudflare_zone_id")
+  /// DNS records to show (and on a Cloudflare zone, the ones we created).
+  dnsRecords       Json                 @default("[]") @map("dns_records")
+  lastCheckedAt    DateTime?            @map("last_checked_at")
+  error            String?
+  createdById      String?              @map("created_by_id") @db.Uuid
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  @@index([organizationId, createdAt])
+  @@map("custom_domains")
+}
+
+/// Every purchase attempt, successful or not. Domain purchases are non-refundable.
+model DomainPurchase {
+  id               String               @id @default(uuid()) @db.Uuid
+  organizationId   String               @map("organization_id") @db.Uuid
+  brandId          String?              @map("brand_id") @db.Uuid
+  domain           String
+  /// Per-year price quoted to the person and confirmed by them.
+  price            Decimal              @db.Decimal(12, 2)
+  currency         String
+  years            Int                  @default(1)
+  result           DomainPurchaseResult @default(STARTED)
+  /// Registry/registrar state as reported (e.g. "active", "pending").
+  registrarStatus  String?              @map("registrar_status")
+  /// For a 202 response: where to poll the registration workflow.
+  workflowUrl      String?              @map("workflow_url")
+  /// Reference from a payment step (Stripe later); null while the platform account pays.
+  paymentReference String?              @map("payment_reference")
+  sandbox          Boolean              @default(false)
+  error            String?
+  /// Raw registrar response (no secrets), for disputes and support.
+  response         Json?
+  actorId          String               @map("actor_id") @db.Uuid
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  @@index([organizationId, createdAt])
+  @@map("domain_purchases")
+}

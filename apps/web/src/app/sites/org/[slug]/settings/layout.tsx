@@ -11,6 +11,7 @@ const TABS = [
   { href: "/settings/roles", label: "Roles & access" },
   { href: "/settings/brands", label: "Brands" },
   { href: "/settings/modules", label: "Apps" },
+  { href: "/settings/domains", label: "Domains" },
   { href: "/settings/audit", label: "Activity" },
 ];
 

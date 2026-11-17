@@ -11,6 +11,7 @@ export const manifest = defineModule({
     { label: "Roles", href: "/settings/roles", permission: "settings.roles.manage" },
     { label: "Modules", href: "/settings/modules", permission: "settings.modules.manage" },
     { label: "Audit", href: "/settings/audit", permission: "settings.audit.read" },
+    { label: "Domains", href: "/settings/domains", permission: "domains.manage" },
   ],
   routes: [
     { path: "/settings", title: "Organization settings" },
@@ -18,6 +19,7 @@ export const manifest = defineModule({
     { path: "/settings/roles", title: "Roles" },
     { path: "/settings/modules", title: "Modules" },
     { path: "/settings/audit", title: "Audit log" },
+    { path: "/settings/domains", title: "Custom domains" },
   ],
   permissions: [
     { key: "settings.manage", description: "Update organization settings and the public slug" },
@@ -25,6 +27,10 @@ export const manifest = defineModule({
     { key: "settings.roles.manage", description: "Build roles and grant permissions" },
     { key: "settings.modules.manage", description: "Enable modules the plan includes" },
     { key: "settings.audit.read", description: "Read the organization audit log" },
+    {
+      key: "domains.manage",
+      description: "Buy domains (non-refundable charges), connect custom domains to public pages, and remove them",
+    },
   ],
   events: [{ name: "settings.slug.changed", description: "The organization slug changed" }],
   jobs: [],
