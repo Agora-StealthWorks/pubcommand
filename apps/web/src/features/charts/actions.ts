@@ -7,8 +7,9 @@ import { parseBulkRows } from "../../../../../modules/charts/bulk";
 import { SIZE_PRESETS, normalizeData, normalizeSpec, styleOf, TEMPLATE_CATEGORIES, type SizePreset } from "../../../../../modules/charts/spec";
 import { chartsAccess } from "./context";
 import { imageSize } from "./export";
-import { loadSeries, todayIso, type SeriesResult } from "./market";
+import { loadSeries, searchSymbols, todayIso, type SeriesResult } from "./market";
 import { listTemplates, runBulk, saveChart } from "./server";
+import { clampRateLimit, generateApiKey, normalizeScopes } from "../../../../../modules/charts/api-keys";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -199,4 +200,52 @@ export async function saveBatchToProjectForm(formData: FormData) {
   await db.chart.updateMany({ where: { batchId, brandId: access.scope.brandId, deletedAt: null }, data: { projectId: project.id } });
   await appendOrgAudit(access.scope.organizationId, { actorId: access.scope.actorId, action: "chart.bulk.saved_to_project", targetType: "chart_batch", targetId: batchId });
   redirect(`/charts/projects/${project.id}?notice=Bulk charts added to the project.`);
+}
+
+/** Ticker search for the editor (provider search, cached a day per query). */
+export async function searchTickersAction(query: string): Promise<Array<{ symbol: string; name: string; kind: string; exchange: string }>> {
+  const access = await chartsAccess();
+  if (!access.ok) return [];
+  const q = String(query ?? "").trim().slice(0, 40);
+  if (q.length < 1) return [];
+  return (await searchSymbols(q)).map((hit) => ({ symbol: hit.symbol, name: hit.name, kind: hit.kind, exchange: hit.exchange }));
+}
+
+export type ApiKeyState = { ok: true; key: string; name: string } | { ok: false; error: string } | null;
+
+/** Create a bot API key for the current brand. The key is returned once and only its hash is stored. */
+export async function createApiKeyAction(_previous: ApiKeyState, formData: FormData): Promise<ApiKeyState> {
+  const access = await chartsAccess();
+  if (!access.ok) return { ok: false, error: access.error };
+  if (!access.canManage) return { ok: false, error: "Only ChartBuilder admins (charts.write) can create API keys." };
+  const name = field(formData, "name", 80);
+  if (!name) return { ok: false, error: "Name the key, for example GrokBot." };
+  const scopes = normalizeScopes(formData.getAll("scopes"));
+  if (!scopes.length) return { ok: false, error: "Pick at least one scope." };
+  const generated = generateApiKey();
+  const row = await tenantDb(access.scope.organizationId).chartApiKey.create({
+    data: {
+      organizationId: access.scope.organizationId,
+      brandId: access.scope.brandId,
+      name,
+      prefix: generated.prefix,
+      keyHash: generated.hash,
+      scopes,
+      rateLimit: clampRateLimit(formData.get("rateLimit")),
+      createdById: access.scope.actorId,
+    },
+  });
+  await appendOrgAudit(access.scope.organizationId, { actorId: access.scope.actorId, action: "chart.api_key.created", targetType: "chart_api_key", targetId: row.id, metadata: { scopes, brandId: access.scope.brandId } });
+  return { ok: true, key: generated.key, name };
+}
+
+export async function revokeApiKeyForm(formData: FormData) {
+  const access = await chartsAccess();
+  if (!access.ok) redirect(`/charts/api?error=${encodeURIComponent(access.error)}`);
+  if (!access.canManage) redirect("/charts/api?error=Only ChartBuilder admins (charts.write) can revoke API keys.");
+  const id = field(formData, "keyId", 40);
+  if (!UUID.test(id)) redirect("/charts/api?error=That key no longer exists.");
+  const revoked = await tenantDb(access.scope.organizationId).chartApiKey.updateMany({ where: { id, brandId: access.scope.brandId, revokedAt: null }, data: { revokedAt: new Date(), revokedById: access.scope.actorId } });
+  if (revoked.count) await appendOrgAudit(access.scope.organizationId, { actorId: access.scope.actorId, action: "chart.api_key.revoked", targetType: "chart_api_key", targetId: id });
+  redirect("/charts/api?notice=Key revoked. Requests with it now get 401.");
 }

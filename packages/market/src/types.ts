@@ -59,3 +59,12 @@ export type FetchLike = (url: string, init?: { headers?: Record<string, string>;
   json(): Promise<unknown>;
   text(): Promise<string>;
 }>;
+
+/** One symbol-search result. `symbol` is what to type into a chart (crypto as BTC-USD). */
+export interface SymbolHit {
+  symbol: string;
+  name: string;
+  kind: "stock" | "etf" | "crypto" | "index" | "fred" | "other";
+  exchange: string;
+  source: string;
+}

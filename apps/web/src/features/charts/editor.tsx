@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import { barIndex, renderChart } from "../../../../../modules/charts/render";
 import {
   CHART_PERIODS,
+  COMPARE_COLORS,
+  MAX_COMPARE,
   SIZE_PRESETS,
   applyStyle,
   normalizeOverlay,
@@ -16,9 +18,11 @@ import {
 } from "../../../../../modules/charts/spec";
 import { TOKEN_HELP, isoDate, literalFigures, type ChartBar } from "../../../../../modules/charts/tokens";
 import type { SaveResult } from "./actions";
-import type { SeriesResult } from "./market";
+import type { CompareSeries, SeriesResult } from "./market";
 
-export type EditorSeries = { symbol: string; name: string; source: string; unit: "$" | ""; warnings: string[]; bars: ChartBar[] };
+export type EditorSeries = { symbol: string; name: string; source: string; unit: "$" | ""; warnings: string[]; bars: ChartBar[]; compare?: CompareSeries[] };
+
+export type TickerHit = { symbol: string; name: string; kind: string; exchange: string };
 
 export type EditorTemplate = { id: string; name: string; category: string; style: StyleSpec };
 
@@ -28,7 +32,20 @@ export type EditorActions = {
   createProject: (input: { name: string }) => Promise<{ ok: true; id: string; name: string } | { ok: false; error: string }>;
   saveTemplate: (input: { name: string; category: string; spec: unknown }) => Promise<{ ok: true; id: string } | { ok: false; error: string }>;
   uploadImage: (form: FormData) => Promise<{ ok: true; id: string; aspect: number } | { ok: false; error: string }>;
+  /** Optional so older callers (the viewport harness) keep working; without it the box is plain text. */
+  searchTickers?: (query: string) => Promise<TickerHit[]>;
 };
+
+const noSearch = async (): Promise<TickerHit[]> => [];
+
+const DOWNLOADS = [
+  { format: "png", label: "PNG" },
+  { format: "jpg", label: "JPG" },
+  { format: "svg", label: "SVG" },
+  { format: "svg&fonts=embed", label: "SVG + fonts" },
+  { format: "pdf", label: "PDF" },
+  { format: "ai", label: "AI" },
+] as const;
 
 type Props = {
   initialSpec: ChartSpec;
@@ -101,7 +118,7 @@ export function ChartEditor(props: Props) {
 
   const meta = useMemo(() => (series ? { ticker: series.symbol, name: series.name, source: series.source, unit: series.unit } : { ticker: spec.data.symbol, name: "", source: "", unit: "$" }), [series, spec.data.symbol]);
   const rendered = useMemo(
-    () => renderChart({ spec, bars: series?.bars ?? [], meta, imageHref: (id) => `/charts/assets/${id}`, idPrefix: "edit" }),
+    () => renderChart({ spec, bars: series?.bars ?? [], compare: series?.compare, meta, imageHref: (id) => `/charts/assets/${id}`, idPrefix: "edit" }),
     [spec, series, meta],
   );
   const headline = spec.overlays.find((overlay): overlay is HeadlineOverlay => overlay.type === "headline") ?? null;
@@ -206,8 +223,10 @@ export function ChartEditor(props: Props) {
         const bars = series?.bars ?? [];
         if (bars.length < 2) return;
         const px = fx * spec.size.w;
-        const { plot } = rendered.layout;
-        const index = Math.round(((px - plot.x) / plot.w) * (bars.length - 1));
+        const { layout } = rendered;
+        // Nearest bar by its drawn x (candles sit in slots, lines span the plot edge to edge).
+        let index = 0;
+        for (let i = 1; i < bars.length; i += 1) if (Math.abs(layout.x(i) - px) < Math.abs(layout.x(index) - px)) index = i;
         const bar = bars[Math.min(bars.length - 1, Math.max(0, index))];
         if (bar) overlay.at = index <= 0 ? "start" : index >= bars.length - 1 ? "end" : isoDate(bar.t);
       } else if ("x" in overlay && "x" in origin) {
@@ -251,7 +270,7 @@ export function ChartEditor(props: Props) {
       window.history.replaceState(null, "", url.toString());
       if (opts.thenDownload) {
         window.location.href = `/charts/c/${result.id}/export?format=${opts.thenDownload}`;
-        setNotice({ tone: "ok", text: `Saved. Downloading ${opts.thenDownload.toUpperCase()}…` });
+        setNotice({ tone: "ok", text: `Saved. Downloading ${DOWNLOADS.find((d) => d.format === opts.thenDownload)?.label ?? opts.thenDownload.toUpperCase()}…` });
       } else {
         setNotice({ tone: "ok", text: result.overridden ? "Saved. The headline override is recorded with the chart." : "Saved." });
       }
@@ -384,9 +403,9 @@ export function ChartEditor(props: Props) {
                   Save as copy
                 </Button>
               ) : null}
-              {(["png", "jpg", "svg", "pdf"] as const).map((format) => (
-                <Button key={format} type="button" variant="secondary" onClick={() => save({ thenDownload: format })} disabled={saving || !series}>
-                  {format.toUpperCase()}
+              {DOWNLOADS.map((item) => (
+                <Button key={item.format} type="button" variant="secondary" onClick={() => save({ thenDownload: item.format })} disabled={saving || !series}>
+                  {item.label}
                 </Button>
               ))}
               <Button type="button" variant="ghost" onClick={saveAsTemplate}>
@@ -394,7 +413,9 @@ export function ChartEditor(props: Props) {
               </Button>
             </div>
             {notice ? <p className={`mt-2 text-sm ${notice.tone === "ok" ? "text-[#067647]" : "text-[#912018]"}`}>{notice.text}</p> : null}
-            <p className="mt-2 text-xs text-muted">Downloads save the chart first, with the exact bars drawn, so every figure can be traced.</p>
+            <p className="mt-2 text-xs text-muted">
+              Downloads save the chart first, with the exact bars drawn, so every figure can be traced. PDF and AI are vector (live text, Illustrator opens the AI file); “SVG + fonts” carries its own Inter.
+            </p>
           </div>
         </div>
       </section>
@@ -410,15 +431,25 @@ export function ChartEditor(props: Props) {
               setData({ symbol: symbolDraft.trim() || "AAPL" });
             }}
           >
-            <div className="min-w-0 flex-1">
+            <div className="relative min-w-0 flex-1">
               <Label htmlFor="chart-symbol">Ticker</Label>
-              <Input id="chart-symbol" value={symbolDraft} maxLength={60} onChange={(event) => setSymbolDraft(event.target.value)} placeholder="AMD, CPER/GLD, FRED:PCOPPUSDM or CSV" autoCapitalize="characters" />
+              <TickerInput
+                id="chart-symbol"
+                value={symbolDraft}
+                onChange={setSymbolDraft}
+                onPick={(symbol) => {
+                  setSymbolDraft(symbol);
+                  setData({ symbol });
+                }}
+                search={props.actions.searchTickers ?? noSearch}
+                placeholder="AMD, BTC-USD, CPER/GLD, FRED:DGS10 or CSV"
+              />
             </div>
             <Button type="submit" className="self-end" disabled={loading}>
               Chart
             </Button>
           </form>
-          <p className="mt-1 text-xs text-muted">A ticker, a ratio like CPER/GLD, a FRED series like FRED:DGS10, or CSV to paste your own data.</p>
+          <p className="mt-1 text-xs text-muted">A ticker or company name to search, crypto like BTC-USD, a ratio like CPER/GLD, a FRED series like FRED:DGS10, or CSV to paste your own data.</p>
 
           {isCsv ? (
             <div className="mt-3">
@@ -492,6 +523,20 @@ export function ChartEditor(props: Props) {
               </select>
             </div>
           </div>
+          {spec.data.interval === "hour" || spec.data.interval === "5min" ? (
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={spec.data.extended} onChange={(event) => setData({ extended: event.target.checked })} />
+              Include pre-market and after-hours (shaded)
+            </label>
+          ) : null}
+          <CompareEditor
+            lines={spec.data.compare}
+            mode={spec.data.compareMode}
+            loaded={series?.compare ?? []}
+            search={props.actions.searchTickers ?? noSearch}
+            onChange={(compare, reload) => setData({ compare }, reload)}
+            onMode={(compareMode) => setData({ compareMode }, false)}
+          />
           {series ? (
             <p className="mt-2 text-xs text-muted">
               {series.bars.length.toLocaleString("en-US")} bars from {series.source}
@@ -555,8 +600,19 @@ export function ChartEditor(props: Props) {
                 <option value="area">Area</option>
                 <option value="line">Line</option>
                 <option value="candle">Candles</option>
+                <option value="ohlc">OHLC bars</option>
               </select>
             </div>
+            <div className="col-span-2">
+              <Label htmlFor="chart-perf">Up/down colors</Label>
+              <select id="chart-perf" className="pc-control w-full" value={spec.perfColors} onChange={(event) => update((draft) => void (draft.perfColors = event.target.value as ChartSpec["perfColors"]))}>
+                <option value="off">Off: the template&apos;s line color</option>
+                <option value="overall">Whole line by the total move</option>
+                <option value="segments">Each step up or down</option>
+              </select>
+            </div>
+            <ColorField label="Up" value={spec.theme.candle.up} onChange={(color) => update((draft) => void (draft.theme.candle.up = color))} />
+            <ColorField label="Down" value={spec.theme.candle.down} onChange={(color) => update((draft) => void (draft.theme.candle.down = color))} />
             <ColorField label="Line" value={spec.theme.line.color} onChange={(color) => update((draft) => void ((draft.theme.line.color = color), (draft.theme.area.color = color)))} />
             <ColorField label="Background" value={spec.theme.background} onChange={(color) => update((draft) => void ((draft.theme.background = color), (draft.theme.background2 = null)))} />
           </div>
@@ -777,6 +833,160 @@ function Inspector({ overlay, bars, onChange }: { overlay: Overlay; bars: ChartB
             <input type="range" min={10} max={100} value={Math.round(overlay.opacity * 100)} onChange={(event) => set("opacity", Number(event.target.value) / 100)} className="w-full" />
           </label>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Ticker box with provider search (debounced; results cached server-side a day per query). */
+function TickerInput({ id, value, onChange, onPick, search, placeholder }: { id: string; value: string; onChange: (value: string) => void; onPick: (symbol: string) => void; search: (q: string) => Promise<TickerHit[]>; placeholder: string }) {
+  const [hits, setHits] = useState<TickerHit[]>([]);
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef("");
+
+  function query(text: string) {
+    onChange(text);
+    if (timer.current) clearTimeout(timer.current);
+    const q = text.trim();
+    latest.current = q;
+    if (q.length < 2 || /[/:]/.test(q) || /^csv$/i.test(q)) {
+      setHits([]);
+      return;
+    }
+    timer.current = setTimeout(async () => {
+      const results = await search(q).catch(() => []);
+      if (latest.current === q) {
+        setHits(results);
+        setOpen(true);
+      }
+    }, 250);
+  }
+
+  return (
+    <>
+      <Input
+        id={id}
+        value={value}
+        maxLength={60}
+        onChange={(event) => query(event.target.value)}
+        onFocus={() => hits.length && setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder}
+        autoCapitalize="characters"
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={open && hits.length > 0}
+        aria-controls={`${id}-results`}
+      />
+      {open && hits.length ? (
+        <ul id={`${id}-results`} role="listbox" className="absolute left-0 right-0 z-20 mt-1 max-h-72 overflow-auto rounded-md border border-line bg-white shadow-lg">
+          {hits.map((hit) => (
+            <li key={hit.symbol}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-sm hover:bg-canvas"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setOpen(false);
+                  onPick(hit.symbol);
+                }}
+              >
+                <span className="font-mono text-xs font-semibold">{hit.symbol}</span>
+                <span className="min-w-0 flex-1 truncate text-muted">{hit.name}</span>
+                <span className="rounded bg-canvas px-1.5 py-0.5 text-[10px] uppercase text-muted">{hit.kind}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
+  );
+}
+
+/** Up to MAX_COMPARE more lines. Every line is drawn rebased; each line's gain comes from its own closes. */
+function CompareEditor({
+  lines,
+  mode,
+  loaded,
+  search,
+  onChange,
+  onMode,
+}: {
+  lines: ChartSpec["data"]["compare"];
+  mode: ChartSpec["data"]["compareMode"];
+  loaded: CompareSeries[];
+  search: (q: string) => Promise<TickerHit[]>;
+  onChange: (lines: ChartSpec["data"]["compare"], reload: boolean) => void;
+  onMode: (mode: ChartSpec["data"]["compareMode"]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const add = (symbol: string) => {
+    const clean = symbol.trim();
+    if (!clean || lines.length >= MAX_COMPARE || lines.some((line) => line.symbol.toUpperCase() === clean.toUpperCase())) return;
+    onChange([...lines, { symbol: clean, label: "", color: COMPARE_COLORS[lines.length % COMPARE_COLORS.length] as string }], true);
+    setDraft("");
+  };
+  return (
+    <div className="mt-3 rounded-md border border-line p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-ink">Compare</span>
+        {lines.length ? (
+          <select aria-label="Compare as" className="pc-control" value={mode} onChange={(event) => onMode(event.target.value as ChartSpec["data"]["compareMode"])}>
+            <option value="pct">% change</option>
+            <option value="rebase">Rebased to 100</option>
+          </select>
+        ) : null}
+      </div>
+      {lines.length ? (
+        <ul className="mt-2 space-y-2">
+          {lines.map((line, index) => {
+            const got = loaded.find((item) => item.symbol.toUpperCase() === line.symbol.toUpperCase() || item.label === line.label);
+            return (
+              <li key={line.symbol} className="flex min-w-0 flex-wrap items-center gap-2">
+                <input
+                  type="color"
+                  aria-label={`${line.symbol} color`}
+                  value={toHex(line.color)}
+                  onChange={(event) => onChange(lines.map((item, i) => (i === index ? { ...item, color: event.target.value } : item)), false)}
+                  className="h-9 w-11 rounded border border-line bg-white p-0.5"
+                />
+                <span className="w-20 truncate font-mono text-xs font-semibold">{line.symbol}</span>
+                <Input
+                  aria-label={`${line.symbol} label`}
+                  className="min-w-0 flex-1"
+                  value={line.label}
+                  maxLength={60}
+                  placeholder={got?.name || "Label"}
+                  onChange={(event) => onChange(lines.map((item, i) => (i === index ? { ...item, label: event.target.value } : item)), false)}
+                />
+                <button type="button" className="text-xs font-semibold text-[#b42318]" onClick={() => onChange(lines.filter((_item, i) => i !== index), true)}>
+                  Remove
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="mt-1 text-xs text-muted">Add up to {MAX_COMPARE} tickers (SPY, QQQ, BTC-USD) to draw them against this one.</p>
+      )}
+      {lines.length < MAX_COMPARE ? (
+        <form
+          className="relative mt-2 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            add(draft);
+          }}
+        >
+          <div className="relative min-w-0 flex-1">
+            <TickerInput id="compare-symbol" value={draft} onChange={setDraft} onPick={add} search={search} placeholder="Add a ticker" />
+          </div>
+          <Button type="submit" variant="secondary">
+            Add
+          </Button>
+        </form>
       ) : null}
     </div>
   );

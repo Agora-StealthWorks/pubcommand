@@ -64,6 +64,12 @@ model Chart {
   headline           String        @default("")
   headlineOverridden Boolean       @default(false) @map("headline_overridden")
   createdVia         String        @default("ui") @map("created_via")
+  /// Compare lines exactly as drawn: [{ symbol, label, color, name, source, bars: [[t,o,h,l,c], ...] }].
+  compareBars        Json?         @map("compare_bars")
+  /// Unguessable token for /api/v1/charts/files/<token>.<ext> links (the token is the credential).
+  fileToken          String?       @unique @map("file_token")
+  /// The bot API key that made the chart, when createdVia = "api".
+  apiKeyId           String?       @map("api_key_id") @db.Uuid
   createdById        String?       @map("created_by_id") @db.Uuid
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
@@ -127,4 +133,45 @@ model MarketCache {
 
   @@index([expiresAt])
   @@map("market_cache")
+}
+
+/// A bot API key for one brand. Only the SHA-256 of the key is stored; the key is shown once.
+model ChartApiKey {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  brandId        String         @map("brand_id") @db.Uuid
+  name           String
+  /// First characters of the key, for recognising it in the list.
+  prefix         String
+  keyHash        String         @unique @map("key_hash")
+  scopes         String[]
+  /// Requests allowed per rolling minute.
+  rateLimit      Int            @default(60) @map("rate_limit")
+  createdById    String?        @map("created_by_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+  lastUsedAt     DateTime?      @map("last_used_at")
+  revokedAt      DateTime?      @map("revoked_at")
+  revokedById    String?        @map("revoked_by_id") @db.Uuid
+  calls          ChartApiCall[]
+
+  @@index([organizationId, brandId, revokedAt])
+  @@map("chart_api_keys")
+}
+
+/// One bot API request: the audit trail and the rate-limit window.
+model ChartApiCall {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  keyId          String      @map("key_id") @db.Uuid
+  method         String
+  path           String
+  status         Int
+  chartId        String?     @map("chart_id") @db.Uuid
+  durationMs     Int         @default(0) @map("duration_ms")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  key            ChartApiKey @relation(fields: [keyId], references: [id], onDelete: Cascade)
+
+  @@index([keyId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("chart_api_calls")
 }

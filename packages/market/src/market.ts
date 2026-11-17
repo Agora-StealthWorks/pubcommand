@@ -1,10 +1,11 @@
+import { CRYPTO_NAMES, cryptoCoin, cryptoName } from "./crypto";
 import { addDays, isIsoDate, isoDate } from "./dates";
 import { fredSeries } from "./fred";
 import { defaultFetch } from "./http";
 import { createMassive, massiveEarliest } from "./massive";
 import { ratioBars, resample } from "./resample";
 import { createTiingo } from "./tiingo";
-import { MarketError, type Adjust, type Bar, type FetchLike, type Interval, type IntradayInterval, type MarketCache, type Quote, type Series } from "./types";
+import { MarketError, type Adjust, type Bar, type FetchLike, type Interval, type IntradayInterval, type MarketCache, type Quote, type Series, type SymbolHit } from "./types";
 
 /** Index symbols the Massive plan cannot serve → the ETF that tracks each one. */
 export const INDEX_ALIASES: Record<string, { ticker: string; name: string }> = {
@@ -41,15 +42,72 @@ export interface DailyOptions {
   interval?: Interval;
 }
 
-export type SymbolKind = "fred" | "ratio" | "ticker";
+export type SymbolKind = "fred" | "ratio" | "ticker" | "crypto";
 
-/** What kind of symbol this is. Exposed so UIs can explain routing. */
+/** What kind of symbol this is. Exposed so UIs can explain routing. Crypto parts are the coin code (BTC). */
 export function classifySymbol(raw: string): { kind: SymbolKind; parts: string[] } {
   const symbol = raw.trim();
   if (/^FRED:/i.test(symbol)) return { kind: "fred", parts: [symbol.slice(5).trim()] };
   const parts = symbol.split("/").map((part) => part.trim()).filter(Boolean);
   if (parts.length === 2) return { kind: "ratio", parts };
+  const coin = cryptoCoin(symbol);
+  if (coin) return { kind: "crypto", parts: [coin] };
   return { kind: "ticker", parts: [symbol.toUpperCase()] };
+}
+
+export const SEARCH_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** The cache key for a symbol search: case and spacing never cause a second provider call. */
+export function searchKey(query: string): string {
+  return `search:v1:${query.trim().toLowerCase().replace(/\s+/g, " ")}`;
+}
+
+/** Matches we can answer without a provider: index aliases and well-known coins. */
+export function localSymbolHits(query: string): SymbolHit[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const hits: SymbolHit[] = [];
+  for (const [coin, name] of Object.entries(CRYPTO_NAMES)) {
+    if (coin.toLowerCase().startsWith(q) || name.toLowerCase().startsWith(q) || `${coin}-usd`.toLowerCase().startsWith(q)) {
+      hits.push({ symbol: `${coin}-USD`, name, kind: "crypto", exchange: "", source: "Built in" });
+    }
+  }
+  const seen = new Set<string>();
+  for (const [alias, hit] of Object.entries(INDEX_ALIASES)) {
+    if (seen.has(hit.name) || /[\^:&]/.test(alias)) continue;
+    if (alias.toLowerCase().startsWith(q) || hit.name.toLowerCase().includes(q)) {
+      seen.add(hit.name);
+      hits.push({ symbol: hit.ticker, name: `${hit.name} (via ${hit.ticker})`, kind: "etf", exchange: "", source: "Built in" });
+    }
+  }
+  return hits;
+}
+
+/** Merge provider and local hits: exact symbol first, then prefix matches, no duplicates. */
+export function rankSymbolHits(query: string, lists: SymbolHit[][], limit = 12): SymbolHit[] {
+  const q = query.trim().toUpperCase();
+  const seen = new Set<string>();
+  const all: SymbolHit[] = [];
+  for (const list of lists) {
+    for (const hit of list) {
+      const key = hit.symbol.toUpperCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(hit);
+    }
+  }
+  const score = (hit: SymbolHit) => {
+    const symbol = hit.symbol.toUpperCase();
+    if (symbol === q || symbol === `${q}-USD`) return 0;
+    if (symbol.startsWith(q)) return 1;
+    if (hit.name.toUpperCase().startsWith(q)) return 2;
+    return 3;
+  };
+  return all
+    .map((hit, index) => ({ hit, index }))
+    .sort((a, b) => score(a.hit) - score(b.hit) || a.index - b.index)
+    .slice(0, limit)
+    .map((entry) => entry.hit);
 }
 
 /** Which provider is tried first for a ticker. Pure, so it is unit tested. */
@@ -178,8 +236,36 @@ export function createMarket(options: MarketOptions = {}) {
     };
   }
 
+  async function cryptoDaily(coin: string, from: string, to: string): Promise<Series> {
+    if (!massive && !tiingo) throw new MarketError("unconfigured", "Market data is not connected. Set MASSIVE_API_KEY or TIINGO_API_KEY.");
+    const warnings: string[] = [];
+    const errors: MarketError[] = [];
+    // Tiingo first: deeper crypto history. Massive's X: pairs are the fallback, inside its window.
+    for (const provider of [tiingo ? "tiingo" : null, massive ? "massive" : null] as const) {
+      try {
+        if (provider === "tiingo" && tiingo) {
+          const bars = await cached(`tiingo:crypto:${coin}:${from}:${to}`, ttlFor(to), () => tiingo.crypto(coin, from, to));
+          if (bars.length >= 2) return { symbol: `${coin}-USD`, resolved: `${coin}USD`, name: cryptoName(coin), bars, source: "Tiingo", unit: "$", adjust: "split", warnings };
+          errors.push(new MarketError("not_found", `Tiingo has no ${coin}-USD prices in that range.`));
+        }
+        if (provider === "massive" && massive) {
+          const start = from < massiveEarliest(today()) ? massiveEarliest(today()) : from;
+          if (start !== from) warnings.push(`Massive only reaches back to ${start}; the chart starts there.`);
+          const bars = await cached(`massive:day:X:${coin}USD:${start}:${to}`, ttlFor(to), () => massive.daily(`X:${coin}USD`, start, to));
+          if (bars.length >= 2) return { symbol: `${coin}-USD`, resolved: `X:${coin}USD`, name: cryptoName(coin), bars, source: "Massive", unit: "$", adjust: "split", warnings };
+          errors.push(new MarketError("not_found", `Massive has no ${coin}-USD prices in that range.`));
+        }
+      } catch (error) {
+        errors.push(error instanceof MarketError ? error : new MarketError("unavailable", String(error)));
+      }
+    }
+    const best = errors.find((error) => error.code === "not_found") ?? errors[0];
+    throw new MarketError(best?.code ?? "not_found", errors.map((error) => error.message).join(" ") || `No prices for ${coin}-USD.`);
+  }
+
   async function one(symbol: string, from: string, to: string, adjust: Adjust): Promise<Series> {
     const route = classifySymbol(symbol);
+    if (route.kind === "crypto") return cryptoDaily(route.parts[0] as string, from, to);
     if (route.kind === "fred") {
       const id = route.parts[0] as string;
       const bars = await cached(`fred:${id}:${from}:${to}`, ttlFor(to), () => fredSeries(fetcher, id, from, to));
@@ -222,13 +308,21 @@ export function createMarket(options: MarketOptions = {}) {
     async intradayBars(symbol: string, from: string, to: string, opts: { interval: IntradayInterval; extended?: boolean }): Promise<Series> {
       checkRange(from, to);
       const route = classifySymbol(symbol);
-      if (route.kind !== "ticker") throw new MarketError("bad_request", "Intraday charts work for single tickers only.");
+      if (route.kind !== "ticker" && route.kind !== "crypto") throw new MarketError("bad_request", "Intraday charts work for single tickers only.");
       const days = (Date.parse(to) - Date.parse(from)) / 86_400_000;
       const max = opts.interval === "hour" ? HOURLY_MAX_DAYS : FIVE_MIN_MAX_DAYS;
       if (days > max) throw new MarketError("bad_request", opts.interval === "hour" ? "Hourly charts go up to 1 year." : "5-minute charts go up to 1 month.");
       if (!massive) throw new MarketError("unconfigured", "Intraday charts need MASSIVE_API_KEY.");
-      const symbolUpper = route.parts[0] as string;
       const warnings: string[] = [];
+      if (route.kind === "crypto") {
+        const coin = route.parts[0] as string;
+        const pair = `X:${coin}USD`;
+        const bars = await cached(`massive:${opts.interval}:${pair}:${from}:${to}:all`, 15 * 60 * 1000, () => massive.intraday(pair, from, to, opts.interval, true, true));
+        if (bars.length < 2) throw new MarketError("not_found", `No ${opts.interval} data for ${coin}-USD in that range.`);
+        warnings.push(`${opts.interval === "hour" ? "Hourly" : "5-minute"} bars, around the clock (crypto trades 24/7).`);
+        return { symbol: `${coin}-USD`, resolved: pair, name: cryptoName(coin), bars, source: "Massive", unit: "$", adjust: "split", warnings };
+      }
+      const symbolUpper = route.parts[0] as string;
       const { ticker, name: aliasName } = alias(symbolUpper, warnings);
       const extended = !!opts.extended;
       const bars = await cached(`massive:${opts.interval}:${ticker}:${from}:${to}:${extended ? "x" : "r"}`, 15 * 60 * 1000, () =>
@@ -262,6 +356,31 @@ export function createMarket(options: MarketOptions = {}) {
         }
       }
       throw new MarketError("unavailable", errors.join(" ") || `No price for ${ticker}.`);
+    },
+
+    /**
+     * Symbol search across the connected providers, cached for a day per query. Provider failures are
+     * soft: the built-in index and crypto matches still come back.
+     */
+    async searchSymbols(query: string, limit = 12): Promise<SymbolHit[]> {
+      const q = query.trim().slice(0, 40);
+      if (!q) return [];
+      const local = localSymbolHits(q);
+      if (/^FRED:/i.test(q)) return [{ symbol: q.toUpperCase(), name: "FRED series", kind: "fred", exchange: "", source: "FRED" }];
+      if (!massive && !tiingo) return rankSymbolHits(q, [local], limit);
+      let remote: SymbolHit[] = [];
+      try {
+        remote = await cached(searchKey(q), SEARCH_TTL_MS, async () => {
+          const settled = await Promise.allSettled([massive?.search(q), tiingo?.search(q)].filter((p): p is Promise<SymbolHit[]> => !!p));
+          const lists = settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+          // Every provider failed: answer from the built-ins and do not cache the outage.
+          if (!lists.length) throw new MarketError("unavailable", "Symbol search is unavailable.");
+          return rankSymbolHits(q, lists, 30);
+        });
+      } catch {
+        remote = [];
+      }
+      return rankSymbolHits(q, [local, remote], limit);
     },
 
     configured: { massive: !!massive, tiingo: !!tiingo, fred: true },

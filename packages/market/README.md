@@ -12,6 +12,8 @@ const ratio = await market.dailyBars("CPER/GLD", from, to);                     
 const macro = await market.dailyBars("FRED:PCOPPUSDM", from, to);                   // FRED, no key
 const hourly = await market.intradayBars("NVDA", from, to, { interval: "hour" });
 const last = await market.quote("MSFT");
+const btc = await market.dailyBars("BTC-USD", from, to);                          // crypto (Tiingo, then Massive X:BTCUSD)
+const hits = await market.searchSymbols("nvidia");                                // symbol search, cached a day per query
 ```
 
 ## Routing
@@ -20,6 +22,9 @@ const last = await market.quote("MSFT");
 - Index symbols (`SPX`, `NDX`, `DJI`, `RUT`, ...) chart their ETF (`SPY`, `QQQ`, `DIA`, `IWM`) with a warning.
 - Tickers: **Massive** first when the range fits its ~10-year window; **Tiingo** when the range is older, when
   dividends are requested (`adjust: "total"`), or when Massive fails.
+- Crypto (`BTC-USD`, `X:BTCUSD`, `BTCUSD` for known coins): Tiingo crypto first, Massive `X:` pairs second.
+  Intraday crypto keeps every bar (24/7).
+- `intradayBars(..., { extended: true })` adds pre-market and after-hours (4:00-20:00 New York).
 - No Yahoo.
 - CSV paste/upload: `parseBarsCsv(text)`.
 

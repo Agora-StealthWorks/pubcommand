@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["mammoth", "@resvg/resvg-js"],
+  // ChartBuilder exports: pdfkit reads its font data from disk and subset-font loads a wasm file, so neither can be bundled.
+  serverExternalPackages: ["mammoth", "@resvg/resvg-js", "pdfkit", "svg-to-pdfkit", "subset-font"],
   experimental: {
     // Promo PDFs and Word files are often 10-50 MB.
     serverActions: { bodySizeLimit: "60mb" },

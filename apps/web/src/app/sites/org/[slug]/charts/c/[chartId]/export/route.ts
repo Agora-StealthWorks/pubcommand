@@ -6,12 +6,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const { slug, chartId } = await params;
   const access = await chartsAccess(slug);
   if (!access.ok) return new Response("Not found", { status: 404 });
-  const format = parseFormat(new URL(request.url).searchParams.get("format") ?? "png");
+  const query = new URL(request.url).searchParams;
+  const format = parseFormat(query.get("format") ?? "png");
   if (!format) return new Response("Unknown format", { status: 400 });
   if (!/^[0-9a-f-]{36}$/i.test(chartId)) return new Response("Not found", { status: 404 });
   const row = await tenantDb(access.scope.organizationId).chart.findFirst({ where: { id: chartId, brandId: access.scope.brandId, deletedAt: null } });
   if (!row) return new Response("Not found", { status: 404 });
-  const [file] = await renderStored(access.scope.organizationId, [row], format);
+  const [file] = await renderStored(access.scope.organizationId, [row], format, { scale: Number(query.get("scale") ?? 1) || 1, embedFonts: query.get("fonts") === "embed" });
   if (!file) return new Response("Not found", { status: 404 });
   if (format === "thumb") {
     return new Response(new Uint8Array(file.body), { headers: { "content-type": file.mime, "cache-control": "private, max-age=60" } });

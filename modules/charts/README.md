@@ -3,7 +3,7 @@
 Route: `/charts` on the organization host. Simple, good-looking stock charts for promos, social and
 publications (not a trading tool). Pick a ticker, period and timeframe, a Promo or Publication template and
 a size; add a headline, text, callouts, arrows, dots and images and drag them into place; download PNG,
-JPG, SVG or PDF.
+JPG, SVG (optionally with embedded subset fonts), vector PDF or AI (Illustrator-compatible PDF).
 
 ## Rules
 1. **One renderer.** `render.ts` turns `(ChartSpec, bars)` into SVG and is pure. The editor preview,
@@ -24,6 +24,24 @@ JPG, SVG or PDF.
 6. Starter templates are seeded **create-only** by slug on first visit; the team owns them afterwards.
    Deletes of charts and projects are soft.
 
+## Chart features
+- **Chart types:** area, line, candlesticks, OHLC bars (`chartType`). Candles and OHLC sit in equal slots.
+- **Compare lines** (`data.compare`, up to 4, `compare.ts`): each line aligned to the main dates (last close carried
+  forward), drawn rebased to 100 or as % change from its own first value, with a legend. Each line's gain comes
+  from its own closes (`{gain2}`...`{gain5}`, `{name2}`...); compare bars are stored with the chart (`compare_bars`).
+- **Crypto:** `BTC-USD`, `X:BTCUSD` (Tiingo crypto first, Massive `X:` pairs as fallback; intraday is 24/7).
+- **Extended hours:** `data.extended` on hourly/5-minute charts adds 4:00-20:00 New York and shades it.
+- **Performance colors:** `perfColors` = `overall` (whole line by the total move) or `segments` (each step), in
+  the theme's up/down colors.
+- **Ticker search:** provider symbol search (Massive + Tiingo) plus built-in index and coin names, cached a day.
+
+## Bot API (`/api/v1/charts` on the org host)
+Keys are made and revoked at `/charts/api` (charts.write), one brand each, shown once and stored as SHA-256
+(`api-keys.ts`). Scopes: `charts.render`, `charts.bulk`, `charts.templates`, `charts.search`. Every call is
+logged in `chart_api_calls` (audit + rolling per-minute rate limit). `bot.ts` turns a short request into a spec.
+Files are served at `/api/v1/charts/files/<token>.<png|jpg|svg|pdf|ai>` by a 144-bit token, without a key.
+The in-app page `/charts/api` is the reference.
+
 ## Permissions
 `charts.read` (seeded for editors) makes, saves, exports and organizes charts. `charts.write` also deletes
 locked starter templates and anyone's projects.
@@ -33,7 +51,8 @@ locked starter templates and anyone's projects.
 - `/charts/projects`, `/charts/projects/<id>` (ZIP of all charts)
 - `/charts/bulk`, `/charts/bulk/<batchId>` (up to 100 rows, 4 at a time, ZIP, save to project)
 - `/charts/templates`
-- `/charts/c/<id>/export?format=png|jpg|svg|pdf`
+- `/charts/c/<id>/export?format=png|jpg|svg|pdf|ai` (`&scale=1-4`, SVG `&fonts=embed`)
+- `/charts/api` bot API keys, call log and reference
 
 ## Env
 `MASSIVE_API_KEY` (optional `MASSIVE_BASE_URL`), `TIINGO_API_KEY`. FRED needs no key. Without keys the

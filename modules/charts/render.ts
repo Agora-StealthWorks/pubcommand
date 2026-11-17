@@ -3,9 +3,10 @@
  * thumbnails and every export (SVG, PNG, JPG, PDF) call it, so what you see is what you download.
  * Text is measured from the bundled Inter metrics (font-metrics.ts), never from a browser canvas.
  */
+import { compareLines, compareTick, rebaseBars, type CompareInput, type CompareLineDrawn } from "./compare";
 import { METRIC_CHARS, METRIC_WIDTHS } from "./font-metrics";
-import type { ArrowOverlay, CalloutOverlay, ChartSpec, DotOverlay, FontWeight, HeadlineOverlay, ImageOverlay, TextOverlay, TextStyle } from "./spec";
-import { computeStats, displayText, fmtPrice, tokenValues, type ChartBar, type SeriesStats } from "./tokens";
+import type { ArrowOverlay, CalloutOverlay, ChartInterval, ChartSpec, DotOverlay, FontWeight, HeadlineOverlay, ImageOverlay, TextOverlay, TextStyle } from "./spec";
+import { computeStats, displayText, fmtPct, fmtPrice, tokenValues, type ChartBar, type SeriesStats } from "./tokens";
 
 export const FONT_STACK = "Inter, Arial, Helvetica, sans-serif";
 
@@ -167,31 +168,72 @@ function textLines(text: string, style: TextStyle): string[] {
   return shown.split(/\r?\n/).slice(0, 8);
 }
 
-function headerHeights(spec: ChartSpec, k: number, title: string, subtitle: string) {
+function headerHeights(spec: ChartSpec, k: number, title: string, subtitle: string, legend = false) {
   const titleSize = spec.theme.title.size * k;
   const subtitleSize = spec.theme.subtitle.size * k;
+  const legendSize = spec.theme.axis.size * k;
   let height = 0;
   if (title) height += titleSize * 1.1;
   if (subtitle) height += subtitleSize * 1.35;
-  return { titleSize, subtitleSize, height };
+  const legendTop = height;
+  if (legend) height += legendSize * 1.9;
+  return { titleSize, subtitleSize, legendSize, legendTop, height };
 }
 
-export function chartLayout(spec: ChartSpec, bars: readonly ChartBar[], meta: ChartMeta, texts?: { title: string; subtitle: string; footer: boolean }): ChartLayout {
+/** True when an intraday bar is outside the regular New York session (pre-market or after-hours). */
+export function isExtendedBar(t: number, interval: ChartInterval): boolean {
+  const [hour = 0, minute = 0] = ET_HM.format(t).split(":").map(Number);
+  const minutes = hour * 60 + minute;
+  // Hourly bars stamped 9:00 carry the 9:30 open, so 9:00-15:00 are the regular hours.
+  if (interval === "hour") return hour < 9 || hour > 15;
+  return minutes < 9 * 60 + 30 || minutes >= 16 * 60;
+}
+
+const ET_HM = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hourCycle: "h23" });
+
+/** Runs of consecutive extended-hours bars, as [firstIndex, lastIndex]. */
+export function extendedRuns(bars: readonly ChartBar[], interval: ChartInterval): Array<[number, number]> {
+  const runs: Array<[number, number]> = [];
+  let start = -1;
+  bars.forEach((bar, index) => {
+    const out = isExtendedBar(bar.t, interval);
+    if (out && start < 0) start = index;
+    if (!out && start >= 0) {
+      runs.push([start, index - 1]);
+      start = -1;
+    }
+  });
+  if (start >= 0) runs.push([start, bars.length - 1]);
+  return runs;
+}
+
+export type LayoutOptions = {
+  /** More values the y axis must fit (compare lines). */
+  extraValues?: readonly number[];
+  /** Tick label override (compare mode's % axis). */
+  tickLabel?: (value: number, step: number) => string;
+  /** Reserve a legend row under the subtitle. */
+  legend?: boolean;
+};
+
+export function chartLayout(spec: ChartSpec, bars: readonly ChartBar[], meta: ChartMeta, texts?: { title: string; subtitle: string; footer: boolean }, options: LayoutOptions = {}): ChartLayout {
   const W = spec.size.w;
   const H = spec.size.h;
   const k = scaleFactor(spec);
   const t = spec.theme;
   const pad = t.padding * Math.min(W, H);
   const axisSize = t.axis.size * k;
-  const header = headerHeights(spec, k, texts?.title ?? spec.title, texts?.subtitle ?? spec.subtitle);
+  const header = headerHeights(spec, k, texts?.title ?? spec.title, texts?.subtitle ?? spec.subtitle, options.legend);
   const footerH = (texts?.footer ?? true) ? t.footer.size * k * 1.6 : 0;
-  const values = bars.flatMap((bar) => (spec.chartType === "candle" ? [bar.h, bar.l] : [bar.c]));
+  const ranged = (spec.chartType === "candle" || spec.chartType === "ohlc") && !options.extraValues;
+  const values = [...bars.flatMap((bar) => (ranged ? [bar.h, bar.l] : [bar.c])), ...(options.extraValues ?? [])];
   let min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
   if (t.startAtZero && min > 0) min = 0;
   const span = max - min || Math.abs(max) || 1;
   const scale = niceTicks(t.startAtZero && min === 0 ? 0 : min - span * 0.03, max + span * 0.03, 5);
-  const labelW = t.axisSide === "none" ? 0 : Math.max(...scale.ticks.map((tick) => measureText(formatTick(tick, scale.step, meta.unit), t.axis.weight, axisSize))) + axisSize * 0.7;
+  const label = options.tickLabel ?? ((value: number, step: number) => formatTick(value, step, meta.unit));
+  const labelW = t.axisSide === "none" ? 0 : Math.max(...scale.ticks.map((tick) => measureText(label(tick, scale.step), t.axis.weight, axisSize))) + axisSize * 0.7;
   const inset = t.plot ? axisSize * 0.9 : 0;
   const top = pad + header.height + axisSize * 1.1 + inset;
   const bottom = H - pad - footerH - axisSize * 1.6 - inset;
@@ -210,7 +252,8 @@ export function chartLayout(spec: ChartSpec, bars: readonly ChartBar[], meta: Ch
     yMax,
     ticks: scale.ticks,
     step: scale.step,
-    x: (index) => plot.x + (n <= 1 ? plot.w / 2 : (index / (n - 1)) * plot.w),
+    // Candles and OHLC bars sit in equal slots so the first and last bodies stay inside the plot.
+    x: (index) => (ranged ? plot.x + (plot.w / Math.max(1, n)) * (index + 0.5) : plot.x + (n <= 1 ? plot.w / 2 : (index / (n - 1)) * plot.w)),
     y: (value) => plot.y + plot.h - ((value - yMin) / (yMax - yMin || 1)) * plot.h,
   };
 }
@@ -225,9 +268,39 @@ export type RenderInput = {
   imageHref?: (assetId: string) => string | null;
   /** Prefix for gradient ids, so several charts can share one HTML page. */
   idPrefix?: string;
+  /** Bars for spec.data.compare, in the same order. Without them the chart draws the main line alone. */
+  compare?: readonly CompareInput[];
 };
 
-export type RenderResult = { svg: string; stats: SeriesStats | null; tokens: Record<string, string>; layout: ChartLayout };
+export type RenderResult = { svg: string; stats: SeriesStats | null; tokens: Record<string, string>; layout: ChartLayout; compare: CompareLineDrawn[] };
+
+/** {gain2}, {name2}, {ticker2}, {end2} ... for compare lines 1-4 (numbered from 2; the main line is 1). */
+export function compareTokens(lines: readonly CompareLineDrawn[], pctDecimals: number): Record<string, string> {
+  const out: Record<string, string> = {};
+  lines.forEach((line, index) => {
+    const n = index + 2;
+    out[`ticker${n}`] = line.symbol;
+    out[`name${n}`] = line.label;
+    if (line.stats) {
+      out[`gain${n}`] = fmtPct(line.stats.gainPct, pctDecimals);
+      out[`start${n}`] = fmtPrice(line.stats.first);
+      out[`end${n}`] = fmtPrice(line.stats.last);
+    }
+  });
+  return out;
+}
+
+/** Group bar-to-bar steps into runs of the same direction: [fromIndex, toIndex, up]. */
+export function directionRuns(values: readonly number[]): Array<[number, number, boolean]> {
+  const runs: Array<[number, number, boolean]> = [];
+  for (let i = 1; i < values.length; i += 1) {
+    const up = (values[i] as number) >= (values[i - 1] as number);
+    const last = runs[runs.length - 1];
+    if (last && last[2] === up && last[1] === i - 1) last[1] = i;
+    else runs.push([i - 1, i, up]);
+  }
+  return runs;
+}
 
 function textAttrs(style: TextStyle, size: number): string {
   return `font-family="${FONT_STACK}" font-size="${r(size)}" font-weight="${style.weight}" fill="${style.color}"`;
@@ -265,7 +338,15 @@ export function renderChart(input: RenderInput): RenderResult {
   const { spec, bars, meta } = input;
   const id = (name: string) => `${input.idPrefix ?? "c"}-${name}`;
   const stats = computeStats(bars);
-  const tokens = tokenValues(stats, { ticker: meta.ticker, name: meta.name, source: meta.source, unit: meta.unit, pctDecimals: spec.pctDecimals });
+  const comparing = spec.data.compare.length > 0 && (input.compare?.length ?? 0) > 0 && bars.length >= 2;
+  const mode = spec.data.compareMode;
+  const lines = comparing ? compareLines(bars, input.compare ?? [], mode) : [];
+  // Compare mode draws rebased values; every figure still comes from the raw closes (stats, tokens).
+  const drawn = comparing ? rebaseBars(bars, mode) : bars;
+  const tokens = {
+    ...tokenValues(stats, { ticker: meta.ticker, name: meta.name, source: meta.source, unit: meta.unit, pctDecimals: spec.pctDecimals }),
+    ...compareTokens(lines, spec.pctDecimals),
+  };
   const show = (text: string) => displayText(text, tokens, stats?.gainPct, spec.lossWord);
   const t = spec.theme;
   const W = spec.size.w;
@@ -274,7 +355,10 @@ export function renderChart(input: RenderInput): RenderResult {
   const subtitle = show(spec.subtitle).trim();
   const footerLeft = show(spec.footerLeft || "Source: {source}").trim();
   const footerRight = show(spec.footerRight).trim();
-  const layout = chartLayout(spec, bars, meta, { title, subtitle, footer: Boolean(footerLeft || footerRight) });
+  const tickLabel = comparing ? (value: number, step: number) => compareTick(value, step, mode) : (value: number, step: number) => formatTick(value, step, meta.unit);
+  const layout = chartLayout(spec, drawn, meta, { title, subtitle, footer: Boolean(footerLeft || footerRight) }, comparing
+    ? { extraValues: lines.flatMap((line) => line.values.filter((value): value is number => value != null)), tickLabel, legend: true }
+    : {});
   const { k, plot } = layout;
   const pad = t.padding * Math.min(W, H);
   const axisSize = t.axis.size * k;
@@ -290,7 +374,7 @@ export function renderChart(input: RenderInput): RenderResult {
   }
 
   // Header
-  const header = headerHeights(spec, k, title, subtitle);
+  const header = headerHeights(spec, k, title, subtitle, comparing);
   let cursor = pad;
   const accentW = t.titleAccent ? header.titleSize * 0.14 : 0;
   const textX = pad + (accentW ? accentW + header.titleSize * 0.3 : 0);
@@ -306,6 +390,26 @@ export function renderChart(input: RenderInput): RenderResult {
     const line = t.subtitle.uppercase ? subtitle.toUpperCase() : subtitle;
     const size = fitSize(line, t.subtitle, header.subtitleSize, maxTitleW);
     parts.push(`<text x="${r(textX)}" y="${r(cursor + size * 1.0)}" ${textAttrs(t.subtitle, size)}>${xml(line)}</text>`);
+  }
+
+  // Legend (compare mode): a swatch, the name and the line's own total change.
+  if (comparing) {
+    const size = header.legendSize;
+    const y = pad + header.legendTop + size * 1.25;
+    const entries = [
+      { label: meta.name || meta.ticker, color: lineColorFor(spec, stats), gain: stats ? fmtPct(stats.gainPct, spec.pctDecimals) : "" },
+      ...lines.map((line) => ({ label: line.label, color: line.color, gain: line.stats ? fmtPct(line.stats.gainPct, spec.pctDecimals) : "" })),
+    ];
+    let x = textX;
+    for (const entry of entries) {
+      const text = entry.gain ? `${entry.label} ${entry.gain.startsWith("-") ? "" : "+"}${entry.gain}` : entry.label;
+      const swatch = size * 1.1;
+      const width = swatch + size * 0.4 + measureText(text, 700, size);
+      if (x + width > W - pad && x > textX) break;
+      parts.push(`<rect x="${r(x)}" y="${r(y - size * 0.45)}" width="${r(swatch)}" height="${r(Math.max(2, size * 0.22))}" rx="${r(size * 0.1)}" fill="${entry.color}"/>`);
+      parts.push(`<text x="${r(x + swatch + size * 0.4)}" y="${r(y)}" font-family="${FONT_STACK}" font-size="${r(size)}" font-weight="700" fill="${t.axis.color}">${xml(text)}</text>`);
+      x += width + size * 1.2;
+    }
   }
 
   // Plot card
@@ -324,7 +428,7 @@ export function renderChart(input: RenderInput): RenderResult {
         parts.push(`<line x1="${r(plot.x)}" y1="${r(y)}" x2="${r(plot.x + plot.w)}" y2="${r(y)}" stroke="${t.grid.color}" stroke-width="${r(gridW)}"${t.grid.dashed ? ` stroke-dasharray="${r(gridW * 4)} ${r(gridW * 4)}"` : ""}/>`);
       }
       if (t.axisSide !== "none") {
-        const label = formatTick(tick, layout.step, meta.unit);
+        const label = tickLabel(tick, layout.step);
         const x = t.axisSide === "right" ? plot.x + plot.w + axisSize * 0.5 : plot.x - axisSize * 0.5;
         parts.push(`<text x="${r(x)}" y="${r(y + axisSize * 0.36)}" text-anchor="${t.axisSide === "right" ? "start" : "end"}" ${textAttrs(t.axis, axisSize)}>${xml(label)}</text>`);
       }
@@ -340,26 +444,22 @@ export function renderChart(input: RenderInput): RenderResult {
       parts.push(`<text x="${r(x)}" y="${r(dateY)}" text-anchor="middle" ${textAttrs(t.axis, axisSize)}>${xml(tick.label)}</text>`);
     }
 
-    // Series
-    const lineW = Math.max(0.5, t.line.width * k);
-    if (spec.chartType === "candle") {
-      const bodyW = Math.max(1, (plot.w / bars.length) * 0.62);
-      bars.forEach((bar, index) => {
-        const x = layout.x(index);
-        const color = bar.c >= bar.o ? t.candle.up : t.candle.down;
-        const yTop = layout.y(Math.max(bar.o, bar.c));
-        const yBottom = layout.y(Math.min(bar.o, bar.c));
-        parts.push(`<line x1="${r(x)}" y1="${r(layout.y(bar.h))}" x2="${r(x)}" y2="${r(layout.y(bar.l))}" stroke="${color}" stroke-width="${r(Math.max(1, bodyW / 6))}"/>`);
-        parts.push(`<rect x="${r(x - bodyW / 2)}" y="${r(yTop)}" width="${r(bodyW)}" height="${r(Math.max(1, yBottom - yTop))}" fill="${color}"/>`);
-      });
-    } else {
-      const points = bars.map((bar, index) => `${r(layout.x(index))} ${r(layout.y(bar.c))}`);
-      const path = `M${points.join("L")}`;
-      if (spec.chartType === "area") {
-        defs.push(`<linearGradient id="${id("area")}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t.area.color}" stop-opacity="${t.area.opacity}"/><stop offset="1" stop-color="${t.area.color}" stop-opacity="0"/></linearGradient>`);
-        parts.push(`<path d="${path}L${r(layout.x(bars.length - 1))} ${r(plot.y + plot.h)}L${r(plot.x)} ${r(plot.y + plot.h)}Z" fill="url(#${id("area")})"/>`);
+    // Extended hours: shade pre-market and after-hours bars behind the series.
+    const intraday = spec.data.interval === "hour" || spec.data.interval === "5min";
+    if (intraday && spec.data.extended) {
+      const half = bars.length > 1 ? Math.abs(layout.x(1) - layout.x(0)) / 2 : 0;
+      for (const [from, to] of extendedRuns(bars, spec.data.interval)) {
+        const x1 = Math.max(plot.x, layout.x(from) - half);
+        const x2 = Math.min(plot.x + plot.w, layout.x(to) + half);
+        parts.push(`<rect data-extended="1" x="${r(x1)}" y="${r(plot.y)}" width="${r(Math.max(1, x2 - x1))}" height="${r(plot.h)}" fill="${t.grid.color}" fill-opacity="0.55"/>`);
       }
-      parts.push(`<path d="${path}" fill="none" stroke="${t.line.color}" stroke-width="${r(lineW)}" stroke-linejoin="round" stroke-linecap="round"/>`);
+    }
+
+    // Series
+    parts.push(seriesSvg(spec, drawn, layout, k, stats, comparing, id, defs));
+    for (const line of lines) {
+      const path = linePath(line.values, layout);
+      if (path) parts.push(`<path data-compare="${xml(line.symbol)}" d="${path}" fill="none" stroke="${line.color}" stroke-width="${r(Math.max(0.5, t.line.width * k * 0.8))}" stroke-linejoin="round" stroke-linecap="round"/>`);
     }
   } else {
     parts.push(`<text x="${r(plot.x + plot.w / 2)}" y="${r(plot.y + plot.h / 2)}" text-anchor="middle" ${textAttrs(t.axis, axisSize * 1.4)}>No data to chart yet</text>`);
@@ -375,7 +475,8 @@ export function renderChart(input: RenderInput): RenderResult {
     const index = barIndex(bars, at);
     if (index < 0) return null;
     const bar = bars[index] as ChartBar;
-    return { x: layout.x(index), y: layout.y(spec.chartType === "candle" ? bar.c : bar.c) };
+    const shown = drawn[index] ?? bar;
+    return { x: layout.x(index), y: layout.y(shown.c) };
   };
   for (const overlay of spec.overlays) {
     const open = `<g data-overlay-id="${xml(overlay.id)}" data-overlay-type="${overlay.type}">`;
@@ -391,7 +492,76 @@ export function renderChart(input: RenderInput): RenderResult {
     (defs.length ? `<defs>${defs.join("")}</defs>` : "") +
     parts.join("") +
     `</svg>`;
-  return { svg, stats, tokens, layout };
+  return { svg, stats, tokens, layout, compare: lines };
+}
+
+/** The main line's color: the theme's, or up/down when performance coloring is on for the whole move. */
+export function lineColorFor(spec: ChartSpec, stats: SeriesStats | null): string {
+  if (spec.perfColors === "overall" && stats) return stats.gainPct >= 0 ? spec.theme.candle.up : spec.theme.candle.down;
+  return spec.theme.line.color;
+}
+
+/** "M x y L x y ..." through the non-null values; a gap (null) starts a new subpath. */
+function linePath(values: ReadonlyArray<number | null>, layout: ChartLayout): string {
+  let d = "";
+  let pen = false;
+  values.forEach((value, index) => {
+    if (value == null) {
+      pen = false;
+      return;
+    }
+    d += `${pen ? "L" : "M"}${r(layout.x(index))} ${r(layout.y(value))}`;
+    pen = true;
+  });
+  return d;
+}
+
+/** The main series: area/line (with performance coloring), candlesticks or OHLC bars. */
+function seriesSvg(spec: ChartSpec, bars: readonly ChartBar[], layout: ChartLayout, k: number, stats: SeriesStats | null, comparing: boolean, id: (name: string) => string, defs: string[]): string {
+  const t = spec.theme;
+  const plot = layout.plot;
+  const out: string[] = [];
+  const lineW = Math.max(0.5, t.line.width * k);
+  const type = comparing && (spec.chartType === "candle" || spec.chartType === "ohlc") ? "line" : spec.chartType;
+  if (type === "candle" || type === "ohlc") {
+    const slot = plot.w / bars.length;
+    const bodyW = Math.max(1, slot * 0.62);
+    bars.forEach((bar, index) => {
+      const x = layout.x(index);
+      const color = bar.c >= bar.o ? t.candle.up : t.candle.down;
+      if (type === "candle") {
+        const yTop = layout.y(Math.max(bar.o, bar.c));
+        const yBottom = layout.y(Math.min(bar.o, bar.c));
+        out.push(`<line x1="${r(x)}" y1="${r(layout.y(bar.h))}" x2="${r(x)}" y2="${r(layout.y(bar.l))}" stroke="${color}" stroke-width="${r(Math.max(1, bodyW / 6))}"/>`);
+        out.push(`<rect data-candle="${bar.c >= bar.o ? "up" : "down"}" x="${r(x - bodyW / 2)}" y="${r(yTop)}" width="${r(bodyW)}" height="${r(Math.max(1, yBottom - yTop))}" fill="${color}"/>`);
+      } else {
+        // OHLC: the high-low range, open tick to the left, close tick to the right.
+        const stroke = Math.max(1, Math.min(lineW * 0.6, bodyW / 3));
+        const tick = Math.max(stroke, bodyW / 2);
+        out.push(
+          `<path data-ohlc="${bar.c >= bar.o ? "up" : "down"}" d="M${r(x)} ${r(layout.y(bar.h))}V${r(layout.y(bar.l))}M${r(x - tick)} ${r(layout.y(bar.o))}H${r(x)}M${r(x)} ${r(layout.y(bar.c))}H${r(x + tick)}" fill="none" stroke="${color}" stroke-width="${r(stroke)}"/>`,
+        );
+      }
+    });
+    return out.join("");
+  }
+  const points = bars.map((bar, index) => `${r(layout.x(index))} ${r(layout.y(bar.c))}`);
+  const path = `M${points.join("L")}`;
+  const perf = comparing ? "off" : spec.perfColors;
+  const color = perf === "overall" ? lineColorFor(spec, stats) : t.line.color;
+  if (type === "area") {
+    const fill = perf === "overall" ? color : t.area.color;
+    defs.push(`<linearGradient id="${id("area")}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${fill}" stop-opacity="${t.area.opacity}"/><stop offset="1" stop-color="${fill}" stop-opacity="0"/></linearGradient>`);
+    out.push(`<path d="${path}L${r(layout.x(bars.length - 1))} ${r(plot.y + plot.h)}L${r(plot.x)} ${r(plot.y + plot.h)}Z" fill="url(#${id("area")})"/>`);
+  }
+  if (perf === "segments") {
+    for (const [from, to, up] of directionRuns(bars.map((bar) => bar.c))) {
+      out.push(`<path data-perf="${up ? "up" : "down"}" d="M${points.slice(from, to + 1).join("L")}" fill="none" stroke="${up ? t.candle.up : t.candle.down}" stroke-width="${r(lineW)}" stroke-linejoin="round" stroke-linecap="round"/>`);
+    }
+  } else {
+    out.push(`<path d="${path}" fill="none" stroke="${color}" stroke-width="${r(lineW)}" stroke-linejoin="round" stroke-linecap="round"/>`);
+  }
+  return out.join("");
 }
 
 /** Convenience: just the SVG. */

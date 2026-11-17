@@ -8,6 +8,7 @@ const TABS = [
   { href: "/charts/projects", label: "Projects" },
   { href: "/charts/bulk", label: "Bulk" },
   { href: "/charts/templates", label: "Templates" },
+  { href: "/charts/api", label: "API" },
 ];
 
 export function ChartsTabs() {
