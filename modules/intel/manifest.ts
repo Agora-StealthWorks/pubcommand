@@ -4,16 +4,22 @@ export const manifest = defineModule({
   id: "intel",
   slug: "intel",
   name: "Intel",
-  description: "Competitor lists, ingested email excerpts, and example historical calls.",
+  description: "Competitor intelligence: competitors, their emails (upload, paste or Gmail), AI extraction and the weekly Promo Radar.",
   nav: [{ label: "Intel", href: "/intel", permission: "intel.read" }],
   routes: [{ path: "/intel", title: "Intel" }],
-  permissions: [{ key: "intel.read", description: "Read competitor intel, ingested email, and example calls" }],
-  events: [{ name: "intel.brief.ready", description: "An intel brief was stored" }],
-  jobs: [{ name: "intel.collect", description: "TODO: run extractors. Scrapers are not implemented and must not fetch." }],
+  permissions: [
+    { key: "intel.read", description: "Read competitors, competitor emails and the Promo Radar" },
+    { key: "intel.write", description: "Add competitors and emails, connect Gmail, run extraction and the radar" },
+  ],
+  events: [{ name: "intel.radar.ready", description: "A weekly Promo Radar was built" }],
+  jobs: [
+    { name: "intel.gmail.sync", description: "Pull new competitor email from connected Gmail inboxes" },
+    { name: "intel.radar.build", description: "Build the weekly Promo Radar for each brand" },
+  ],
   settingsSchema: {
     type: "object",
     additionalProperties: false,
-    properties: { region: { type: "string" } },
+    properties: { autoExtract: { type: "boolean" } },
   },
   planEntitlement: "intel",
 });
