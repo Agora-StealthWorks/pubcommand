@@ -22,6 +22,13 @@ const CARDS: AppCard[] = [
     category: "Copy & Promos",
   },
   {
+    moduleId: "research",
+    name: "Research Extractor",
+    description: "Turn articles, PDFs and videos into index cards, then build an outline from them.",
+    icon: "🗂️",
+    category: "Copy & Promos",
+  },
+  {
     moduleId: "editorial",
     name: "Marketing Calendar",
     description: "Events, editorial issues and send stats for every publication, on one calendar.",

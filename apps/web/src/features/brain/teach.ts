@@ -30,7 +30,8 @@ export async function teachBrain(input: {
     if (existing) {
       await db.knowledgePage.updateMany({
         where: { id: existing.id },
-        data: { title: input.title, body: input.body, ...(input.folder ? { folder: input.folder } : {}) },
+        // A fresh write from the app brings back a note someone had deleted in the Brain.
+        data: { title: input.title, body: input.body, deletedAt: null, ...(input.folder ? { folder: input.folder } : {}) },
       });
       return;
     }
