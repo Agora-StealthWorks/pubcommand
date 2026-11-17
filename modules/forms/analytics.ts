@@ -20,7 +20,14 @@ export type FieldStats = {
   | { kind: "bool"; buckets: Bucket[] }
   | { kind: "text" | "file" }
   | { kind: "date"; earliest: string | null; latest: string | null }
+  | { kind: "matrix"; multi: boolean; columns: string[]; rows: MatrixRowStats[] }
+  | { kind: "ranking"; items: RankingItem[] }
 );
+
+/** One matrix row: how many picked each column (pct of people who answered that row). */
+export type MatrixRowStats = { label: string; answered: number; buckets: Bucket[] };
+/** A ranked option: average position (1 = top), how often ranked first. */
+export type RankingItem = { label: string; meanRank: number; firstCount: number; firstPct: number };
 
 export type NpsScore = { score: number; promoters: number; passives: number; detractors: number };
 
@@ -94,7 +101,8 @@ export function fieldStats(field: FieldDef, responses: readonly ResponseRecord[]
     }
     case "numeric": {
       const numbers = values.map(Number).filter(Number.isFinite);
-      const integral = field.type !== "number";
+      // Only short fixed scales get a bucket per value; a slider or an amount gets summary figures.
+      const integral = field.type === "rating" || field.type === "scale" || field.type === "nps";
       const counts = new Map<string, number>();
       if (integral) {
         const min = field.type === "nps" ? 0 : field.type === "rating" ? 1 : (field.config.min ?? 1);
@@ -122,6 +130,41 @@ export function fieldStats(field: FieldDef, responses: readonly ResponseRecord[]
     case "date": {
       const dates = values.map(String).filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value)).sort();
       return { ...head, kind: "date", earliest: dates[0] ?? null, latest: dates.at(-1) ?? null };
+    }
+    case "matrix": {
+      const multi = field.type === "matrix_multi";
+      const columns = field.config.columns ?? [];
+      const rows = (field.config.rows ?? []).map((row) => {
+        const counts = new Map<string, number>(columns.map((column) => [column.label, 0]));
+        let answered = 0;
+        for (const value of values) {
+          const cell = value && typeof value === "object" ? (value as Record<string, unknown>)[row.id] : undefined;
+          const picked = (Array.isArray(cell) ? cell : cell === undefined || cell === null ? [] : [cell]).map(String);
+          if (!picked.length) continue;
+          answered += 1;
+          for (const id of picked) {
+            const label = columns.find((column) => column.id === id)?.label;
+            if (label !== undefined) counts.set(label, (counts.get(label) ?? 0) + 1);
+          }
+        }
+        return { label: row.label, answered, buckets: bucketize(counts, answered, columns.map((column) => column.label)) };
+      });
+      return { ...head, kind: "matrix", multi, columns: columns.map((column) => column.label), rows };
+    }
+    case "ranking": {
+      const choices = field.config.choices ?? [];
+      const lists = values.filter(Array.isArray) as unknown[][];
+      const items = choices.map((choice) => {
+        const positions = lists.map((list) => list.indexOf(choice.id)).filter((index) => index >= 0).map((index) => index + 1);
+        const first = positions.filter((position) => position === 1).length;
+        return {
+          label: choice.label,
+          meanRank: positions.length ? round(positions.reduce((a, b) => a + b, 0) / positions.length)! : 0,
+          firstCount: first,
+          firstPct: pct(first, lists.length),
+        };
+      });
+      return { ...head, kind: "ranking", items: items.filter((item) => item.meanRank > 0).sort((a, b) => a.meanRank - b.meanRank) };
     }
     case "text":
       return { ...head, kind: "text" };

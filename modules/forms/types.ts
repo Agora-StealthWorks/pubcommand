@@ -29,6 +29,9 @@ export type SkipLogic = { rules: SkipRule[] };
 /** Per-type settings. Each type reads only its own keys (see fields.ts). */
 export type FieldConfig = {
   choices?: Choice[];
+  /** Matrix: the statements (rows) and the answer scale (columns). */
+  rows?: Choice[];
+  columns?: Choice[];
   allowOther?: boolean;
   minSelections?: number;
   maxSelections?: number;
@@ -66,6 +69,24 @@ export type FieldDef = {
 
 export type FormLayout = "paginated" | "single";
 
+/**
+ * An end-of-form rule: when its conditions match the stored answers, the
+ * respondent is sent to `url` (action "redirect") or shown this thank-you
+ * variant (action "message"). Evaluated on the server, first match wins.
+ */
+export type EndRule = {
+  id: string;
+  match: "all" | "any";
+  rules: LogicRule[];
+  action: "redirect" | "message";
+  url: string;
+  title: string;
+  message: string;
+};
+
+/** What the respondent sees after submitting. */
+export type Ending = { title: string; message: string; redirectUrl: string | null; ruleId: string | null };
+
 export type AnswerMap = Record<string, unknown>;
 
 /** What the public renderer needs about a form. Never includes responses. */
@@ -83,6 +104,10 @@ export type PublicForm = {
   redirectUrl: string | null;
   disclaimer: string | null;
   fields: FieldDef[];
+  /** Only used by the builder preview; the public renderer gets its ending from the server. */
+  endRules?: EndRule[];
+  /** Link to the public live results, when the author turned them on. */
+  resultsUrl?: string | null;
 };
 
 export type ResolvedTheme = {

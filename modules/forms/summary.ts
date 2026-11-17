@@ -72,6 +72,12 @@ function fieldLine(stats: FieldStats): string {
       return `${head}. ${stats.buckets.map((bucket) => `${bucket.label}: ${bucket.count} (${bucket.pct}%)`).join("; ")}`;
     case "date":
       return `${head}. Earliest ${stats.earliest ?? "n/a"}, latest ${stats.latest ?? "n/a"}`;
+    case "matrix":
+      return `${head}${stats.multi ? " [grid, several picks per row allowed]" : " [grid]"}. ${stats.rows
+        .map((row) => `${row.label} (n=${row.answered}): ${row.buckets.map((bucket) => `${bucket.label} ${bucket.count} (${bucket.pct}%)`).join(", ")}`)
+        .join(" | ")}`;
+    case "ranking":
+      return `${head} [ranking, 1 = top]. ${stats.items.map((item) => `${item.label}: average position ${item.meanRank}, ranked first by ${item.firstCount} (${item.firstPct}%)`).join("; ")}`;
     case "text":
       return `${head}. Free text, not shown.`;
     case "file":

@@ -91,6 +91,27 @@ model Form {
   /// Rewords the disclaimer. The privacy-policy link is appended regardless.
   disclaimerOverride String?      @map("disclaimer_override")
   brainSyncEnabled   Boolean      @default(true) @map("brain_sync_enabled")
+  /// End-of-form rules (modules/forms/logic.ts EndRule[]): first match picks a redirect or a thank-you variant.
+  endRules           Json         @default("[]") @map("end_rules")
+  /// Publish on its own at opensAt (forms.schedule job), if the publish checks pass.
+  autoPublish        Boolean      @default(false) @map("auto_publish")
+  /// Why the scheduled publish did not happen, shown on the form.
+  scheduleNote       String?      @map("schedule_note")
+  /// Team members (user ids) emailed about new responses.
+  notifyUserIds      String[]     @default([]) @map("notify_user_ids")
+  /// off | each | digest
+  notifyMode         String       @default("off") @map("notify_mode")
+  /// Include the answers in the email (only recipients with forms.export get them).
+  notifyIncludeAnswers Boolean    @default(false) @map("notify_include_answers")
+  notifyDigestSentAt DateTime?    @map("notify_digest_sent_at")
+  /// Email the respondent a confirmation at the address they gave in confirmEmailFieldId.
+  confirmEmailEnabled Boolean     @default(false) @map("confirm_email_enabled")
+  confirmEmailFieldId String?     @map("confirm_email_field_id") @db.Uuid
+  confirmEmailSubject String      @default("") @map("confirm_email_subject")
+  confirmEmailBody    String      @default("") @map("confirm_email_body")
+  /// Public live results page (/f/<slug>/results): aggregates of closed questions only.
+  publicResultsEnabled Boolean    @default(false) @map("public_results_enabled")
+  publicResultsMin     Int        @default(5) @map("public_results_min")
   publishedAt        DateTime?    @map("published_at")
   createdById        String?      @map("created_by_id") @db.Uuid
   createdAt          DateTime     @default(now()) @map("created_at")
@@ -102,6 +123,7 @@ model Form {
   responses          FormResponse[]
   files              FormFile[]
   summaries          FormSummary[]
+  mirror             FormMirror?
 
   @@unique([organizationId, slug])
   @@index([organizationId, brandId, updatedAt])
@@ -153,6 +175,14 @@ model FormResponse {
   utm            Json?
   /// Why this was flagged as suspected spam. Flagged responses are kept and held out of figures.
   spamReason     String?            @map("spam_reason")
+  /// When the team was emailed about it (each or digest). Null = not yet.
+  notifiedAt     DateTime?          @map("notified_at")
+  confirmationSentAt DateTime?      @map("confirmation_sent_at")
+  /// One-way mirror state: null (no mirror) | pending | ok | failed
+  mirrorStatus   String?            @map("mirror_status")
+  mirrorAttempts Int                @default(0) @map("mirror_attempts")
+  mirrorError    String?            @map("mirror_error")
+  mirrorTriedAt  DateTime?          @map("mirror_tried_at")
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   form           Form               @relation(fields: [formId], references: [id], onDelete: Cascade)
@@ -160,6 +190,8 @@ model FormResponse {
 
   @@index([organizationId, formId, status, completedAt])
   @@index([organizationId, formId, startedAt])
+  @@index([organizationId, mirrorStatus])
+  @@index([organizationId, notifiedAt])
   @@map("form_responses")
 }
 
@@ -202,4 +234,28 @@ model FormSummary {
 
   @@index([organizationId, formId, createdAt])
   @@map("form_summaries")
+}
+
+/// One-way copy of each new response into the author's own Airtable table or
+/// Google Sheet. Credentials are AES-GCM encrypted with AUTH_SECRET. Nothing
+/// is ever read back from the destination.
+model FormMirror {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  formId         String    @unique @map("form_id") @db.Uuid
+  /// airtable | google_sheets
+  provider       String
+  enabled        Boolean   @default(true)
+  /// Non-secret target: { baseId, table } or { spreadsheetId, sheet }.
+  target         Json      @default("{}")
+  secretCipher   String    @map("secret_cipher")
+  lastError      String?   @map("last_error")
+  lastSyncedAt   DateTime? @map("last_synced_at")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  form           Form      @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("form_mirrors")
 }

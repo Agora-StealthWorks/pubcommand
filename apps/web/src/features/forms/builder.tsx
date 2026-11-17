@@ -6,8 +6,8 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createField, fieldSpec, newChoiceId, paletteGroups } from "../../../../../modules/forms/fields";
-import { LOGIC_OPS, SUBMIT_TARGET, buildPages, defaultRuleValue, logicProblems, ruleSources, skipTargets } from "../../../../../modules/forms/logic";
-import type { FieldDef, FormLayout, LogicRule, PublicForm, ResolvedTheme, SkipRule } from "../../../../../modules/forms/types";
+import { LOGIC_OPS, MAX_END_RULES, SUBMIT_TARGET, buildPages, defaultRuleValue, endRuleProblems, logicProblems, ruleSources, skipTargets } from "../../../../../modules/forms/logic";
+import type { EndRule, FieldDef, FormLayout, LogicRule, PublicForm, ResolvedTheme, SkipRule } from "../../../../../modules/forms/types";
 import { saveForm, type SaveFormInput } from "./actions";
 import { FormRenderer } from "./renderer";
 
@@ -29,6 +29,7 @@ export function FormBuilder({
   formId,
   initialFields,
   initialSettings,
+  initialEndRules,
   themes,
   folders,
   canWrite,
@@ -37,6 +38,7 @@ export function FormBuilder({
   formId: string;
   initialFields: FieldDef[];
   initialSettings: BuilderSettings;
+  initialEndRules: EndRule[];
   themes: { id: string; name: string; preview: ResolvedTheme }[];
   folders: { id: string; name: string }[];
   canWrite: boolean;
@@ -45,6 +47,7 @@ export function FormBuilder({
   const [fields, setFields] = useState(initialFields);
   // Dates arrive as ISO; datetime-local inputs need the viewer's local time.
   const [settings, setSettings] = useState(() => ({ ...initialSettings, opensAt: isoToLocal(initialSettings.opensAt), closesAt: isoToLocal(initialSettings.closesAt) }));
+  const [endRules, setEndRules] = useState<EndRule[]>(initialEndRules);
   const [selectedId, setSelectedId] = useState<string | null>(initialFields[0]?.id ?? null);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [dirty, setDirty] = useState(false);
@@ -59,7 +62,7 @@ export function FormBuilder({
   }, [dirty]);
 
   const layout: FormLayout = settings.layout === "single" ? "single" : "paginated";
-  const problems = useMemo(() => logicProblems(fields, layout), [fields, layout]);
+  const problems = useMemo(() => [...logicProblems(fields, layout), ...endRuleProblems(fields, endRules)], [fields, layout, endRules]);
   const selected = fields.find((field) => field.id === selectedId) ?? null;
   const pages = useMemo(() => buildPages(fields, layout), [fields, layout]);
   const pageOf = useMemo(() => new Map(pages.flatMap((page) => page.fieldIds.map((id) => [id, page.index] as const))), [pages]);
@@ -109,7 +112,7 @@ export function FormBuilder({
     const toIso = (value: string) => (value ? new Date(value).toISOString() : "");
     startSaving(async () => {
       try {
-        const result = await saveForm({ formId, fields, settings: { ...settings, opensAt: toIso(settings.opensAt), closesAt: toIso(settings.closesAt) } });
+        const result = await saveForm({ formId, fields, endRules, settings: { ...settings, opensAt: toIso(settings.opensAt), closesAt: toIso(settings.closesAt) } });
         if (result.ok) {
           setDirty(false);
           setSettings((current) => ({ ...current, slug: result.slug }));
@@ -149,6 +152,7 @@ export function FormBuilder({
     redirectUrl: null,
     disclaimer: settings.disclaimerOverride || null,
     fields,
+    endRules,
   };
 
   return (
@@ -251,7 +255,20 @@ export function FormBuilder({
         </div>
       ) : null}
 
-      {tab === "settings" ? <SettingsPanel settings={settings} themes={themes} folders={folders} canWrite={canWrite} onChange={patchSettings} /> : null}
+      {tab === "settings" ? (
+        <>
+          <SettingsPanel settings={settings} themes={themes} folders={folders} canWrite={canWrite} onChange={patchSettings} />
+          <EndRulesEditor
+            fields={fields}
+            rules={endRules}
+            disabled={!canWrite}
+            onChange={(next) => {
+              setEndRules(next);
+              setDirty(true);
+            }}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -433,7 +450,9 @@ function Inspector({
         <Toggle label="Keep on the same page as the next question" checked={field.groupWithNext} disabled={disabled} onChange={(groupWithNext) => onChange({ groupWithNext })} />
       ) : null}
 
-      {options.has("choices") ? <ChoicesEditor field={field} disabled={disabled} onChange={(choices) => setConfig({ choices })} /> : null}
+      {options.has("choices") ? <ChoicesEditor title={field.type === "ranking" ? "Options to rank" : "Options"} items={config.choices ?? []} disabled={disabled} onChange={(choices) => setConfig({ choices })} /> : null}
+      {options.has("rows") ? <ChoicesEditor title="Rows (what is rated)" noun="Row" items={config.rows ?? []} disabled={disabled} onChange={(rows) => setConfig({ rows })} /> : null}
+      {options.has("columns") ? <ChoicesEditor title="Columns (the answers)" noun="Column" items={config.columns ?? []} disabled={disabled} onChange={(columns) => setConfig({ columns })} /> : null}
       {options.has("allowOther") ? <Toggle label="Allow “Other” with a typed answer" checked={config.allowOther === true} disabled={disabled} onChange={(allowOther) => setConfig({ allowOther })} /> : null}
       {options.has("selections") ? (
         <div className="grid grid-cols-2 gap-2">
@@ -450,6 +469,13 @@ function Inspector({
             <Text label="Maximum" type="number" value={config.max?.toString() ?? ""} disabled={disabled} onChange={(value) => setConfig({ max: numberOrUndefined(value) })} />
           </div>
         )
+      ) : null}
+      {options.has("step") ? <Text label="Step" type="number" value={config.step?.toString() ?? "1"} disabled={disabled} onChange={(value) => setConfig({ step: numberOrUndefined(value) })} /> : null}
+      {options.has("maxSize") ? (
+        <>
+          <Text label="Max MB (1–10)" type="number" value={config.maxSizeMb?.toString() ?? "5"} disabled={disabled} onChange={(value) => setConfig({ maxSizeMb: numberOrUndefined(value) })} />
+          <p className="text-xs text-muted">PNG, JPG, WebP or GIF. The file's real type is checked on the server.</p>
+        </>
       ) : null}
       {options.has("scaleLabels") ? (
         <div className="grid grid-cols-2 gap-2">
@@ -493,33 +519,45 @@ function Inspector({
   );
 }
 
-function ChoicesEditor({ field, disabled, onChange }: { field: FieldDef; disabled: boolean; onChange: (choices: { id: string; label: string }[]) => void }) {
-  const choices = field.config.choices ?? [];
+function ChoicesEditor({
+  title,
+  noun = "Option",
+  items,
+  disabled,
+  onChange,
+}: {
+  title: string;
+  noun?: string;
+  items: { id: string; label: string }[];
+  disabled: boolean;
+  onChange: (choices: { id: string; label: string }[]) => void;
+}) {
+  const choices = items;
   return (
     <div>
-      <p className="mb-1 text-sm font-medium">Options</p>
+      <p className="mb-1 text-sm font-medium">{title}</p>
       <ul className="space-y-1">
         {choices.map((choice, index) => (
           <li key={choice.id} className="flex items-center gap-1">
             <input
-              aria-label={`Option ${index + 1}`}
+              aria-label={`${noun} ${index + 1}`}
               className={`${control} flex-1`}
               value={choice.label}
               disabled={disabled}
               onChange={(event) => onChange(choices.map((item) => (item.id === choice.id ? { ...item, label: event.target.value } : item)))}
             />
-            <button type="button" aria-label="Move option up" disabled={disabled || index === 0} onClick={() => onChange(arrayMove(choices, index, index - 1))} className="h-9 w-7 text-muted disabled:opacity-30">
+            <button type="button" aria-label={`Move ${noun.toLowerCase()} up`} disabled={disabled || index === 0} onClick={() => onChange(arrayMove(choices, index, index - 1))} className="h-9 w-7 text-muted disabled:opacity-30">
               ↑
             </button>
-            <button type="button" aria-label="Remove option" disabled={disabled} onClick={() => onChange(choices.filter((item) => item.id !== choice.id))} className="h-9 w-7 text-[#b42318]">
+            <button type="button" aria-label={`Remove ${noun.toLowerCase()}`} disabled={disabled} onClick={() => onChange(choices.filter((item) => item.id !== choice.id))} className="h-9 w-7 text-[#b42318]">
               ×
             </button>
           </li>
         ))}
       </ul>
       {!disabled ? (
-        <button type="button" onClick={() => onChange([...choices, { id: newChoiceId(), label: `Option ${choices.length + 1}` }])} className="mt-1 min-h-9 text-sm font-semibold text-accent">
-          + Add option
+        <button type="button" onClick={() => onChange([...choices, { id: newChoiceId(), label: `${noun} ${choices.length + 1}` }])} className="mt-1 min-h-9 text-sm font-semibold text-accent">
+          + Add {noun.toLowerCase()}
         </button>
       ) : null}
     </div>
@@ -550,7 +588,7 @@ function RuleRow({ rule, sources, disabled, onChange, onRemove }: { rule: LogicR
       aria-label="Value"
       value={rule.value === null || rule.value === undefined ? "" : String(rule.value)}
       onChange={(event) => {
-        const numeric = ["number", "rating", "scale", "nps"].includes(source?.type ?? "");
+        const numeric = ["number", "rating", "scale", "nps", "slider", "currency"].includes(source?.type ?? "");
         onChange({ ...rule, value: numeric && event.target.value !== "" && Number.isFinite(Number(event.target.value)) ? Number(event.target.value) : event.target.value });
       }}
     />
@@ -757,10 +795,90 @@ function SettingsPanel({
           <Text label="Opens" type="datetime-local" value={settings.opensAt} disabled={disabled} onChange={(opensAt) => onChange({ opensAt })} />
           <Text label="Closes" type="datetime-local" value={settings.closesAt} disabled={disabled} onChange={(closesAt) => onChange({ closesAt })} />
         </div>
+        <Toggle label="Publish automatically at the opening time (if the publish checks pass)" checked={settings.autoPublish} disabled={disabled || !settings.opensAt} onChange={(autoPublish) => onChange({ autoPublish })} />
+        <p className="-mt-2 text-xs text-muted">Forms also close themselves at the closing time or when they reach the response limit.</p>
         <Text label="Stop after this many responses" type="number" value={settings.responseLimit} disabled={disabled} onChange={(responseLimit) => onChange({ responseLimit })} />
         <Text label="Message when closed" multiline value={settings.closedMessage} disabled={disabled} onChange={(closedMessage) => onChange({ closedMessage })} />
         <Toggle label="Teach the Brain this form's results (aggregates and AI summary only, never answers)" checked={settings.brainSyncEnabled} disabled={disabled} onChange={(brainSyncEnabled) => onChange({ brainSyncEnabled })} />
       </section>
     </div>
+  );
+}
+
+function EndRulesEditor({ fields, rules, disabled, onChange }: { fields: FieldDef[]; rules: EndRule[]; disabled: boolean; onChange: (rules: EndRule[]) => void }) {
+  const sources = fields.filter((field) => fieldSpec(field.type)?.logicUsable);
+  const patch = (index: number, value: Partial<EndRule>) => onChange(rules.map((rule, i) => (i === index ? { ...rule, ...value } : rule)));
+  const move = (index: number, delta: number) => {
+    const to = index + delta;
+    if (to >= 0 && to < rules.length) onChange(arrayMove(rules, index, to));
+  };
+  return (
+    <section className="mt-4 space-y-3 rounded-xl border border-line bg-white p-4">
+      <div>
+        <h2 className="font-semibold">Endings by answer</h2>
+        <p className="text-xs text-muted">
+          Send people to a different page, or show a different thank-you, depending on their answers. Checked on the server, top to bottom; the first match wins. No match uses the thank-you and redirect above.
+        </p>
+      </div>
+      {!sources.length ? <p className="text-sm text-muted">Add a choice, yes/no, scale or number question to use endings.</p> : null}
+      {rules.map((rule, index) => (
+        <div key={rule.id} className="space-y-2 rounded-md border border-line bg-canvas p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold">Ending {index + 1}</p>
+            <select className="pc-control text-sm" disabled={disabled} aria-label="Match" value={rule.match} onChange={(event) => patch(index, { match: event.target.value === "any" ? "any" : "all" })}>
+              <option value="all">when all match</option>
+              <option value="any">when any matches</option>
+            </select>
+            {!disabled ? (
+              <span className="ml-auto flex gap-1">
+                <button type="button" aria-label="Move ending up" onClick={() => move(index, -1)} disabled={index === 0} className="h-9 w-8 rounded text-muted disabled:opacity-30">
+                  ↑
+                </button>
+                <button type="button" aria-label="Move ending down" onClick={() => move(index, 1)} disabled={index === rules.length - 1} className="h-9 w-8 rounded text-muted disabled:opacity-30">
+                  ↓
+                </button>
+                <button type="button" onClick={() => onChange(rules.filter((_, i) => i !== index))} className="min-h-9 rounded-md border border-[#fecdca] px-2 text-xs font-semibold text-[#b42318]">
+                  Remove
+                </button>
+              </span>
+            ) : null}
+          </div>
+          {rule.rules.map((condition, conditionIndex) => (
+            <RuleRow
+              key={conditionIndex}
+              rule={condition}
+              sources={sources}
+              disabled={disabled}
+              onChange={(next) => patch(index, { rules: rule.rules.map((item, i) => (i === conditionIndex ? next : item)) })}
+              onRemove={() => patch(index, { rules: rule.rules.filter((_, i) => i !== conditionIndex) })}
+            />
+          ))}
+          {!disabled && sources.length ? (
+            <button type="button" className="min-h-9 text-sm font-semibold text-accent" onClick={() => patch(index, { rules: [...rule.rules, { fieldId: sources[0]!.id, op: "equals", value: defaultRuleValue(sources[0]) }] })}>
+              + Add a condition
+            </button>
+          ) : null}
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium">Then</span>
+            <select className={control} disabled={disabled} value={rule.action} onChange={(event) => patch(index, { action: event.target.value === "redirect" ? "redirect" : "message" })}>
+              <option value="message">Show this thank-you</option>
+              <option value="redirect">Send them to a web page</option>
+            </select>
+          </label>
+          {rule.action === "redirect" ? <Text label="Web address" placeholder="https://" value={rule.url} disabled={disabled} onChange={(url) => patch(index, { url })} /> : null}
+          <Text label={rule.action === "redirect" ? "Title shown before the redirect (optional)" : "Thank-you title"} value={rule.title} disabled={disabled} onChange={(title) => patch(index, { title })} />
+          <Text label={rule.action === "redirect" ? "Message shown before the redirect (optional)" : "Thank-you message"} multiline value={rule.message} disabled={disabled} onChange={(message) => patch(index, { message })} />
+        </div>
+      ))}
+      {!disabled && sources.length && rules.length < MAX_END_RULES ? (
+        <button
+          type="button"
+          className="min-h-10 rounded-md border border-line px-3 text-sm font-semibold"
+          onClick={() => onChange([...rules, { id: newChoiceId(), match: "all", rules: [{ fieldId: sources[0]!.id, op: "equals", value: defaultRuleValue(sources[0]) }], action: "message", url: "", title: "Thank you!", message: "" }])}
+        >
+          + Add an ending
+        </button>
+      ) : null}
+    </section>
   );
 }

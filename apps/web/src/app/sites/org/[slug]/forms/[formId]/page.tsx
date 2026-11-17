@@ -7,6 +7,7 @@ import { FormBuilder, type BuilderSettings } from "@/features/forms/builder";
 import { CopyField } from "@/features/forms/copy-field";
 import { listFolders, listThemes, loadForm, previewTheme } from "@/features/forms/data";
 import { formsAccess, publicFormUrl } from "@/features/forms/guard";
+import { cleanEndRules } from "../../../../../../../../../modules/forms/logic";
 
 export default async function FormBuilderPage({
   params,
@@ -45,7 +46,9 @@ export default async function FormBuilderPage({
     closesAt: form.closesAt?.toISOString() ?? "",
     responseLimit: form.responseLimit?.toString() ?? "",
     brainSyncEnabled: form.brainSyncEnabled,
+    autoPublish: form.autoPublish,
   };
+  const endRules = cleanEndRules(fields, form.endRules);
   const url = publicFormUrl(ctx.request.host, ctx.resolved.slug, form.slug);
   const embedUrl = publicFormUrl(ctx.request.host, ctx.resolved.slug, form.slug, "embed");
   const embedCode = `<iframe src="${embedUrl}" title="${form.title.replace(/"/g, "&quot;")}" style="width:100%;border:0" height="600" id="pc-form-${form.id.slice(0, 8)}"></iframe>
@@ -82,6 +85,9 @@ export default async function FormBuilderPage({
           <Link href={`/forms/${form.id}/results`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold">
             Results
           </Link>
+          <Link href={`/forms/${form.id}/connect`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold">
+            Notify &amp; share
+          </Link>
           {canWrite ? (
             <>
               {form.status !== "OPEN" ? statusButton("OPEN", "Publish", "primary") : statusButton("CLOSED", "Close form", "secondary")}
@@ -91,6 +97,10 @@ export default async function FormBuilderPage({
         </div>
       </header>
       <Flash error={query.error} notice={query.notice} />
+      {form.scheduleNote ? <p className="rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">Scheduled publish did not happen: {form.scheduleNote}</p> : null}
+      {form.status === "DRAFT" && form.autoPublish && form.opensAt ? (
+        <p className="rounded-md border border-line bg-white px-3 py-2 text-sm text-muted">Publishes itself at {form.opensAt.toISOString().slice(0, 16).replace("T", " ")} UTC if it passes the publish checks.</p>
+      ) : null}
 
       <section className="grid gap-3 rounded-xl border border-line bg-white p-4 md:grid-cols-2">
         <div className="min-w-0">
@@ -112,6 +122,7 @@ export default async function FormBuilderPage({
         formId={form.id}
         initialFields={fields}
         initialSettings={settings}
+        initialEndRules={endRules}
         themes={themes.map((theme) => ({ id: theme.id, name: theme.name, preview: previewTheme(theme, ctx.brand.name) }))}
         folders={folders.map((folder) => ({ id: folder.id, name: folder.name }))}
         canWrite={canWrite}

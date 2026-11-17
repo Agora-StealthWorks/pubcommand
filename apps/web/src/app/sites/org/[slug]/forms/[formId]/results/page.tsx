@@ -90,6 +90,33 @@ function QuestionCard({ stats, recent }: { stats: FieldStats; recent: string[] |
           {stats.buckets.length ? <Bars buckets={stats.buckets} /> : null}
         </>
       ) : null}
+      {stats.kind === "matrix" ? (
+        <div className="mt-2 space-y-3">
+          {stats.rows.map((row) => (
+            <div key={row.label}>
+              <p className="[overflow-wrap:anywhere] text-sm font-medium">
+                {row.label} <span className="text-xs font-normal text-muted">({row.answered})</span>
+              </p>
+              <Bars buckets={row.buckets} />
+            </div>
+          ))}
+          {stats.multi ? <p className="text-xs text-muted">Several picks per row allowed; % of people who answered that row.</p> : null}
+        </div>
+      ) : null}
+      {stats.kind === "ranking" ? (
+        <ol className="mt-2 space-y-1 text-sm">
+          {stats.items.map((item, index) => (
+            <li key={item.label} className="flex justify-between gap-3 rounded-md bg-canvas px-2 py-1">
+              <span className="[overflow-wrap:anywhere] min-w-0">
+                {index + 1}. {item.label}
+              </span>
+              <span className="shrink-0 tabular-nums text-muted">
+                avg {item.meanRank} · 1st {item.firstCount}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {stats.kind === "date" ? (
         <p className="mt-2 text-sm">
           {stats.earliest ? `${stats.earliest} to ${stats.latest}` : "No dates yet."}
@@ -310,16 +337,21 @@ export default async function FormResultsPage({
       <section className="rounded-xl border border-line bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
           <h2 className="text-lg font-semibold">Responses</h2>
-          {canExport ? (
-            <div className="flex gap-2">
-              <a href={`/forms/${form.id}/export?format=csv&${exportQuery}`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
-                Export CSV
-              </a>
-              <a href={`/forms/${form.id}/export?format=xlsx&${exportQuery}`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
-                Export Excel
-              </a>
-            </div>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {canExport ? (
+              <>
+                <a href={`/forms/${form.id}/export?format=csv&${exportQuery}`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
+                  Export CSV
+                </a>
+                <a href={`/forms/${form.id}/export?format=xlsx&${exportQuery}`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
+                  Export Excel
+                </a>
+              </>
+            ) : null}
+            <a href={`/forms/${form.id}/report`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
+              Report PDF
+            </a>
+          </div>
         </div>
         {canExport ? (
           <>
@@ -359,6 +391,7 @@ export default async function FormResultsPage({
                       <th className="w-10 px-3 py-2" aria-label="Select" />
                       <th className="whitespace-nowrap px-3 py-2">Started (UTC)</th>
                       <th className="px-3 py-2">Status</th>
+                      <th className="whitespace-nowrap px-3 py-2">PDF</th>
                       {columns.map((column) => (
                         <th key={column.field.id} className="min-w-[140px] max-w-[260px] px-3 py-2">
                           <span className="line-clamp-2">{column.title}</span>
@@ -377,11 +410,16 @@ export default async function FormResultsPage({
                           {row.status === "COMPLETE" ? "Complete" : `Partial (page ${row.lastPageIndex + 1})`}
                           {row.spamReason ? <span className="block text-xs text-[#b42318]">Flagged: {row.spamReason}</span> : null}
                         </td>
+                        <td className="whitespace-nowrap px-3 py-2">
+                          <a href={`/forms/${form.id}/responses/${row.id}/pdf`} className="font-semibold text-accent" aria-label="Download this response as PDF">
+                            PDF
+                          </a>
+                        </td>
                         {columns.map((column) => {
                           const text = answerText(column.field, row.answers[column.field.id]);
                           return (
                             <td key={column.field.id} className="max-w-[260px] px-3 py-2">
-                              <span className="[overflow-wrap:anywhere] line-clamp-3">{column.field.type === "file_upload" || column.field.type === "signature" ? fileLink(row, column.field.id, text) : text}</span>
+                              <span className="[overflow-wrap:anywhere] line-clamp-3">{column.field.type === "file_upload" || column.field.type === "image_upload" || column.field.type === "signature" ? fileLink(row, column.field.id, text) : text}</span>
                             </td>
                           );
                         })}
@@ -389,7 +427,7 @@ export default async function FormResultsPage({
                     ))}
                     {filtered.length === 0 ? (
                       <tr>
-                        <td colSpan={columns.length + 3} className="px-4 py-8 text-center text-muted">
+                        <td colSpan={columns.length + 4} className="px-4 py-8 text-center text-muted">
                           No responses match.
                         </td>
                       </tr>

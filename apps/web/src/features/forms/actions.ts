@@ -7,12 +7,22 @@ import { redirect } from "next/navigation";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { sanitizeField } from "../../../../../modules/forms/fields";
-import { cleanLogic } from "../../../../../modules/forms/logic";
+import { cleanEndRules, cleanLogic } from "../../../../../modules/forms/logic";
+import {
+  airtableTokenProblem,
+  encryptSecret,
+  parseAirtableTarget,
+  parseGoogleCredentials,
+  parseSheetsTarget,
+} from "../../../../../modules/forms/mirror";
+import { MAX_RECIPIENTS, asNotifyMode } from "../../../../../modules/forms/notify";
+import { effectiveMin } from "../../../../../modules/forms/poll";
 import { starterFields } from "../../../../../modules/forms/starters";
 import { deletionPlan } from "../../../../../modules/forms/summary";
 import { isHexColor, isHttpUrl, isValidFormSlug, normalizeFormSlug, publishProblems } from "../../../../../modules/forms/theme";
-import type { FieldDef } from "../../../../../modules/forms/types";
+import type { EndRule, FieldDef } from "../../../../../modules/forms/types";
 import { UUID_RE, asLayout, loadForm } from "./data";
+import { mirrorResponse } from "./mirror";
 import { runFormSummary } from "./server";
 
 type Permission = "forms.read" | "forms.write" | "forms.export";
@@ -139,7 +149,9 @@ export type SaveFormInput = {
     closesAt: string;
     responseLimit: string;
     brainSyncEnabled: boolean;
+    autoPublish: boolean;
   };
+  endRules: EndRule[];
 };
 
 export type SaveFormResult = { ok: true; savedAt: string; warnings: string[]; slug: string } | { ok: false; error: string };
@@ -178,6 +190,8 @@ export async function saveForm(input: SaveFormInput): Promise<SaveFormResult> {
   const folder = UUID_RE.test(folderId) ? await db.formFolder.findFirst({ where: { id: folderId, brandId: ctx.brand.id } }) : null;
   const limit = Number(str(s.responseLimit, 9));
   const layout = asLayout(str(s.layout, 20));
+  const endRules = cleanEndRules(fields, input.endRules);
+  const opensAt = parseDate(str(s.opensAt, 40));
 
   await writeFields(ctx.resolved.id, form.id, fields);
   await db.form.updateMany({
@@ -198,14 +212,18 @@ export async function saveForm(input: SaveFormInput): Promise<SaveFormResult> {
       disclaimerOverride: str(s.disclaimerOverride, 1000) || null,
       themeId: theme?.id ?? null,
       folderId: folder?.id ?? null,
-      opensAt: parseDate(str(s.opensAt, 40)),
+      opensAt,
       closesAt: parseDate(str(s.closesAt, 40)),
       responseLimit: Number.isInteger(limit) && limit > 0 ? limit : null,
       brainSyncEnabled: s.brainSyncEnabled !== false,
+      endRules: endRules as unknown as Prisma.InputJsonValue,
+      autoPublish: s.autoPublish === true && opensAt !== null,
+      scheduleNote: null,
     },
   });
   await audit(ctx, "forms.form.saved", "form", form.id);
-  const warnings = publishProblems({ title: str(s.title, 200), slug, fields, layout, theme });
+  const warnings = publishProblems({ title: str(s.title, 200), slug, fields, layout, theme, endRules });
+  if (s.autoPublish === true && !opensAt) warnings.push("Set an opening time for the form to publish itself.");
   return { ok: true, savedAt: new Date().toISOString(), warnings, slug };
 }
 
@@ -217,13 +235,18 @@ export async function setFormStatus(formData: FormData) {
   if (status === "OPEN") {
     const loaded = await loadForm(ctx.resolved.id, ctx.brand.id, form.id);
     const theme = await brandTheme(ctx, form.themeId);
-    const problems = publishProblems({ title: form.title, slug: form.slug, fields: loaded?.fields ?? [], layout: asLayout(form.layout), theme });
+    const problems = publishProblems({ title: form.title, slug: form.slug, fields: loaded?.fields ?? [], layout: asLayout(form.layout), theme, endRules: cleanEndRules(loaded?.fields ?? [], form.endRules) });
     if (problems.length) redirect(`${back}error=${encodeURIComponent(`Not published: ${problems[0]}`)}`);
   }
   if (status !== "OPEN" && status !== "CLOSED" && status !== "DRAFT") redirect(back);
   await tenantDb(ctx.resolved.id).form.updateMany({
     where: { id: form.id },
-    data: { status: status as "OPEN" | "CLOSED" | "DRAFT", ...(status === "OPEN" && !form.publishedAt ? { publishedAt: new Date() } : {}) },
+    data: {
+      status: status as "OPEN" | "CLOSED" | "DRAFT",
+      ...(status === "OPEN" && !form.publishedAt ? { publishedAt: new Date() } : {}),
+      // A manual status change takes over from the schedule.
+      ...(status !== "DRAFT" ? { autoPublish: false, scheduleNote: null } : {}),
+    },
   });
   await audit(ctx, `forms.form.${status.toLowerCase()}`, "form", form.id);
   redirect(`${back}notice=${status === "OPEN" ? "Published. The form is live." : status === "CLOSED" ? "Closed. The form no longer takes responses." : "Moved back to draft."}`);
@@ -251,9 +274,19 @@ export async function duplicateForm(formData: FormData) {
     visibility: field.visibility ? { ...field.visibility, rules: field.visibility.rules.map((rule) => ({ ...rule, fieldId: remap(rule.fieldId) })) } : null,
     skipLogic: field.skipLogic ? { rules: field.skipLogic.rules.map((rule) => ({ ...rule, fieldId: remap(rule.fieldId), goTo: remap(rule.goTo) })) } : null,
   }));
-  const { id: _id, createdAt: _c, updatedAt: _u, publishedAt: _p, ...rest } = form;
+  const { id: _id, createdAt: _c, updatedAt: _u, publishedAt: _p, endRules: rawEndRules, notifyDigestSentAt: _d, scheduleNote: _s, confirmEmailFieldId, ...rest } = form;
+  const endRules = cleanEndRules(loaded?.fields ?? [], rawEndRules).map((rule) => ({ ...rule, rules: rule.rules.map((item) => ({ ...item, fieldId: remap(item.fieldId) })) }));
   const copy = await tenantDb(ctx.resolved.id).form.create({
-    data: { ...rest, title: `${form.title} (copy)`, slug: await uniqueSlug(ctx.resolved.id, `${form.slug}-copy`), status: "DRAFT", createdById: ctx.auth.user.id },
+    data: {
+      ...rest,
+      endRules: endRules as unknown as Prisma.InputJsonValue,
+      confirmEmailFieldId: confirmEmailFieldId ? remap(confirmEmailFieldId) : null,
+      autoPublish: false,
+      title: `${form.title} (copy)`,
+      slug: await uniqueSlug(ctx.resolved.id, `${form.slug}-copy`),
+      status: "DRAFT",
+      createdById: ctx.auth.user.id,
+    },
   });
   await writeFields(ctx.resolved.id, copy.id, fields);
   await audit(ctx, "forms.form.duplicated", "form", copy.id);
@@ -402,4 +435,126 @@ export async function generateSummary(formData: FormData) {
   const brand = ctx.brand;
   after(() => runFormSummary({ organizationId: ctx.resolved.id, formId: form.id, summaryId: summary.id, brand, actorId: ctx.auth.user.id }));
   redirect(`/forms/${form.id}/results#summary`);
+}
+
+// Notifications, sharing and mirror (the form's Connect page) ---------------
+
+function connectBack(formId: string, query: string) {
+  return `/forms/${formId}/connect?${query}`;
+}
+
+/** Who on the team gets emailed about new responses, how often, and whether answers are included. */
+export async function saveNotifications(formData: FormData) {
+  const ctx = await formsContext("forms.write");
+  const form = await ownForm(ctx, text(formData, "formId", 40));
+  const db = tenantDb(ctx.resolved.id);
+  const mode = asNotifyMode(text(formData, "notifyMode", 10));
+  const wanted = formData.getAll("notifyUserId").map(String).filter((id) => UUID_RE.test(id));
+  // Recipients must be active members of this organization.
+  const members = wanted.length ? await db.membership.findMany({ where: { userId: { in: wanted }, status: "ACTIVE" }, select: { userId: true } }) : [];
+  const userIds = members.map((member) => member.userId).slice(0, MAX_RECIPIENTS);
+  // Answers in an email are an export of PII: only someone who may export can turn that on.
+  const includeAnswers = formData.get("notifyIncludeAnswers") === "on" && can(ctx.subject, "forms.export", ctx.scope);
+  if (mode !== "off" && !userIds.length) redirect(connectBack(form.id, "error=Pick at least one person to email."));
+  const turnedOn = asNotifyMode(form.notifyMode) === "off" && mode !== "off";
+  await db.form.updateMany({ where: { id: form.id }, data: { notifyMode: mode, notifyUserIds: userIds, notifyIncludeAnswers: includeAnswers } });
+  if (turnedOn) {
+    // Start from now: responses that came in while notifications were off are not emailed in a burst.
+    await db.formResponse.updateMany({ where: { formId: form.id, notifiedAt: null }, data: { notifiedAt: new Date() } });
+    await db.form.updateMany({ where: { id: form.id }, data: { notifyDigestSentAt: mode === "digest" ? new Date() : null } });
+  }
+  await audit(ctx, "forms.notifications.saved", "form", form.id);
+  redirect(connectBack(form.id, "notice=Notifications saved."));
+}
+
+/** The respondent's confirmation email and the public live results page. */
+export async function saveSharing(formData: FormData) {
+  const ctx = await formsContext("forms.write");
+  const form = await ownForm(ctx, text(formData, "formId", 40));
+  const db = tenantDb(ctx.resolved.id);
+  const confirmEnabled = formData.get("confirmEmailEnabled") === "on";
+  const fieldId = text(formData, "confirmEmailFieldId", 40);
+  const emailField = UUID_RE.test(fieldId) ? await db.formField.findFirst({ where: { id: fieldId, formId: form.id, type: "email" }, select: { id: true } }) : null;
+  if (confirmEnabled && !emailField) redirect(connectBack(form.id, "error=Pick the email question the confirmation goes to."));
+  await db.form.updateMany({
+    where: { id: form.id },
+    data: {
+      confirmEmailEnabled: confirmEnabled,
+      confirmEmailFieldId: emailField?.id ?? null,
+      confirmEmailSubject: text(formData, "confirmEmailSubject", 200),
+      confirmEmailBody: String(formData.get("confirmEmailBody") ?? "").trim().slice(0, 5000),
+      publicResultsEnabled: formData.get("publicResultsEnabled") === "on",
+      publicResultsMin: effectiveMin(Number(text(formData, "publicResultsMin", 5)) || 5),
+    },
+  });
+  await audit(ctx, "forms.sharing.saved", "form", form.id);
+  redirect(connectBack(form.id, "notice=Saved."));
+}
+
+/** Connect (or replace) the form's one-way mirror. Credentials are encrypted and never shown again. */
+export async function saveMirror(formData: FormData) {
+  const ctx = await formsContext("forms.write", "forms.export");
+  const form = await ownForm(ctx, text(formData, "formId", 40));
+  const db = tenantDb(ctx.resolved.id);
+  const provider = text(formData, "provider", 20) === "google_sheets" ? "google_sheets" : "airtable";
+  const existing = await db.formMirror.findFirst({ where: { formId: form.id } });
+  const secretInput = String(formData.get("secret") ?? "").trim().slice(0, 10000);
+  let target: Record<string, string>;
+  let secret: string | null = null;
+  if (provider === "airtable") {
+    const parsed = parseAirtableTarget({ baseId: text(formData, "baseId", 40), table: text(formData, "table", 100) });
+    if (!parsed.ok) redirect(connectBack(form.id, `error=${encodeURIComponent(parsed.error)}`));
+    target = parsed.target;
+    if (secretInput) {
+      const problem = airtableTokenProblem(secretInput);
+      if (problem) redirect(connectBack(form.id, `error=${encodeURIComponent(problem)}`));
+      secret = secretInput;
+    }
+  } else {
+    const parsed = parseSheetsTarget({ spreadsheet: text(formData, "spreadsheet", 300), sheet: text(formData, "sheet", 100) });
+    if (!parsed.ok) redirect(connectBack(form.id, `error=${encodeURIComponent(parsed.error)}`));
+    target = parsed.target;
+    if (secretInput) {
+      const creds = parseGoogleCredentials(secretInput);
+      if (!creds.ok) redirect(connectBack(form.id, `error=${encodeURIComponent(creds.error)}`));
+      secret = JSON.stringify(creds.credentials);
+    }
+  }
+  // Keeping the saved credentials is only possible for the same provider.
+  if (!secret && (!existing || existing.provider !== provider)) redirect(connectBack(form.id, "error=Paste the access token or key."));
+  let cipher = existing?.secretCipher ?? "";
+  if (secret) {
+    try {
+      cipher = encryptSecret(secret, process.env.AUTH_SECRET ?? "");
+    } catch {
+      redirect(connectBack(form.id, "error=The server cannot store credentials yet (AUTH_SECRET is not set)."));
+    }
+  }
+  const data = { provider, target: target as Prisma.InputJsonValue, secretCipher: cipher, enabled: formData.get("enabled") !== "off", lastError: null };
+  if (existing) await db.formMirror.updateMany({ where: { id: existing.id }, data });
+  else await db.formMirror.create({ data: { ...data, organizationId: ctx.resolved.id, formId: form.id, createdById: ctx.auth.user.id } });
+  await audit(ctx, existing ? "forms.mirror.updated" : "forms.mirror.created", "form", form.id);
+  redirect(connectBack(form.id, "notice=Mirror saved. New responses will be copied there."));
+}
+
+export async function deleteMirror(formData: FormData) {
+  const ctx = await formsContext("forms.write", "forms.export");
+  const form = await ownForm(ctx, text(formData, "formId", 40));
+  const db = tenantDb(ctx.resolved.id);
+  await db.formMirror.deleteMany({ where: { formId: form.id } });
+  await db.formResponse.updateMany({ where: { formId: form.id, mirrorStatus: { in: ["pending", "failed"] } }, data: { mirrorStatus: null, mirrorError: null } });
+  await audit(ctx, "forms.mirror.deleted", "form", form.id);
+  redirect(connectBack(form.id, "notice=Mirror removed. Rows already copied stay in your sheet or table."));
+}
+
+/** Try failed copies again now (the job also retries them on a backoff). */
+export async function retryMirror(formData: FormData) {
+  const ctx = await formsContext("forms.write", "forms.export");
+  const form = await ownForm(ctx, text(formData, "formId", 40));
+  const db = tenantDb(ctx.resolved.id);
+  const failed = await db.formResponse.findMany({ where: { formId: form.id, mirrorStatus: { in: ["failed", "pending"] }, status: "COMPLETE", spamReason: null }, select: { id: true }, take: 25, orderBy: { completedAt: "asc" } });
+  let ok = 0;
+  for (const row of failed) if ((await mirrorResponse(ctx.resolved.id, row.id)) === "ok") ok += 1;
+  await audit(ctx, "forms.mirror.retried", "form", form.id);
+  redirect(connectBack(form.id, `notice=${encodeURIComponent(`Retried ${failed.length}: ${ok} copied, ${failed.length - ok} still failing.`)}`));
 }

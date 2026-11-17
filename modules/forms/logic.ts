@@ -15,7 +15,7 @@
  * the raw answers; nothing the browser claims about what was hidden is read.
  */
 import { capturesAnswer, checkAnswer, fieldSpec, isDisplayed, isEmptyValue } from "./fields";
-import type { AnswerMap, FieldDef, FormLayout, LogicOp, LogicRule, SkipRule } from "./types";
+import type { AnswerMap, EndRule, Ending, FieldDef, FormLayout, LogicOp, LogicRule, SkipRule } from "./types";
 
 export const LOGIC_OPS: { op: LogicOp; label: string; needsValue: boolean }[] = [
   { op: "equals", label: "is", needsValue: true },
@@ -314,7 +314,8 @@ export function defaultRuleValue(source: FieldDef | undefined): string | number 
   if (first) return first.id;
   if (source.type === "rating" || source.type === "scale") return source.config.max ?? 5;
   if (source.type === "nps") return 9;
-  if (source.type === "number") return 0;
+  if (source.type === "number" || source.type === "currency") return 0;
+  if (source.type === "slider") return source.config.min ?? 0;
   return "";
 }
 
@@ -349,4 +350,99 @@ export function cleanLogic(fields: readonly FieldDef[]): FieldDef[] {
 export function progressPercent(position: number, total: number): number {
   if (total <= 1) return position >= total ? 100 : 0;
   return Math.max(0, Math.min(100, Math.round((position / total) * 100)));
+}
+
+// End-of-form rules ----------------------------------------------------------
+
+export const MAX_END_RULES = 20;
+
+function isWebUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where a respondent goes after submitting. Evaluated on the SERVER against
+ * the answers it stored (hidden and skipped questions already dropped by
+ * checkSubmission), so a crafted POST can neither pick an ending by claiming
+ * an answer to a question it never reached nor supply a URL: every URL comes
+ * from the author's saved rules. First matching rule wins; otherwise the
+ * form's own thank-you and redirect apply.
+ */
+export function resolveEnding(
+  fields: readonly FieldDef[],
+  storedAnswers: AnswerMap,
+  endRules: readonly EndRule[],
+  fallback: { title: string; message: string; redirectUrl: string | null },
+): Ending {
+  const usable = new Set(fields.filter((field) => fieldSpec(field.type)?.logicUsable).map((field) => field.id));
+  for (const rule of endRules) {
+    if (!rule || !Array.isArray(rule.rules) || rule.rules.length === 0) continue;
+    if (!rule.rules.every((item) => usable.has(item.fieldId))) continue;
+    const results = rule.rules.map((item) => evaluateRule(item, storedAnswers));
+    const matched = rule.match === "any" ? results.some(Boolean) : results.every(Boolean);
+    if (!matched) continue;
+    if (rule.action === "redirect") {
+      if (!isWebUrl(rule.url)) continue;
+      return { title: rule.title || fallback.title, message: rule.message || fallback.message, redirectUrl: rule.url, ruleId: rule.id };
+    }
+    return { title: rule.title || fallback.title, message: rule.message, redirectUrl: null, ruleId: rule.id };
+  }
+  return { title: fallback.title, message: fallback.message, redirectUrl: fallback.redirectUrl && isWebUrl(fallback.redirectUrl) ? fallback.redirectUrl : null, ruleId: null };
+}
+
+/** Sanitize end rules from the builder: known questions, known ops, web URLs only. */
+export function cleanEndRules(fields: readonly FieldDef[], raw: unknown): EndRule[] {
+  const usable = new Set(fields.filter((field) => fieldSpec(field.type)?.logicUsable).map((field) => field.id));
+  const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
+  const list = Array.isArray(raw) ? raw : [];
+  const out: EndRule[] = [];
+  for (const item of list.slice(0, MAX_END_RULES)) {
+    if (!item || typeof item !== "object") continue;
+    const source = item as Record<string, unknown>;
+    const rules = (Array.isArray(source.rules) ? source.rules : [])
+      .map((rule) => rule as LogicRule)
+      .filter((rule) => rule && typeof rule.fieldId === "string" && usable.has(rule.fieldId) && OPS.has(rule.op))
+      .map((rule) => ({
+        fieldId: rule.fieldId,
+        op: rule.op,
+        value: typeof rule.value === "string" ? rule.value.slice(0, 300) : typeof rule.value === "number" || typeof rule.value === "boolean" ? rule.value : null,
+      }))
+      .slice(0, 10);
+    if (!rules.length) continue;
+    const action = source.action === "redirect" ? "redirect" : "message";
+    const url = text(source.url, 500);
+    out.push({
+      id: text(source.id, 40) || `end${out.length + 1}`,
+      match: source.match === "any" ? "any" : "all",
+      rules,
+      action,
+      url: action === "redirect" && isWebUrl(url) ? url : "",
+      title: text(source.title, 200),
+      message: text(source.message, 3000),
+    });
+  }
+  return out;
+}
+
+/** Problems with the end rules, for the builder and the publish check. */
+export function endRuleProblems(fields: readonly FieldDef[], endRules: readonly EndRule[]): string[] {
+  const problems: string[] = [];
+  const byId = new Map(fields.map((field) => [field.id, field]));
+  endRules.forEach((rule, index) => {
+    const name = `Ending rule ${index + 1}`;
+    if (!rule.rules.length) problems.push(`${name} has no conditions.`);
+    for (const item of rule.rules) {
+      const source = byId.get(item.fieldId);
+      if (!source) problems.push(`${name} uses a question that no longer exists.`);
+      else if (!fieldSpec(source.type)?.logicUsable) problems.push(`${name} uses a question that cannot be tested.`);
+    }
+    if (rule.action === "redirect" && !isWebUrl(rule.url)) problems.push(`${name} needs a full web address starting with https://`);
+    if (rule.action === "message" && !rule.title && !rule.message) problems.push(`${name} needs a thank-you title or message.`);
+  });
+  return [...new Set(problems)];
 }

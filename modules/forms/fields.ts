@@ -10,7 +10,7 @@ import type { Choice, FieldConfig, FieldDef } from "./types";
 export type FieldCategory = "Contact" | "Text" | "Choice" | "Scale" | "Number & date" | "Upload" | "Special" | "Layout";
 
 /** How results summarise a type. "none" types never store an answer. */
-export type AnalyticsKind = "choice" | "multi" | "numeric" | "bool" | "text" | "date" | "file" | "none";
+export type AnalyticsKind = "choice" | "multi" | "numeric" | "bool" | "text" | "date" | "file" | "matrix" | "ranking" | "none";
 
 export type InspectorOption =
   | "placeholder"
@@ -25,7 +25,11 @@ export type InspectorOption =
   | "consentText"
   | "queryParam"
   | "body"
-  | "allowTyped";
+  | "allowTyped"
+  | "rows"
+  | "columns"
+  | "step"
+  | "maxSize";
 
 export type FieldTypeSpec = {
   type: string;
@@ -52,6 +56,11 @@ export type FieldTypeSpec = {
   validate: (value: unknown, config: FieldConfig) => string | null;
   /** Plain text for exports and tables. */
   toText: (value: unknown, config: FieldConfig) => string;
+  /**
+   * For answers with parts (matrix rows, a ranking): when the field is
+   * required, every part must be filled. Absent means any non-empty value counts.
+   */
+  isComplete?: (value: unknown, config: FieldConfig) => boolean;
 };
 
 const TEXT_MAX = 500;
@@ -130,6 +139,119 @@ export type FileValue = { fileId?: string; filename: string; size: number; mimeT
 export type SignatureValue = { fileId?: string; dataUrl?: string; typedName?: string; signedAt?: string };
 
 export const SIGNATURE_MAX_DATA_URL = 400_000;
+
+/** Image types an image-upload field accepts, by extension and by sniffed MIME type. */
+export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"] as const;
+export const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+export const IMAGE_MAX_MB = 10;
+
+/**
+ * The real type of an uploaded image from its first bytes. The browser's
+ * claimed MIME type and the filename are not trusted; a file that is not one
+ * of these four formats returns null and is refused.
+ */
+export function sniffImage(bytes: Uint8Array): (typeof IMAGE_MIME_TYPES)[number] | null {
+  const at = (index: number) => bytes[index] ?? -1;
+  if (at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4e && at(3) === 0x47 && at(4) === 0x0d && at(5) === 0x0a && at(6) === 0x1a && at(7) === 0x0a) return "image/png";
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return "image/jpeg";
+  if (at(0) === 0x47 && at(1) === 0x49 && at(2) === 0x46 && at(3) === 0x38 && (at(4) === 0x37 || at(4) === 0x39) && at(5) === 0x61) return "image/gif";
+  if (at(0) === 0x52 && at(1) === 0x49 && at(2) === 0x46 && at(3) === 0x46 && at(8) === 0x57 && at(9) === 0x45 && at(10) === 0x42 && at(11) === 0x50) return "image/webp";
+  return null;
+}
+
+/** Types whose answer is a file that must arrive with the submission itself. */
+export const FILE_TYPES = new Set(["file_upload", "image_upload"]);
+
+function coerceFile(raw: unknown): FileValue | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const source = raw as Record<string, unknown>;
+  const filename = asString(source.filename);
+  const size = asNumber(source.size);
+  if (!filename || size === undefined) return undefined;
+  const value: FileValue = { filename: filename.slice(0, 200), size, mimeType: (asString(source.mimeType) ?? "application/octet-stream").slice(0, 120) };
+  const fileId = asString(source.fileId);
+  if (fileId) value.fileId = fileId;
+  return value;
+}
+
+export type MatrixValue = Record<string, string | string[]>;
+
+function columnLabel(id: string, config: FieldConfig): string {
+  return config.columns?.find((column) => column.id === id)?.label ?? id;
+}
+
+const matrixType = (multi: boolean): FieldTypeSpec => ({
+  type: multi ? "matrix_multi" : "matrix",
+  label: multi ? "Grid (checkboxes)" : "Grid (one per row)",
+  category: "Choice",
+  hint: multi ? "Several rows, pick any per row" : "Several rows on one scale",
+  pii: false,
+  captures: true,
+  logicUsable: false,
+  analytics: "matrix",
+  inspector: ["rows", "columns"],
+  defaultLabel: multi ? "Which apply to each?" : "How do you rate each of these?",
+  defaultConfig: () => ({
+    rows: choices("First item", "Second item", "Third item"),
+    columns: multi ? choices("Option A", "Option B", "Option C") : choices("Poor", "Fair", "Good", "Excellent"),
+  }),
+  coerce: (raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+    const value: MatrixValue = {};
+    for (const [rowId, cell] of Object.entries(raw as Record<string, unknown>).slice(0, 200)) {
+      if (multi) {
+        const list = (Array.isArray(cell) ? cell : [cell]).map(asString).filter((item): item is string => Boolean(item));
+        if (list.length) value[rowId.slice(0, 60)] = [...new Set(list)];
+      } else {
+        const one = asString(cell);
+        if (one) value[rowId.slice(0, 60)] = one;
+      }
+    }
+    return value;
+  },
+  validate: (value, config) => {
+    const rows = new Set((config.rows ?? []).map((row) => row.id));
+    const columns = new Set((config.columns ?? []).map((column) => column.id));
+    for (const [rowId, cell] of Object.entries(value as MatrixValue)) {
+      if (!rows.has(rowId)) return "Answer the rows shown.";
+      const picked = Array.isArray(cell) ? cell : [cell];
+      if (!picked.every((id) => columns.has(id))) return "Pick from the options shown.";
+    }
+    return null;
+  },
+  isComplete: (value, config) => {
+    const map = value as MatrixValue;
+    return (config.rows ?? []).every((row) => {
+      const cell = map[row.id];
+      return Array.isArray(cell) ? cell.length > 0 : Boolean(cell);
+    });
+  },
+  toText: (value, config) => {
+    if (!value || typeof value !== "object") return "";
+    return (config.rows ?? [])
+      .filter((row) => (value as MatrixValue)[row.id] !== undefined)
+      .map((row) => {
+        const cell = (value as MatrixValue)[row.id]!;
+        return `${row.label}: ${(Array.isArray(cell) ? cell : [cell]).map((id) => columnLabel(id, config)).join(", ")}`;
+      })
+      .join("; ");
+  },
+});
+
+/** Slider bounds with sane defaults; max is always above min. */
+export function sliderRange(config: FieldConfig): { min: number; max: number; step: number } {
+  const { min, max } = rangeOf(config, 0, 100);
+  const step = Number.isFinite(config.step) && Number(config.step) > 0 ? Number(config.step) : 1;
+  return { min, max: max > min ? max : min + 1, step };
+}
+
+/** Whole steps from min, allowing for float error (0.1 + 0.2). */
+function onStep(value: number, min: number, step: number): boolean {
+  const steps = (value - min) / step;
+  return Math.abs(steps - Math.round(steps)) < 1e-6;
+}
+
+
 
 const textType = (
   type: string,
@@ -301,6 +423,35 @@ export const FIELD_TYPES: readonly FieldTypeSpec[] = [
     toText: (value) => (value === true ? "Yes" : value === false ? "No" : ""),
   },
 
+  matrixType(false),
+  matrixType(true),
+  {
+    type: "ranking",
+    label: "Ranking",
+    category: "Choice",
+    hint: "Put options in order (drag or arrow keys)",
+    pii: false,
+    captures: true,
+    logicUsable: false,
+    analytics: "ranking",
+    inspector: ["choices"],
+    defaultLabel: "Put these in order, most important first",
+    defaultConfig: () => ({ choices: choices("Option 1", "Option 2", "Option 3") }),
+    coerce: (raw) => {
+      if (!Array.isArray(raw)) return undefined;
+      const list = raw.map(asString).filter((item): item is string => Boolean(item)).slice(0, 100);
+      return list.length === new Set(list).size ? list : undefined;
+    },
+    validate: (value, config) => {
+      const list = value as string[];
+      const ids = (config.choices ?? []).map((choice) => choice.id);
+      if (!list.every((id) => ids.includes(id))) return "Rank the options shown.";
+      if (list.length !== ids.length) return "Put every option in order.";
+      return null;
+    },
+    toText: (value, config) => (Array.isArray(value) ? value.map((id, index) => `${index + 1}. ${choiceLabel(String(id), config)}`).join("; ") : ""),
+  },
+
   // Scale
   scaleType(
     "rating",
@@ -356,6 +507,53 @@ export const FIELD_TYPES: readonly FieldTypeSpec[] = [
     toText: (value) => (typeof value === "number" ? String(value) : ""),
   },
   {
+    type: "currency",
+    label: "Currency",
+    category: "Number & date",
+    hint: "An amount of money, two decimals",
+    pii: false,
+    captures: true,
+    logicUsable: true,
+    analytics: "numeric",
+    inspector: ["placeholder", "range", "affixes"],
+    defaultLabel: "Amount",
+    defaultConfig: () => ({ prefix: "$", min: 0 }),
+    coerce: (raw) => {
+      const value = typeof raw === "string" ? asNumber(raw.replace(/[^\d.,-]/g, "")) : asNumber(raw);
+      return value;
+    },
+    validate: (value, config) => {
+      const n = Number(value);
+      if (Math.abs(n * 100 - Math.round(n * 100)) > 1e-6) return "Use at most two decimal places.";
+      if (Number.isFinite(config.min) && n < Number(config.min)) return `Enter ${config.prefix ?? ""}${config.min} or more.`;
+      if (Number.isFinite(config.max) && n > Number(config.max)) return `Enter ${config.prefix ?? ""}${config.max} or less.`;
+      return null;
+    },
+    toText: (value) => (typeof value === "number" ? value.toFixed(2) : ""),
+  },
+  {
+    type: "slider",
+    label: "Slider",
+    category: "Number & date",
+    hint: "Drag along a range",
+    pii: false,
+    captures: true,
+    logicUsable: true,
+    analytics: "numeric",
+    inspector: ["range", "step", "scaleLabels", "affixes"],
+    defaultLabel: "How much?",
+    defaultConfig: () => ({ min: 0, max: 100, step: 1, leftLabel: "", rightLabel: "" }),
+    coerce: (raw) => asNumber(raw),
+    validate: (value, config) => {
+      const { min, max, step } = sliderRange(config);
+      const n = Number(value);
+      if (n < min || n > max) return `Choose a value from ${min} to ${max}.`;
+      if (!onStep(n, min, step)) return `Choose a value in steps of ${step}.`;
+      return null;
+    },
+    toText: (value) => (typeof value === "number" ? String(value) : ""),
+  },
+  {
     type: "date",
     label: "Date",
     category: "Number & date",
@@ -406,17 +604,7 @@ export const FIELD_TYPES: readonly FieldTypeSpec[] = [
     inspector: ["accept"],
     defaultLabel: "Upload a file",
     defaultConfig: () => ({ accept: [".pdf", ".png", ".jpg", ".jpeg", ".docx"], maxSizeMb: 10 }),
-    coerce: (raw) => {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
-      const source = raw as Record<string, unknown>;
-      const filename = asString(source.filename);
-      const size = asNumber(source.size);
-      if (!filename || size === undefined) return undefined;
-      const value: FileValue = { filename: filename.slice(0, 200), size, mimeType: (asString(source.mimeType) ?? "application/octet-stream").slice(0, 120) };
-      const fileId = asString(source.fileId);
-      if (fileId) value.fileId = fileId;
-      return value;
-    },
+    coerce: (raw) => coerceFile(raw),
     validate: (value, config) => {
       const file = value as FileValue;
       const max = Math.min(config.maxSizeMb ?? 10, 25);
@@ -424,6 +612,32 @@ export const FIELD_TYPES: readonly FieldTypeSpec[] = [
       if (file.size > max * 1024 * 1024) return `Files must be under ${max} MB.`;
       const accept = (config.accept ?? []).map((ext) => ext.toLowerCase());
       if (accept.length && !accept.some((ext) => file.filename.toLowerCase().endsWith(ext))) return `Upload one of: ${accept.join(", ")}.`;
+      return null;
+    },
+    toText: (value) => (value && typeof value === "object" ? (value as FileValue).filename : ""),
+  },
+
+  {
+    type: "image_upload",
+    label: "Image upload",
+    category: "Upload",
+    hint: "A photo or screenshot (PNG, JPG, WebP, GIF)",
+    pii: true,
+    captures: true,
+    logicUsable: false,
+    analytics: "file",
+    inspector: ["maxSize"],
+    defaultLabel: "Upload an image",
+    defaultConfig: () => ({ maxSizeMb: 5 }),
+    coerce: (raw) => coerceFile(raw),
+    validate: (value, config) => {
+      const file = value as FileValue;
+      const max = Math.min(config.maxSizeMb ?? 5, IMAGE_MAX_MB);
+      if (file.size <= 0) return "That image is empty.";
+      if (file.size > max * 1024 * 1024) return `Images must be under ${max} MB.`;
+      const name = file.filename.toLowerCase();
+      if (!IMAGE_EXTENSIONS.some((ext) => name.endsWith(ext))) return "Upload a PNG, JPG, WebP or GIF image.";
+      if (!(IMAGE_MIME_TYPES as readonly string[]).includes(file.mimeType)) return "That file is not a PNG, JPG, WebP or GIF image.";
       return null;
     },
     toText: (value) => (value && typeof value === "object" ? (value as FileValue).filename : ""),
@@ -525,6 +739,22 @@ export const FIELD_TYPES: readonly FieldTypeSpec[] = [
     toText: () => "",
   },
   {
+    type: "divider",
+    label: "Divider",
+    category: "Layout",
+    hint: "A thin line between sections",
+    pii: false,
+    captures: false,
+    logicUsable: false,
+    analytics: "none",
+    inspector: [],
+    defaultLabel: "Divider",
+    defaultConfig: () => ({}),
+    coerce: () => undefined,
+    validate: () => null,
+    toText: () => "",
+  },
+  {
     type: "page_break",
     label: "Page break",
     category: "Layout",
@@ -608,13 +838,19 @@ export function checkAnswer(field: FieldDef, raw: unknown): { value: unknown; er
     return { value: undefined, error: null };
   }
   if (field.type === "consent" && field.required && value !== true) return { value, error: requiredMessage(field.type) };
-  return { value, error: spec.validate(value, field.config) };
+  const invalid = spec.validate(value, field.config);
+  if (invalid) return { value, error: invalid };
+  if (field.required && spec.isComplete && !spec.isComplete(value, field.config)) return { value, error: requiredMessage(field.type) };
+  return { value, error: null };
 }
 
 function requiredMessage(type: string): string {
   if (type === "consent") return "Please tick the box to continue.";
   if (type === "signature") return "Please sign to continue.";
   if (type === "file_upload") return "Please upload a file.";
+  if (type === "image_upload") return "Please upload an image.";
+  if (type === "matrix" || type === "matrix_multi") return "Please answer every row.";
+  if (type === "ranking") return "Please put the options in order (or confirm the order shown).";
   return "This question is required.";
 }
 
@@ -649,6 +885,21 @@ export function sanitizeField(input: FieldDef): FieldDef | null {
       .filter((choice) => choice.id && choice.label && !seen.has(choice.id) && seen.add(choice.id))
       .slice(0, 100);
   }
+  const choiceList = (key: "rows" | "columns") => {
+    const list = Array.isArray(source[key]) ? (source[key] as unknown[]) : [];
+    const seen = new Set<string>();
+    return list
+      .map((choice) => ({ id: text((choice as Choice)?.id, 40), label: text((choice as Choice)?.label, 200) }))
+      .filter((choice) => choice.id && choice.label && !seen.has(choice.id) && seen.add(choice.id))
+      .slice(0, 30);
+  };
+  if (allowed.has("rows")) config.rows = choiceList("rows");
+  if (allowed.has("columns")) config.columns = choiceList("columns");
+  if (allowed.has("step")) {
+    const step = num(source.step);
+    config.step = step && step > 0 ? step : 1;
+  }
+  if (allowed.has("maxSize")) config.maxSizeMb = Math.min(IMAGE_MAX_MB, Math.max(1, num(source.maxSizeMb) ?? 5));
   if (allowed.has("allowOther")) config.allowOther = source.allowOther === true;
   if (allowed.has("selections")) {
     config.minSelections = num(source.minSelections);

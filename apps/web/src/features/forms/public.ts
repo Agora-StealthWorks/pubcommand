@@ -1,10 +1,15 @@
 import { resolveOrgBySlug, tenantDb, type Prisma } from "@pubcommand/db";
+import { after } from "next/server";
 import { randomBytes } from "node:crypto";
-import { fieldSpec, type FileValue, type SignatureValue } from "../../../../../modules/forms/fields";
-import { checkSubmission } from "../../../../../modules/forms/logic";
+import { FILE_TYPES, fieldSpec, sniffImage, type FileValue, type SignatureValue } from "../../../../../modules/forms/fields";
+import { checkSubmission, cleanEndRules, resolveEnding } from "../../../../../modules/forms/logic";
+import { asNotifyMode } from "../../../../../modules/forms/notify";
+import { pollResults } from "../../../../../modules/forms/poll";
 import { acceptingResponses, resolveTheme, spamVerdict } from "../../../../../modules/forms/theme";
 import type { AnswerMap, PublicForm, ResolvedTheme } from "../../../../../modules/forms/types";
 import { asLayout, formsEnabled, rowToField, themeInput, toPublicForm } from "./data";
+import { mirrorResponse } from "./mirror";
+import { notifyTeam, sendConfirmation } from "./notify";
 import { clientIp, hashIp, rateLimited } from "./server";
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -12,7 +17,23 @@ export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export type PublicFormLoad =
   | { kind: "missing" }
   | { kind: "closed"; title: string; message: string; theme: ResolvedTheme }
-  | { kind: "open"; organizationId: string; form: PublicForm; theme: ResolvedTheme; formRow: { id: string; layout: string; status: string; opensAt: Date | null; closesAt: Date | null; responseLimit: number | null } };
+  | {
+      kind: "open";
+      organizationId: string;
+      form: PublicForm;
+      theme: ResolvedTheme;
+      formRow: {
+        id: string;
+        layout: string;
+        status: string;
+        opensAt: Date | null;
+        closesAt: Date | null;
+        responseLimit: number | null;
+        endRules: Prisma.JsonValue;
+        notifyMode: string;
+        confirmEmailEnabled: boolean;
+      };
+    };
 
 /** Load a form for anonymous respondents by organization slug + form slug. Never returns responses. */
 export async function loadPublicForm(orgSlug: string, formSlug: string, now = new Date()): Promise<PublicFormLoad> {
@@ -34,15 +55,18 @@ export async function loadPublicForm(orgSlug: string, formSlug: string, now = ne
   if (!window.open || !resolved.privacyPolicyUrl) {
     return { kind: "closed", title: form.title, message: window.open ? "This form is not set up yet." : form.closedMessage || window.reason || "", theme: resolved };
   }
-  return { kind: "open", organizationId: org.id, form: toPublicForm(form, fieldRows.map(rowToField)), theme: resolved, formRow: form };
+  const publicForm = toPublicForm(form, fieldRows.map(rowToField));
+  publicForm.resultsUrl = form.publicResultsEnabled ? `/f/${form.slug}/results` : null;
+  return { kind: "open", organizationId: org.id, form: publicForm, theme: resolved, formRow: form };
 }
 
-/** The theme logo for a public form. Logos are not secret, but only an open form's logo is served here. */
+/** The theme logo for a public form. Logos are not secret; any published (non-draft) form's logo is served, so closed forms and results pages show it too. */
 export async function publicLogo(orgSlug: string, formSlug: string) {
-  const loaded = await loadPublicForm(orgSlug, formSlug);
-  if (loaded.kind !== "open") return null;
-  const db = tenantDb(loaded.organizationId);
-  const form = await db.form.findFirst({ where: { id: loaded.form.id }, select: { themeId: true } });
+  if (!/^[a-z0-9-]{1,63}$/.test(orgSlug) || !/^[a-z0-9-]{1,60}$/.test(formSlug)) return null;
+  const org = await resolveOrgBySlug(orgSlug);
+  if (!org || org.suspendedAt || !(await formsEnabled(org.id))) return null;
+  const db = tenantDb(org.id);
+  const form = await db.form.findFirst({ where: { slug: formSlug, deletedAt: null, status: { not: "DRAFT" } }, select: { themeId: true } });
   const theme = form?.themeId ? await db.formTheme.findFirst({ where: { id: form.themeId }, select: { logoFileId: true } }) : null;
   if (!theme?.logoFileId) return null;
   return db.formFile.findFirst({ where: { id: theme.logoFileId, kind: "logo" } });
@@ -118,14 +142,19 @@ export async function handleSubmit(request: Request, orgSlug: string, formSlug: 
   const answers: AnswerMap = { ...payload.answers };
   const uploads = new Map<string, File>();
   for (const field of fields) {
-    if (field.type !== "file_upload") continue;
+    if (!FILE_TYPES.has(field.type)) continue;
     // A file answer only counts when the file itself arrived with this request.
     delete answers[field.id];
     const file = body.get(`file:${field.id}`);
     if (file instanceof File && file.size > 0) {
       if (file.size > MAX_UPLOAD_BYTES) return json({ ok: false, errors: { [field.id]: "That file is too large." } }, 422);
+      let mimeType = file.type || "application/octet-stream";
+      if (field.type === "image_upload") {
+        // The real type comes from the bytes; the browser's claim is ignored. Anything else fails validation.
+        mimeType = sniffImage(new Uint8Array(await file.slice(0, 16).arrayBuffer())) ?? "application/octet-stream";
+      }
       uploads.set(field.id, file);
-      answers[field.id] = { filename: file.name, size: file.size, mimeType: file.type || "application/octet-stream" } satisfies FileValue;
+      answers[field.id] = { filename: file.name, size: file.size, mimeType } satisfies FileValue;
     }
   }
   for (const field of fields) {
@@ -156,19 +185,21 @@ export async function handleSubmit(request: Request, orgSlug: string, formSlug: 
     utm: Object.keys(payload.utm).length ? payload.utm : undefined,
     spamReason,
   };
+  const mirror = spamReason ? null : await db.formMirror.findFirst({ where: { formId: form.id, enabled: true }, select: { id: true } });
+  const mirrorState = mirror ? { mirrorStatus: "pending", mirrorTriedAt: new Date(now) } : {};
   const partial = payload.resumeToken ? await db.formResponse.findFirst({ where: { formId: form.id, resumeToken: payload.resumeToken, status: "PARTIAL" }, select: { id: true } }) : null;
   let responseId: string;
   if (partial) {
-    await db.formResponse.updateMany({ where: { id: partial.id }, data: { ...base, answers: {}, startedAt } });
+    await db.formResponse.updateMany({ where: { id: partial.id }, data: { ...base, ...mirrorState, answers: {}, startedAt } });
     responseId = partial.id;
   } else {
-    const created = await db.formResponse.create({ data: { ...base, organizationId, formId: form.id, resumeToken: newToken(), answers: {}, startedAt } });
+    const created = await db.formResponse.create({ data: { ...base, ...mirrorState, organizationId, formId: form.id, resumeToken: newToken(), answers: {}, startedAt } });
     responseId = created.id;
   }
   for (const [fieldId, file] of uploads) {
     if (!(fieldId in stored)) continue;
     const row = await db.formFile.create({
-      data: { organizationId, formId: form.id, responseId, fieldId, kind: "upload", filename: file.name.slice(0, 200), mimeType: file.type || "application/octet-stream", size: file.size, data: new Uint8Array(await file.arrayBuffer()) },
+      data: { organizationId, formId: form.id, responseId, fieldId, kind: "upload", filename: file.name.slice(0, 200), mimeType: (stored[fieldId] as FileValue).mimeType, size: file.size, data: new Uint8Array(await file.arrayBuffer()) },
     });
     stored[fieldId] = { ...(stored[fieldId] as FileValue), fileId: row.id };
   }
@@ -180,7 +211,24 @@ export async function handleSubmit(request: Request, orgSlug: string, formSlug: 
     stored[field.id] = { fileId: row.id, typedName: value.typedName, signedAt: new Date(now).toISOString() } satisfies SignatureValue;
   }
   await db.formResponse.updateMany({ where: { id: responseId }, data: { answers: stored as Prisma.InputJsonValue } });
-  return json({ ok: true });
+
+  // The ending is decided here, from the answers just stored, never by the browser.
+  const ending = resolveEnding(fields, check.answers, cleanEndRules(fields, loaded.formRow.endRules), {
+    title: form.confirmTitle,
+    message: form.confirmMessage,
+    redirectUrl: form.redirectUrl,
+  });
+  if (!spamReason) {
+    const notifyEach = asNotifyMode(loaded.formRow.notifyMode) === "each";
+    const confirm = loaded.formRow.confirmEmailEnabled;
+    after(async () => {
+      // Each step is independent and soft-fails: the jobs retry notifications and mirrors.
+      if (notifyEach) await notifyTeam(organizationId, form.id, [responseId]).catch(() => undefined);
+      if (confirm) await sendConfirmation(organizationId, form.id, responseId).catch(() => undefined);
+      if (mirror) await mirrorResponse(organizationId, responseId).catch(() => undefined);
+    });
+  }
+  return json({ ok: true, ending: { title: ending.title, message: ending.message, redirectUrl: ending.redirectUrl } });
 }
 
 function newToken(): string {
@@ -202,7 +250,7 @@ export async function handleProgress(request: Request, orgSlug: string, formSlug
   const raw: AnswerMap = {};
   for (const field of form.fields) {
     const spec = fieldSpec(field.type);
-    if (spec?.captures && field.type !== "file_upload" && field.type !== "signature" && field.id in payload.answers) raw[field.id] = payload.answers[field.id];
+    if (spec?.captures && !FILE_TYPES.has(field.type) && field.type !== "signature" && field.id in payload.answers) raw[field.id] = payload.answers[field.id];
   }
   // Only answers that pass their checks and sit on the path are kept; missing required ones are fine for a partial.
   const answers = checkSubmission(form.fields, asLayout(form.layout), raw).answers;
@@ -234,3 +282,43 @@ export async function handleProgress(request: Request, orgSlug: string, formSlug
   return json({ ok: true, resumeToken: token });
 }
 
+
+/**
+ * The public live results of a form, when its author turned them on.
+ * Aggregates of closed questions only (modules/forms/poll.ts). Works for a
+ * closed form too (a finished poll), never for a draft or a deleted form.
+ */
+export async function loadPublicResults(orgSlug: string, formSlug: string) {
+  if (!/^[a-z0-9-]{1,63}$/.test(orgSlug) || !/^[a-z0-9-]{1,60}$/.test(formSlug)) return null;
+  const org = await resolveOrgBySlug(orgSlug);
+  if (!org || org.suspendedAt || !(await formsEnabled(org.id))) return null;
+  const db = tenantDb(org.id);
+  const form = await db.form.findFirst({ where: { slug: formSlug, deletedAt: null, status: { not: "DRAFT" }, publicResultsEnabled: true } });
+  if (!form) return null;
+  const [brand, theme, fieldRows, rows] = await Promise.all([
+    db.brand.findFirst({ where: { id: form.brandId }, select: { name: true } }),
+    form.themeId ? db.formTheme.findFirst({ where: { id: form.themeId, deletedAt: null } }) : null,
+    db.formField.findMany({ where: { formId: form.id }, orderBy: { position: "asc" } }),
+    // Only what the tally needs: no ids, times or metadata leave this function.
+    db.formResponse.findMany({ where: { formId: form.id, status: "COMPLETE", spamReason: null }, select: { answers: true }, take: 50000 }),
+  ]);
+  const logoSrc = theme?.logoFileId ? `/f/${form.slug}/logo?v=${theme.updatedAt.getTime()}` : theme?.logoUrl && /^https?:\/\//i.test(theme.logoUrl) ? theme.logoUrl : null;
+  const fields = fieldRows.map(rowToField);
+  const responses = rows.map((row, index) => ({
+    id: String(index),
+    status: "COMPLETE" as const,
+    answers: (row.answers && typeof row.answers === "object" && !Array.isArray(row.answers) ? row.answers : {}) as AnswerMap,
+    startedAt: new Date(0),
+    completedAt: new Date(0),
+    durationMs: null,
+    lastPageIndex: 0,
+    utm: null,
+    spamReason: null,
+  }));
+  return {
+    title: form.title,
+    open: form.status === "OPEN",
+    theme: resolveTheme(themeInput(theme, logoSrc), brand?.name ?? org.name),
+    results: pollResults({ enabled: true, minResponses: form.publicResultsMin, fields, responses }),
+  };
+}

@@ -1,10 +1,27 @@
 "use client";
 
+import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ADDRESS_PARTS, OTHER_PREFIX, fieldSpec, type AddressValue, type SignatureValue } from "../../../../../modules/forms/fields";
-import { nextOnPath, pageErrors, previousOnPath, progressPercent, resolveForm } from "../../../../../modules/forms/logic";
+import {
+  ADDRESS_PARTS,
+  FILE_TYPES,
+  IMAGE_MAX_MB,
+  IMAGE_MIME_TYPES,
+  OTHER_PREFIX,
+  fieldSpec,
+  sliderRange,
+  type AddressValue,
+  type MatrixValue,
+  type SignatureValue,
+} from "../../../../../modules/forms/fields";
+import { checkSubmission, nextOnPath, pageErrors, previousOnPath, progressPercent, resolveEnding, resolveForm } from "../../../../../modules/forms/logic";
 import { captureUtm, contrastText, disclaimerText, hiddenValues } from "../../../../../modules/forms/theme";
 import type { AnswerMap, FieldDef, PublicForm, ResolvedTheme } from "../../../../../modules/forms/types";
+
+type ShownEnding = { title: string; message: string; redirectUrl: string | null };
 
 export type RendererMode = "public" | "embed" | "preview";
 
@@ -91,6 +108,7 @@ export function FormRenderer({
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [ending, setEnding] = useState<ShownEnding | null>(null);
   const files = useRef(new Map<string, File>());
   const startedAt = useRef<number>(0);
   const utm = useRef<Record<string, string>>({});
@@ -171,6 +189,9 @@ export function FormRenderer({
       return;
     }
     if (mode === "preview") {
+      // The same shared rules the server applies, so the preview shows the ending a respondent would get.
+      const stored = checkSubmission(form.fields, form.layout, values).answers;
+      setEnding(resolveEnding(form.fields, stored, form.endRules ?? [], { title: form.confirmTitle, message: form.confirmMessage, redirectUrl: form.redirectUrl }));
       setDone(true);
       return;
     }
@@ -189,10 +210,10 @@ export function FormRenderer({
         referrer: document.referrer || null,
       }),
     );
-    for (const [fieldId, file] of files.current) if (resolved.visibleIds.has(fieldId)) data.set(`file:${fieldId}`, file);
+    for (const [fieldId, file] of files.current) if (resolved.visibleIds.has(fieldId) && FILE_TYPES.has(byId.get(fieldId)?.type ?? "")) data.set(`file:${fieldId}`, file);
     try {
       const response = await fetch(withSearch(submitUrl!), { method: "POST", body: data });
-      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; errors?: Record<string, string> };
+      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; errors?: Record<string, string>; ending?: ShownEnding };
       if (!response.ok || !result.ok) {
         if (result.errors) {
           setErrors(result.errors);
@@ -203,9 +224,13 @@ export function FormRenderer({
         return;
       }
       writeToken(form.id, null);
+      // The server picked the ending from the stored answers; only an http(s) URL is ever followed.
+      const shown = result.ending ?? { title: form.confirmTitle, message: form.confirmMessage, redirectUrl: null };
+      const target = shown.redirectUrl && /^https?:\/\//i.test(shown.redirectUrl) ? shown.redirectUrl : null;
+      setEnding({ ...shown, redirectUrl: target });
       setDone(true);
       if (mode === "embed") window.parent?.postMessage({ type: "pubcommand-form:submitted", formId: form.id }, "*");
-      if (mode === "public" && form.redirectUrl) setTimeout(() => window.location.assign(form.redirectUrl!), 2500);
+      if (mode === "public" && target) setTimeout(() => window.location.assign(target), 2500);
     } catch {
       setFormError("Could not send your answers. Check your connection and try again.");
     } finally {
@@ -240,13 +265,29 @@ export function FormRenderer({
         <div className="rounded-xl border border-[#e1e4ea] bg-white p-5 shadow-sm sm:p-7">
           {done ? (
             <div className="py-6 text-center" role="status">
-              <h1 className="[overflow-wrap:anywhere] text-2xl font-semibold tracking-tight text-[#0b1220]">{form.confirmTitle}</h1>
-              {form.confirmMessage ? <p className="mt-2 whitespace-pre-line text-sm text-[#3e4a5c]">{form.confirmMessage}</p> : null}
-              {mode === "preview" ? <p className="mt-4 text-xs text-[#5b6577]">Preview only. Nothing was saved.</p> : null}
-              {form.redirectUrl && mode === "embed" ? (
-                <a href={form.redirectUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 items-center rounded-md bg-[color:var(--fa)] px-4 text-sm font-semibold text-[color:var(--fa-ink)]">
+              <h1 className="[overflow-wrap:anywhere] text-2xl font-semibold tracking-tight text-[#0b1220]">{ending?.title || form.confirmTitle}</h1>
+              {(ending ? ending.message : form.confirmMessage) ? <p className="mt-2 whitespace-pre-line text-sm text-[#3e4a5c]">{ending ? ending.message : form.confirmMessage}</p> : null}
+              {mode === "preview" ? (
+                <p className="mt-4 text-xs text-[#5b6577]">
+                  Preview only. Nothing was saved.{ending?.redirectUrl ? ` A respondent would now go to ${ending.redirectUrl}` : ""}
+                </p>
+              ) : null}
+              {mode === "public" && ending?.redirectUrl ? <p className="mt-3 text-xs text-[#5b6577]">Taking you on in a moment…</p> : null}
+              {ending?.redirectUrl && mode === "embed" ? (
+                <a href={ending.redirectUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 items-center rounded-md bg-[color:var(--fa)] px-4 text-sm font-semibold text-[color:var(--fa-ink)]">
                   Continue
                 </a>
+              ) : null}
+              {form.resultsUrl && mode !== "preview" ? (
+                <p className="mt-4">
+                  <a
+                    href={withSearch(form.resultsUrl)}
+                    {...(mode === "embed" ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                    className="inline-flex min-h-11 items-center rounded-md border border-[#cfd4dc] px-4 text-sm font-semibold text-[#0b1220]"
+                  >
+                    See how others answered
+                  </a>
+                </p>
               ) : null}
             </div>
           ) : (
@@ -343,8 +384,9 @@ function FieldBlock({ field, value, error, onChange, files }: { field: FieldDef;
       </div>
     );
   }
+  if (field.type === "divider") return <hr className="border-[#e1e4ea]" />;
   const describedBy = [field.helpText ? `${id}-help` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
-  const grouped = ["single_choice", "multi_choice", "yes_no", "rating", "scale", "nps", "address", "consent", "signature"].includes(field.type);
+  const grouped = ["single_choice", "multi_choice", "yes_no", "rating", "scale", "nps", "address", "consent", "signature", "matrix", "matrix_multi", "ranking"].includes(field.type);
   const Label = grouped ? "legend" : "label";
   const body = (
     <>
@@ -557,6 +599,30 @@ function FieldControl({
       );
     case "signature":
       return <SignaturePad field={field} value={value as SignatureValue | undefined} onChange={onChange} />;
+    case "currency":
+      return (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-[#3e4a5c]">{field.config.prefix || "$"}</span>
+          <input
+            {...common}
+            className={inputClass}
+            inputMode="decimal"
+            value={typeof value === "number" || typeof value === "string" ? String(value) : ""}
+            placeholder={placeholder ?? "0.00"}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          {field.config.suffix ? <span className="text-sm text-[#3e4a5c]">{field.config.suffix}</span> : null}
+        </div>
+      );
+    case "slider":
+      return <Slider field={field} common={common} value={value} onChange={onChange} />;
+    case "matrix":
+    case "matrix_multi":
+      return <MatrixGrid field={field} value={value} onChange={onChange} describedBy={describedBy} />;
+    case "ranking":
+      return <Ranking field={field} value={value} onChange={onChange} describedBy={describedBy} />;
+    case "image_upload":
+      return <ImageUpload field={field} common={common} files={files} onChange={onChange} />;
     default:
       return null;
   }
@@ -682,6 +748,192 @@ function SignaturePad({ field, value, onChange }: { field: FieldDef; value: Sign
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+type Common = { id: string; "aria-describedby"?: string; "aria-invalid"?: boolean };
+
+function Slider({ field, common, value, onChange }: { field: FieldDef; common: Common; value: unknown; onChange: (value: unknown) => void }) {
+  const { min, max, step } = sliderRange(field.config);
+  const set = typeof value === "number" ? value : null;
+  const affix = (n: number) => `${field.config.prefix ?? ""}${n}${field.config.suffix ?? ""}`;
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <input
+          {...common}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={set ?? min + Math.round((max - min) / 2 / step) * step}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={`h-11 w-full min-w-0 accent-[color:var(--fa)] ${set === null ? "opacity-60" : ""}`}
+        />
+        <output htmlFor={common.id} className="w-20 shrink-0 text-right text-sm font-semibold tabular-nums text-[#0b1220]">
+          {set === null ? "–" : affix(set)}
+        </output>
+      </div>
+      <div className="mt-1 flex justify-between gap-2 text-xs text-[#5b6577]">
+        <span>{field.config.leftLabel || affix(min)}</span>
+        <span className="text-right">{field.config.rightLabel || affix(max)}</span>
+      </div>
+      {set === null ? <p className="mt-1 text-xs text-[#5b6577]">Drag the slider or use the arrow keys to answer.</p> : null}
+    </div>
+  );
+}
+
+function MatrixGrid({ field, value, onChange, describedBy }: { field: FieldDef; value: unknown; onChange: (value: unknown) => void; describedBy?: string }) {
+  const multi = field.type === "matrix_multi";
+  const map = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as MatrixValue;
+  const columns = field.config.columns ?? [];
+  // Size each answer button to the longest label so words are never split mid-word.
+  const longest = Math.max(1, ...columns.map((column) => column.label.length));
+  const cellMin = Math.min(160, Math.max(56, Math.round(longest * 7.5 + 18)));
+  const pick = (rowId: string, columnId: string) => {
+    if (!multi) return onChange({ ...map, [rowId]: columnId });
+    const current = Array.isArray(map[rowId]) ? (map[rowId] as string[]) : [];
+    const next = current.includes(columnId) ? current.filter((id) => id !== columnId) : [...current, columnId];
+    const copy = { ...map };
+    if (next.length) copy[rowId] = next;
+    else delete copy[rowId];
+    onChange(copy);
+  };
+  // Stacked rows (not a wide table) so a grid never scrolls sideways on a phone.
+  return (
+    <div className="space-y-3" aria-describedby={describedBy}>
+      {(field.config.rows ?? []).map((row) => {
+        const cell = map[row.id];
+        const picked = Array.isArray(cell) ? cell : cell ? [cell] : [];
+        return (
+          <div key={row.id} role={multi ? "group" : "radiogroup"} aria-label={row.label} className="rounded-md border border-[#e1e4ea] p-3">
+            <p className="[overflow-wrap:anywhere] mb-2 text-sm font-medium text-[#0b1220]">{row.label}</p>
+            <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${cellMin}px), 1fr))` }}>
+              {columns.map((column) => {
+                const active = picked.includes(column.id);
+                return (
+                  <button
+                    key={column.id}
+                    type="button"
+                    role={multi ? "checkbox" : "radio"}
+                    aria-checked={active}
+                    onClick={() => pick(row.id, column.id)}
+                    className={`min-h-11 break-words rounded-md border px-2 py-1 text-xs font-semibold ${active ? "border-[color:var(--fa)] bg-[color:var(--fa)] text-[color:var(--fa-ink)]" : "border-[#cfd4dc] bg-white text-[#0b1220]"}`}
+                  >
+                    {column.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RankItem({ id, label, index, count, onMove }: { id: string; label: string; index: number; count: number; onMove: (delta: number) => void }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`flex min-h-12 items-center gap-2 rounded-md border bg-white pr-1 ${isDragging ? "z-10 border-[color:var(--fa)] shadow-lg" : "border-[#cfd4dc]"}`}>
+      <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`Drag ${label}`} className="flex h-12 w-9 shrink-0 cursor-grab touch-none items-center justify-center text-[#98a2b3]">
+        ⋮⋮
+      </button>
+      <span className="w-6 shrink-0 text-sm font-semibold tabular-nums text-[color:var(--fa)]">{index + 1}</span>
+      <span className="[overflow-wrap:anywhere] min-w-0 flex-1 text-sm text-[#0b1220]">{label}</span>
+      {/* Keyboard and screen-reader fallback: plain buttons that move one place. */}
+      <button type="button" onClick={() => onMove(-1)} disabled={index === 0} aria-label={`Move ${label} up`} className="h-11 w-9 rounded text-[#3e4a5c] disabled:opacity-30">
+        ↑
+      </button>
+      <button type="button" onClick={() => onMove(1)} disabled={index === count - 1} aria-label={`Move ${label} down`} className="h-11 w-9 rounded text-[#3e4a5c] disabled:opacity-30">
+        ↓
+      </button>
+    </li>
+  );
+}
+
+function Ranking({ field, value, onChange, describedBy }: { field: FieldDef; value: unknown; onChange: (value: unknown) => void; describedBy?: string }) {
+  const choices = field.config.choices ?? [];
+  const ids = choices.map((choice) => choice.id);
+  const answered = Array.isArray(value) && value.length === ids.length && value.every((id) => ids.includes(String(id)));
+  const order = answered ? (value as string[]) : ids;
+  const labelOf = (id: string) => choices.find((choice) => choice.id === id)?.label ?? id;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const onDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    onChange(arrayMove(order, order.indexOf(String(active.id)), order.indexOf(String(over.id))));
+  };
+  return (
+    <div aria-describedby={describedBy}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
+        <SortableContext items={order} strategy={verticalListSortingStrategy}>
+          <ol className="space-y-1.5">
+            {order.map((id, index) => (
+              <RankItem key={id} id={id} label={labelOf(id)} index={index} count={order.length} onMove={(delta) => index + delta >= 0 && index + delta < order.length && onChange(arrayMove(order, index, index + delta))} />
+            ))}
+          </ol>
+        </SortableContext>
+      </DndContext>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#5b6577]">
+        {answered ? (
+          <span>Your order is saved. Drag or use the arrows to change it.</span>
+        ) : (
+          <>
+            <span>Drag, or use the arrows, to put these in order.</span>
+            <button type="button" onClick={() => onChange([...ids])} className="min-h-11 rounded-md border border-[#cfd4dc] bg-white px-3 text-sm font-semibold text-[#0b1220]">
+              Keep this order
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ImageUpload({ field, common, files, onChange }: { field: FieldDef; common: Common; files: Map<string, File>; onChange: (value: unknown) => void }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const max = Math.min(field.config.maxSizeMb ?? 5, IMAGE_MAX_MB);
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
+  return (
+    <div>
+      <input
+        {...common}
+        type="file"
+        accept={IMAGE_MIME_TYPES.join(",")}
+        className="block w-full rounded-md border border-dashed border-[#cfd4dc] bg-[#f5f6f8] px-3 py-5 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-[color:var(--fa)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[color:var(--fa-ink)]"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          setProblem(null);
+          setPreview(null);
+          if (!file) {
+            files.delete(field.id);
+            onChange(undefined);
+            return;
+          }
+          if (file.size > max * 1024 * 1024) {
+            setProblem(`Images must be under ${max} MB.`);
+            files.delete(field.id);
+            onChange(undefined);
+            e.target.value = "";
+            return;
+          }
+          files.set(field.id, file);
+          if ((IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) setPreview(URL.createObjectURL(file));
+          onChange({ filename: file.name, size: file.size, mimeType: file.type });
+        }}
+      />
+      {preview ? <img src={preview} alt="Your image" className="mt-2 max-h-48 max-w-full rounded-md border border-[#e1e4ea] object-contain" /> : null}
+      {problem ? <p className="mt-1 text-sm text-[#b42318]">{problem}</p> : null}
+      <p className="mt-1 text-xs text-[#5b6577]">PNG, JPG, WebP or GIF up to {max} MB</p>
     </div>
   );
 }

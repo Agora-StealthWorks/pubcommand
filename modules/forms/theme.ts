@@ -5,8 +5,8 @@
  */
 import type { ResolvedTheme } from "./types";
 import { collectsPii } from "./fields";
-import { logicProblems } from "./logic";
-import type { FieldDef, FormLayout } from "./types";
+import { endRuleProblems, logicProblems } from "./logic";
+import type { EndRule, FieldDef, FormLayout } from "./types";
 
 export type ThemeInput = {
   logoSrc: string | null;
@@ -98,20 +98,25 @@ export function publishProblems(input: {
   fields: readonly FieldDef[];
   layout: FormLayout;
   theme: { privacyPolicyUrl: string } | null;
+  endRules?: readonly EndRule[];
 }): string[] {
   const problems: string[] = [];
   if (!input.title.trim()) problems.push("Give the form a title.");
   if (!isValidFormSlug(input.slug)) problems.push("Set a link name (letters, numbers and dashes).");
-  if (!input.fields.some((field) => field.type !== "hidden" && field.type !== "page_break" && field.type !== "statement")) {
+  if (!input.fields.some((field) => !["hidden", "page_break", "statement", "divider"].includes(field.type))) {
     problems.push("Add at least one question.");
   }
   if (!input.theme) problems.push("Pick a theme. Every public form shows its privacy-policy link.");
   else if (!isHttpUrl(input.theme.privacyPolicyUrl)) problems.push("The theme needs a privacy-policy URL starting with https://");
   for (const field of input.fields) {
     if (field.config.choices && field.config.choices.length === 0) problems.push(`“${field.label || "A choice question"}” needs at least one option.`);
-    if (field.type !== "statement" && field.type !== "page_break" && !field.label.trim()) problems.push("Every question needs a label.");
+    if ((field.config.rows && field.config.rows.length === 0) || (field.config.columns && field.config.columns.length === 0)) {
+      problems.push(`“${field.label || "A grid question"}” needs at least one row and one column.`);
+    }
+    if (!["statement", "page_break", "divider"].includes(field.type) && !field.label.trim()) problems.push("Every question needs a label.");
   }
   problems.push(...logicProblems(input.fields, input.layout));
+  problems.push(...endRuleProblems(input.fields, input.endRules ?? []));
   return [...new Set(problems)];
 }
 
