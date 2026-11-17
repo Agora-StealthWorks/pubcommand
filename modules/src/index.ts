@@ -10,6 +10,7 @@ import { manifest as knowledge } from "../knowledge/manifest";
 import { manifest as miniblog } from "../miniblog/manifest";
 import { manifest as performance } from "../performance/manifest";
 import { manifest as promoStudio } from "../promo-studio/manifest";
+import { manifest as pubsetup } from "../pubsetup/manifest";
 import { manifest as research } from "../research/manifest";
 import { manifest as settings } from "../settings/manifest";
 
@@ -25,6 +26,7 @@ export const moduleManifests = [
   charts,
   funnels,
   miniblog,
+  pubsetup,
   billing,
   settings,
 ] as const;
@@ -42,6 +44,7 @@ export const PRODUCT_MODULE_IDS = [
   "charts",
   "funnels",
   "miniblog",
+  "pubsetup",
   "billing",
 ] as const;
 
@@ -57,6 +60,7 @@ export {
   miniblog,
   performance,
   promoStudio,
+  pubsetup,
   research,
   settings,
 };

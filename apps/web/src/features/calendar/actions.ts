@@ -17,8 +17,6 @@ import { importStats, mappingFromForm } from "./stats";
 import { teachEvent, teachIssue } from "./teach";
 import { runWhatsWorking, WINDOW_DAYS } from "./whats-working";
 
-const MAX_LOGO_BYTES = 2 * 1024 * 1024;
-
 function day(formData: FormData, key: string): string | null {
   const value = field(formData, key, 10);
   return isDay(value) ? value : null;
@@ -234,66 +232,8 @@ export async function deleteIssueAction(formData: FormData) {
   redirect(withMessage("/editorial", "notice", "Issue deleted."));
 }
 
-async function logoFrom(formData: FormData) {
-  const file = formData.get("logo");
-  if (!(file instanceof File) || file.size === 0) return null;
-  if (file.size > MAX_LOGO_BYTES) redirect(withMessage("/editorial/setup", "error", "Logos must be under 2 MB."));
-  if (!/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(file.type)) redirect(withMessage("/editorial/setup", "error", "Upload a PNG, JPG, GIF, WebP or SVG logo."));
-  return { logoFilename: file.name.slice(0, 200), logoMime: file.type, logoData: new Uint8Array(await file.arrayBuffer()) };
-}
-
-function publicationFields(formData: FormData) {
-  const color = field(formData, "color", 7);
-  return {
-    code: field(formData, "code", 20).toUpperCase().replace(/[^A-Z0-9_-]/g, ""),
-    name: field(formData, "name", 120),
-    color: isHexColor(color) ? color : "#7f77dd",
-    description: optional(formData, "description", 2000),
-    sortOrder: int(formData, "sortOrder") ?? 0,
-    active: formData.get("active") !== "off",
-  };
-}
-
-export async function savePublicationAction(formData: FormData) {
-  const ctx = await calendarAction("editorial.write", "/editorial/setup");
-  const id = field(formData, "publicationId", 40);
-  const data = publicationFields(formData);
-  if (!data.code || !data.name) redirect(withMessage("/editorial/setup", "error", "A publication needs a code and a name."));
-  const db = tenantDb(ctx.resolved.id);
-  const clash = await db.calendarPublication.findFirst({ where: { brandId: ctx.brand.id, code: data.code, ...(id ? { id: { not: id } } : {}) } });
-  if (clash) redirect(withMessage("/editorial/setup", "error", `Code ${data.code} is already used.`));
-  const logo = await logoFrom(formData);
-  if (id && UUID.test(id)) {
-    const existing = await db.calendarPublication.findFirst({ where: { id, brandId: ctx.brand.id } });
-    if (!existing) redirect(withMessage("/editorial/setup", "error", "That publication no longer exists."));
-    await db.calendarPublication.updateMany({
-      where: { id },
-      data: { ...data, ...(logo ?? {}), ...(formData.get("removeLogo") === "on" ? { logoData: null, logoMime: null, logoFilename: null } : {}) },
-    });
-    if (existing.code !== data.code) {
-      // Keep the issues attached when a code is renamed.
-      await db.calendarIssue.updateMany({ where: { brandId: ctx.brand.id, publicationCode: existing.code }, data: { publicationCode: data.code } });
-    }
-    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.publication.updated", targetType: "calendar_publication", targetId: id });
-  } else {
-    const created = await db.calendarPublication.create({ data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, ...data, ...(logo ?? {}) }, select: { id: true } });
-    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.publication.created", targetType: "calendar_publication", targetId: created.id });
-  }
-  redirect(withMessage("/editorial/setup", "notice", `${data.code} saved.`));
-}
-
-export async function deletePublicationAction(formData: FormData) {
-  const ctx = await calendarAction("editorial.write", "/editorial/setup");
-  const id = field(formData, "publicationId", 40);
-  const db = tenantDb(ctx.resolved.id);
-  const pub = UUID.test(id) ? await db.calendarPublication.findFirst({ where: { id, brandId: ctx.brand.id } }) : null;
-  if (!pub) redirect(withMessage("/editorial/setup", "error", "That publication no longer exists."));
-  const used = await db.calendarIssue.count({ where: { brandId: ctx.brand.id, publicationCode: pub.code, deletedAt: null } });
-  if (used) redirect(withMessage("/editorial/setup", "error", `${pub.code} has ${used} issues. Turn it off instead of deleting it.`));
-  await db.calendarPublication.deleteMany({ where: { id: pub.id } });
-  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.publication.deleted", targetType: "calendar_publication", targetId: pub.id });
-  redirect(withMessage("/editorial/setup", "notice", `${pub.code} deleted.`));
-}
+// Publications are owned by Publication Setup now (features/pubsetup/actions.ts):
+// the calendar no longer creates, edits or deletes them.
 
 export async function saveChannelAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/setup");

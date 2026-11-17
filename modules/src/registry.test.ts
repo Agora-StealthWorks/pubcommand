@@ -16,6 +16,7 @@ describe("module registry", () => {
       "charts",
       "funnels",
       "miniblog",
+      "pubsetup",
       "billing",
       "settings",
     ]);
@@ -26,6 +27,8 @@ describe("module registry", () => {
     expect(moduleRegistry.permissionModules()["forms.export"]).toBe("forms");
     expect(moduleRegistry.permissionModules()["funnels.publish"]).toBe("funnels");
     expect(moduleRegistry.permissionModules()["miniblog.publish"]).toBe("miniblog");
+    expect(moduleRegistry.permissionModules()["pubsetup.manage"]).toBe("pubsetup");
+    expect(moduleRegistry.getById("pubsetup")?.nav[0]?.href).toBe("/publication-setup");
     expect(moduleRegistry.getById("miniblog")?.nav[0]?.href).toBe("/mini-blog");
     expect(moduleRegistry.jobs().some((job) => job.name === "example.ping")).toBe(true);
   });

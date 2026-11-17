@@ -1,27 +1,8 @@
 // Marketing Calendar tables (module id "editorial"). Every row belongs to one brand.
 // Calendar days are stored as DATE (no time zone); event times are "HH:mm" strings.
 
-/// A publication / list a brand mails (code is the key used to match send stats).
-model CalendarPublication {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  brandId        String    @map("brand_id") @db.Uuid
-  code           String
-  name           String
-  color          String    @default("#7f77dd")
-  description    String?
-  logoFilename   String?   @map("logo_filename")
-  logoMime       String?   @map("logo_mime")
-  logoData       Bytes?    @map("logo_data")
-  active         Boolean   @default(true)
-  sortOrder      Int       @default(0) @map("sort_order")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-
-  @@unique([brandId, code])
-  @@index([organizationId, brandId])
-  @@map("calendar_publications")
-}
+// CalendarPublication (table calendar_publications) moved to pubsetup.prisma:
+// Publication Setup owns publications now. Same model name, table and columns.
 
 /// An optional channel or room an event runs in (webinar room, livestream, podcast feed...).
 model CalendarChannel {
