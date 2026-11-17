@@ -5,14 +5,29 @@
       "cache": false
     },
     "typecheck": {
-      "dependsOn": ["^typecheck", "@pubcommand/db#generate"]
+      "dependsOn": [
+        "^typecheck",
+        "@pubcommand/db#generate"
+      ]
     },
     "test": {
-      "dependsOn": ["@pubcommand/db#generate"]
+      "dependsOn": [
+        "@pubcommand/db#generate"
+      ],
+      "passThroughEnv": [
+        "DATABASE_URL"
+      ]
     },
     "build": {
-      "dependsOn": ["^typecheck", "@pubcommand/db#generate"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "dependsOn": [
+        "^typecheck",
+        "@pubcommand/db#generate"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ]
     },
     "dev": {
       "cache": false,
