@@ -16,8 +16,10 @@ export async function middleware(request: NextRequest) {
   }
 
   const { pathname, search } = request.nextUrl;
+  // Internal /sites/* paths are only reached through the rewrites below. Middleware
+  // never runs on its own rewrites, so a request that arrives here for /sites came
+  // from outside. Refuse it even if it carries our internal header.
   if (pathname === "/sites" || pathname.startsWith("/sites/")) {
-    if (request.headers.get("x-pc-rewrite") === "1") return NextResponse.next();
     return new NextResponse("Not found", { status: 404 });
   }
 
