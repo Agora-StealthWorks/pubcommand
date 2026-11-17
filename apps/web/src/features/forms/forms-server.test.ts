@@ -12,8 +12,10 @@ const { handleSubmit, loadPublicResults } = await import("./public");
 const { formsSchedule } = await import("@/jobs/forms-schedule");
 const { formsOrphanCleanup } = await import("@/jobs/forms-orphan-cleanup");
 
-const ORG_SLUG = "example-gazette";
 const tag = randomUUID().slice(0, 8);
+// Own organization, so the test works on an empty database (CI) and never touches seeded data.
+const ORG_SLUG = `forms-test-${tag}`;
+let planId = "";
 let organizationId = "";
 let brandId = "";
 let themeId = "";
@@ -54,20 +56,21 @@ function submit(slug: string, answers: Record<string, unknown>, files: Record<st
 }
 
 beforeAll(async () => {
-  const org = await rawPrisma().organization.findFirst({ where: { slug: ORG_SLUG }, select: { id: true } });
-  if (!org) throw new Error("Seeded organization missing; run the seed first.");
+  const plan = await rawPrisma().plan.create({ data: { key: `forms-test-${tag}`, name: "Forms test", seatLimit: 5 } });
+  planId = plan.id;
+  await rawPrisma().planModule.create({ data: { planId, moduleId: "forms" } });
+  const org = await rawPrisma().organization.create({ data: { name: `Forms test ${tag}`, slug: ORG_SLUG, planId, seatLimit: 5 } });
   organizationId = org.id;
   const db = tenantDb(organizationId);
-  const brand = await db.brand.findFirst({ select: { id: true } });
-  brandId = brand!.id;
+  const brand = await db.brand.create({ data: { organizationId, name: "Forms test brand", slug: `b-${tag}` } });
+  brandId = brand.id;
   const theme = await db.formTheme.create({ data: { organizationId, brandId, name: `Theme ${tag}`, privacyPolicyUrl: "https://example.com/privacy" } });
   themeId = theme.id;
 });
 
 afterAll(async () => {
-  const db = tenantDb(organizationId);
-  await db.form.deleteMany({ where: { id: { in: formIds } } });
-  await db.formTheme.deleteMany({ where: { id: themeId } });
+  if (organizationId) await rawPrisma().organization.deleteMany({ where: { id: organizationId } });
+  if (planId) await rawPrisma().plan.deleteMany({ where: { id: planId } });
 });
 
 describe("submit route: redirect-by-answer", () => {
