@@ -6,8 +6,11 @@ import { Denied, Flash } from "@/components/ui";
 import { assignCompetitor, deleteEmail, extractEmail, sendEmailToPromoAnalyzer } from "@/features/intel/actions";
 import { canUsePromoAnalyzer, intelAccess } from "@/features/intel/context";
 import { competitorOptions, loadEmail } from "@/features/intel/data";
+import { loadLanding } from "@/features/intel/landing";
+import { fetchEmailLanding } from "@/features/intel/more-actions";
+import { entitiesFor } from "@/features/intel/registry";
 import { emailDocument, sanitizeEmailHtml } from "@/features/intel/sanitize";
-import { AiMissingNotice, ExtractionState, ExtractionView, TypeBadge, formatDate } from "@/features/intel/ui";
+import { AiMissingNotice, EntityChips, ExtractionState, ExtractionView, LandingCard, TypeBadge, formatDate } from "@/features/intel/ui";
 import { isCommercial, isUtilityLink } from "../../../../../../../../../../modules/intel/index";
 
 const VIEWS = ["html", "text", "links"] as const;
@@ -26,7 +29,13 @@ export default async function IntelEmailPage({
   const { scope } = access;
   const email = await loadEmail(scope.organizationId, scope.brand.id, emailId);
   if (!email) notFound();
-  const [competitors, promoAllowed] = await Promise.all([competitorOptions(scope.organizationId, scope.brand.id), canUsePromoAnalyzer(slug)]);
+  const [competitors, promoAllowed, landing, entities] = await Promise.all([
+    competitorOptions(scope.organizationId, scope.brand.id),
+    canUsePromoAnalyzer(slug),
+    loadLanding(scope.organizationId, email.landingPageId),
+    entitiesFor(scope.organizationId, { emailId: email.id }),
+  ]);
+  const landingUrl = email.extraction?.landingUrl ?? email.landingUrl;
 
   const view = (VIEWS as readonly string[]).includes(search.view ?? "") ? (search.view as (typeof VIEWS)[number]) : email.htmlBody ? "html" : "text";
   const images = search.images === "1";
@@ -82,6 +91,7 @@ export default async function IntelEmailPage({
             </dd>
           </div>
         </dl>
+        <EntityChips entities={entities} />
         {scope.canWrite ? (
           <form action={assignCompetitor} className="mt-3 flex flex-wrap items-center gap-2">
             <input type="hidden" name="emailId" value={email.id} />
@@ -200,6 +210,20 @@ export default async function IntelEmailPage({
               <p className="text-sm text-muted">Not extracted yet.</p>
             ) : null}
           </div>
+
+          {landingUrl || landing ? (
+            <LandingCard landing={landing}>
+              {scope.canWrite && landingUrl ? (
+                <form action={fetchEmailLanding}>
+                  <input type="hidden" name="emailId" value={email.id} />
+                  {ai ? <input type="hidden" name="reextract" value="1" /> : null}
+                  <Button type="submit" variant="secondary" size="sm">
+                    {landing ? "Fetch again" : "Fetch page"}
+                  </Button>
+                </form>
+              ) : null}
+            </LandingCard>
+          ) : null}
 
           <div className="rounded-xl border border-line bg-white p-4">
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Promo Analyzer</h3>
