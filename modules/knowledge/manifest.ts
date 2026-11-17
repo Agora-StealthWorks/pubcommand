@@ -3,20 +3,25 @@ import { defineModule } from "@pubcommand/core";
 export const manifest = defineModule({
   id: "knowledge",
   slug: "knowledge",
-  name: "Knowledge",
-  description: "Markdown pages for this organization, with keyword search and citations.",
-  nav: [{ label: "Knowledge", href: "/knowledge", permission: "knowledge.read" }],
-  routes: [{ path: "/knowledge", title: "Knowledge" }],
-  permissions: [
-    { key: "knowledge.read", description: "Read knowledge entries" },
-    { key: "knowledge.write", description: "Create and edit knowledge entries" },
+  name: "Brain",
+  description: "Each brand's mini-brain plus the main Brain: notes, search, Ask the Brain and vault import.",
+  nav: [{ label: "Brain", href: "/knowledge", permission: "knowledge.read" }],
+  routes: [
+    { path: "/knowledge", title: "Brain" },
+    { path: "/knowledge/ask", title: "Ask the Brain" },
+    { path: "/knowledge/import", title: "Import a vault" },
   ],
-  events: [{ name: "knowledge.entry.saved", description: "A knowledge entry was saved" }],
-  jobs: [{ name: "knowledge.reindex", description: "Rebuild the knowledge index" }],
+  permissions: [
+    { key: "knowledge.read", description: "Read Brain notes" },
+    { key: "knowledge.write", description: "Create, edit and import Brain notes" },
+    { key: "knowledge.share", description: "Mark Brain notes Shared with every brand" },
+  ],
+  events: [{ name: "knowledge.entry.saved", description: "A Brain note was saved" }],
+  jobs: [{ name: "knowledge.import", description: "Import a Markdown vault into a Brain" }],
   settingsSchema: {
     type: "object",
     additionalProperties: false,
-    properties: { citationStyle: { type: "string" } },
+    properties: {},
   },
   planEntitlement: "knowledge",
 });

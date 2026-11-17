@@ -1,26 +1,22 @@
-# Knowledge
+# Brain (`knowledge`)
 
-Markdown pages for one organization, at `https://{org}.{ROOT_DOMAIN}/knowledge`.
+Each publisher brand has a **mini-brain** (notes with that `brandId`); the **main Brain** is `brandId = null`. Route: `/knowledge`.
 
-The shell already registers this manifest (`id`, `slug`, and `planEntitlement` are `knowledge`). Nav is `/knowledge`. Permissions are `knowledge.read` and `knowledge.write`. Saving a page records the `knowledge.entry.saved` event. The `knowledge.reindex` job stays declared for a later index.
+## Visibility (the one rule: `visibility.ts`, SQL twin in `apps/web/src/features/brain/search.ts`)
+- Main Brain view: every live note in the organization (learning flows up). Only members not tied to one brand or workspace may open it (`canUseMainBrain`).
+- A brand's mini-brain: its own notes + notes marked `SHARED` (from any brand or the main Brain). Nothing private from another brand or the main Brain.
+- Edits stay in the note's own Brain (`canEditNoteInScope`). Sharing needs `knowledge.write` + `knowledge.share`.
 
-## This slice
+## Pure code here (unit tested)
+- `wikilinks.ts`: `[[Title#heading|alias]]` parsing (code ignored), title matching, resolver that prefers the scope's own brand.
+- `secrets.ts`: credential detection (reports kind + line, never the value).
+- `vault.ts`: importer rules, MTA export rules, front matter/tags, the idempotent import plan (`sourceRef = vault:<path>`; a note already in another Brain is never moved).
+- `zip.ts`: in-memory zip read/write (fflate). Only `.md` entries are inflated.
+- `ask.ts`: Ask the Brain prompt, JSON schema and citation clean-up.
+- `folders.ts`: folder tree.
 
-- Create and list markdown pages scoped by `organizationId`.
-- Keyword search over the title and body. Every word must match.
-- Results use a citation shape: `pageId`, `organizationId`, `title`, `slug`, `excerpt`, `href`.
-- `can()` from `@pubcommand/core` gates read and write. The route calls `canReadKnowledge` and `canWriteKnowledge`.
-- The first read for an organization copies fake **EXAMPLE** pages into that organization. Those rows are labeled `EXAMPLE:` and are not shared with other organizations.
+## Server + pages
+`apps/web/src/features/brain/*` and `apps/web/src/app/sites/org/[slug]/knowledge/**`.
 
-Pages are held in process memory, keyed by `organizationId`. A tenant table is the next persistence step.
-
-## Route
-
-`apps/web/src/app/sites/org/[slug]/knowledge/page.tsx` mounts this module on the organization host. The page checks the plan entitlement and `can()` before it lists, searches, or creates.
-
-## Later
-
-- PDF and docx ingestion.
-- pgvector semantic search.
-- AI chat over citations.
-- A Postgres tenant table with `organization_id`, plus the `knowledge.reindex` job.
+## Building a vault zip
+`pnpm --filter @pubcommand/modules exec tsx ../scripts/build-vault-zip.ts <vault dir> <out.zip>` writes the zip and `<out>.manifest.json`.
