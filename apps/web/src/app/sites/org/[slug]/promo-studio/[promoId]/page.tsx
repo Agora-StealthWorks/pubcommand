@@ -7,6 +7,8 @@ import { addPromoFile, deletePromo, reanalyzePromo, removePromoFile, updatePromo
 import { ComplianceTab, CubTab, HeadlineTab, OfferTab, OutlineTab, OverviewTab, SixteenWordTab, TeaseTab } from "@/features/promos/analysis-view";
 import { AutoRefresh } from "@/features/promos/auto-refresh";
 import { loadPromo } from "@/features/promos/data";
+import { listPackages } from "@/features/packager/data";
+import { PackageTab } from "@/features/packager/views";
 import { PromoDetailsFields } from "@/features/promos/details-fields";
 import { getOrgContext } from "@/lib/org";
 
@@ -21,6 +23,7 @@ const ANALYSIS_TABS = [
   ["compliance", "Compliance"],
 ] as const;
 const OTHER_TABS = [
+  ["package", "Package"],
   ["copy", "Copy"],
   ["details", "Details"],
   ["files", "Files"],
@@ -51,6 +54,7 @@ export default async function PromoPage({
   const tab = query.tab ?? (current ? "overview" : "copy");
   const result = current?.result ?? null;
   const tabs = [...(result ? ANALYSIS_TABS : []), ...OTHER_TABS];
+  const packages = tab === "package" ? await listPackages(ctx.resolved.id, promo.id) : [];
 
   return (
     <div className="space-y-4">
@@ -129,6 +133,8 @@ export default async function PromoPage({
       {result && tab === "offer" ? <OfferTab result={result} /> : null}
       {result && tab === "tease" ? <TeaseTab result={result} /> : null}
       {result && tab === "compliance" ? <ComplianceTab result={result} rules={brandProfile(ctx.brand).complianceRules} /> : null}
+
+      {tab === "package" ? <PackageTab promoId={promo.id} packages={packages} writable={writable} analyzed={Boolean(current)} /> : null}
 
       {tab === "copy" ? (
         <section className="rounded-xl border border-line bg-white p-5">

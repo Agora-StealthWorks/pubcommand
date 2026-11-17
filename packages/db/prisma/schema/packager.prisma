@@ -1,0 +1,84 @@
+// The Packager tables: a copy package is the next stage of a Promo.
+// organizationId / brandId / promoId are plain columns; their foreign keys are
+// added by hand in the migration (no relation fields on shared models).
+
+enum PackageStatus {
+  DRAFT
+  APPROVED
+}
+
+enum PackageComponentStatus {
+  DRAFT
+  NEEDS_EDITS
+  APPROVED
+}
+
+/// A copy package for one promo: the direction the team gave and the components it asked for.
+model PromoPackage {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  brandId        String             @map("brand_id") @db.Uuid
+  promoId        String             @map("promo_id") @db.Uuid
+  title          String
+  status         PackageStatus      @default(DRAFT)
+  /// Direction: angle, tone, length, offer details, notes, live event (see modules/promo-studio/packager.ts PackageDirection).
+  direction      Json               @default("{}")
+  createdById    String?            @map("created_by_id") @db.Uuid
+  approvedById   String?            @map("approved_by_id") @db.Uuid
+  approvedAt     DateTime?          @map("approved_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  deletedAt      DateTime?          @map("deleted_at")
+  components     PromoPackageComponent[]
+
+  @@index([organizationId, brandId, promoId])
+  @@map("promo_packages")
+}
+
+/// One component of a package (e.g. Space Ads x10). Holds the current copy; every change is a version.
+model PromoPackageComponent {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  packageId      String                 @map("package_id") @db.Uuid
+  kind           String
+  position       Int                    @default(0)
+  quantity       Int                    @default(1)
+  content        String                 @default("")
+  status         PackageComponentStatus @default(DRAFT)
+  /// Generation run: NONE, QUEUED, RUNNING, DONE, FAILED (reuses the analysis enum).
+  genStatus      AnalysisStatus         @default(NONE) @map("gen_status")
+  genError       String?                @map("gen_error")
+  /// Risky phrases found by the claims post-check on the current content.
+  flags          Json                   @default("[]")
+  currentVersion Int                    @default(0) @map("current_version")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  package        PromoPackage           @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  versions       PromoPackageComponentVersion[]
+
+  @@unique([packageId, kind])
+  @@index([organizationId])
+  @@map("promo_package_components")
+}
+
+/// Every generation, regeneration, edit and restore of a component.
+model PromoPackageComponentVersion {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  componentId    String                @map("component_id") @db.Uuid
+  version        Int
+  /// ai | regenerate | edit | restore
+  source         String
+  content        String
+  feedback       String?
+  model          String?
+  inputTokens    Int                   @default(0) @map("input_tokens")
+  outputTokens   Int                   @default(0) @map("output_tokens")
+  createdById    String?               @map("created_by_id") @db.Uuid
+  createdAt      DateTime              @default(now()) @map("created_at")
+  component      PromoPackageComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@unique([componentId, version])
+  @@index([organizationId])
+  @@map("promo_package_component_versions")
+}

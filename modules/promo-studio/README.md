@@ -32,3 +32,7 @@ TODO: assemble the copy, art, and export files for a package. `promo.publish` is
 ## UI
 
 `PromoStudioView` renders that catalog. `apps/web/src/app/sites/org/[slug]/promo-studio/page.tsx` serves `/promo-studio`, so the Phase 1 placeholder does not. The page checks the plan and a promo permission first. Writing and approving are declared permissions. This slice does not edit records.
+
+## The Packager (copy package)
+
+`packager.ts` is the next stage of a promo: the component list (`PACKAGE_COMPONENTS`, with a live-event add-on), the niche-aware system prompt and per-component user prompt, the JSON answer shape, Markdown rendering, the claims post-check (`checkClaims`: base rules, the brand's niche rules, phrases quoted in the brand's compliance notes, and figures not found in the promo or offer details) and the Brain note for an approved package. Server code is in `apps/web/src/features/packager/`, pages under `promo-studio/[promoId]/package/`, tables in `packager.prisma`.
