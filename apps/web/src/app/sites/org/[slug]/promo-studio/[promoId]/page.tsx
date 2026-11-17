@@ -10,6 +10,12 @@ import { loadPromo } from "@/features/promos/data";
 import { listPackages } from "@/features/packager/data";
 import { PackageTab } from "@/features/packager/views";
 import { PromoDetailsFields } from "@/features/promos/details-fields";
+import { bestPerformers, calibrationPoints, promoInsights, trainingPairs } from "@/features/promos/insights";
+import { BestPerformers, CalibrationChart, TierBadge, fmtMoney, fmtNumber, fmtPercent } from "@/features/promos/insights-view";
+import { TableScroll } from "@/components/table-scroll";
+import { displayEntities } from "../../../../../../../../../modules/promo-studio/entities";
+import { describeTier, enrich, percentileScore } from "../../../../../../../../../modules/promo-studio/performance";
+import { BAND_LABELS, MIN_TRAINING_PAIRS, scoreVector, similarOutcomes } from "../../../../../../../../../modules/promo-studio/similar";
 import { getOrgContext } from "@/lib/org";
 
 const ANALYSIS_TABS = [
@@ -24,6 +30,7 @@ const ANALYSIS_TABS = [
 ] as const;
 const OTHER_TABS = [
   ["package", "Package"],
+  ["results", "Results"],
   ["copy", "Copy"],
   ["details", "Details"],
   ["files", "Files"],
@@ -54,7 +61,15 @@ export default async function PromoPage({
   const tab = query.tab ?? (current ? "overview" : "copy");
   const result = current?.result ?? null;
   const tabs = [...(result ? ANALYSIS_TABS : []), ...OTHER_TABS];
-  const packages = tab === "package" ? await listPackages(ctx.resolved.id, promo.id) : [];
+  const [packages, insights] = await Promise.all([
+    tab === "package" ? listPackages(ctx.resolved.id, promo.id) : Promise.resolve([]),
+    promoInsights(ctx.resolved.id, ctx.brand.id, promo.id),
+  ]);
+  const shown = displayEntities(promo, insights.overrides);
+  const perf = insights.performance.find((row) => row.tier) ?? insights.performance[0] ?? null;
+  const similar = tab === "results" ? similarOutcomes({ id: promo.id, vector: scoreVector(result?.scores), promoType: promo.promoType }, await trainingPairs(ctx.resolved.id, ctx.brand.id)) : null;
+  const [calibration, gallery] = tab === "training" ? await Promise.all([calibrationPoints(ctx.resolved.id, ctx.brand.id), bestPerformers(ctx.resolved.id, ctx.brand.id)]) : [[], []];
+  const realScore = promo.performanceScore ?? (perf?.tier ? percentileScore(perf.percentile) : null);
 
   return (
     <div className="space-y-4">
@@ -65,8 +80,11 @@ export default async function PromoPage({
             {promo.title}
           </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
-            {promo.publisher ? <span>{promo.publisher}</span> : null}
-            {promo.gurus.length ? <span>· {promo.gurus.join(", ")}</span> : null}
+            {shown.publisher ? <span title={shown.publisher.original !== shown.publisher.name ? `Detected as ${shown.publisher.original}` : undefined}>{shown.publisher.name}</span> : null}
+            {shown.gurus.length ? (
+              <span title={shown.gurus.some((g) => g.original !== g.name) ? `Detected as ${promo.gurus.join(", ")}` : undefined}>· {shown.gurus.map((g) => g.name).join(", ")}</span>
+            ) : null}
+            {perf?.tier ? <TierBadge tier={perf.tier} title={describeTier(perf)} /> : null}
             {promo.promoType ? <Badge>{promo.promoType}</Badge> : null}
             {promo.promoStatus ? <Badge>{promo.promoStatus}</Badge> : null}
             {promo.fkReadingEase != null ? (
@@ -136,6 +154,84 @@ export default async function PromoPage({
 
       {tab === "package" ? <PackageTab promoId={promo.id} packages={packages} writable={writable} analyzed={Boolean(current)} /> : null}
 
+      {tab === "results" ? (
+        <div className="space-y-4">
+          <section className="rounded-xl border border-line bg-white p-5">
+            <h2 className="font-semibold">Real-world results</h2>
+            {insights.performance.length ? (
+              <div className="mt-3 space-y-4">
+                {insights.performance.map((row) => {
+                  const e = enrich(row);
+                  return (
+                    <div key={row.id} className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-mono text-xs">{row.promoCode}</span>
+                        <TierBadge tier={row.tier} />
+                        <span className="text-muted">{describeTier(row)}</span>
+                      </div>
+                      <TableScroll>
+                        <table className="w-full min-w-[560px] text-sm">
+                          <thead className="bg-canvas text-left text-xs text-muted">
+                            <tr>{["Sent", "Clicks", "Orders", "Revenue", "Cost", "Click rate", "Conv.", "Rev / 1K sent", "ROI"].map((h) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
+                          </thead>
+                          <tbody>
+                            <tr className="tabular-nums">
+                              <td className="px-3 py-2">{fmtNumber(row.sent)}</td>
+                              <td className="px-3 py-2">{fmtNumber(row.clicks)}</td>
+                              <td className="px-3 py-2">{fmtNumber(row.orders)}</td>
+                              <td className="px-3 py-2">{fmtMoney(row.revenue)}</td>
+                              <td className="px-3 py-2">{fmtMoney(row.cost)}</td>
+                              <td className="px-3 py-2">{fmtPercent(e.clickRate, 2)}</td>
+                              <td className="px-3 py-2">{fmtPercent(e.conversion, 2)}</td>
+                              <td className="px-3 py-2">{fmtMoney(e.revenuePerThousand)}</td>
+                              <td className="px-3 py-2">{fmtPercent(e.roi, 0)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </TableScroll>
+                      <p className="text-xs text-muted">
+                        {row.startDate ? `${row.startDate.toISOString().slice(0, 10)}${row.endDate ? ` → ${row.endDate.toISOString().slice(0, 10)}` : ""} · ` : ""}
+                        Percentile score {percentileScore(row.percentile) ?? "—"}/10 (1 + 9 × percentile). Tiers are statistics within this promo type, not grades.
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted">
+                No results matched yet. {promo.promoCode ? `Import a sheet with code ${promo.promoCode}` : "Add this promo's code on the Details tab, then import results"} on the{" "}
+                <Link href="/promo-studio/performance" className="text-accent hover:underline">Performance</Link> page.
+              </p>
+            )}
+          </section>
+          <section className="rounded-xl border border-line bg-white p-5">
+            <h2 className="font-semibold">Similar-promo outcomes</h2>
+            {similar?.shown ? (
+              <div className="mt-2 space-y-3 text-sm">
+                <p>
+                  {similar.agreement.count} of the {similar.agreement.k} promos with the closest copy profile landed in the{" "}
+                  <strong>{BAND_LABELS[similar.band]}</strong> real-world band.
+                </p>
+                <ul className="divide-y divide-line">
+                  {similar.neighbours.map((n) => (
+                    <li key={n.id} className="flex flex-wrap justify-between gap-2 py-2">
+                      <Link href={`/promo-studio/${n.id}?tab=results`} className="pc-break text-accent hover:underline">{n.title}</Link>
+                      <span className="text-muted">real {n.outcome} · distance {n.distance}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted">
+                  From {similar.pairs} promos with real results. On this data the method is right {Math.round(similar.accuracy * 100)}% of the time against{" "}
+                  {Math.round(similar.baseRate * 100)}% for always guessing the commonest band. Copy is only part of results; list, offer, price and timing are not modeled.
+                </p>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted">{similar?.reason ?? `Shown once ${MIN_TRAINING_PAIRS} promos have results.`}</p>
+            )}
+          </section>
+        </div>
+      ) : null}
+
       {tab === "copy" ? (
         <section className="rounded-xl border border-line bg-white p-5">
           {promo.sourceText ? (
@@ -204,7 +300,16 @@ export default async function PromoPage({
       ) : null}
 
       {tab === "training" ? (
-        writable ? (
+        <div className="space-y-4">
+        <div className="grid max-w-3xl grid-cols-3 gap-2 text-center">
+          {[["AI score", promo.effectivenessScore], ["Your score", promo.myScore], ["Real world", realScore]].map(([label, value]) => (
+            <div key={label as string} className="rounded-xl border border-line bg-white px-2 py-3">
+              <p className="text-xl font-semibold">{typeof value === "number" ? value.toFixed(1) : "—"}</p>
+              <p className="text-[11px] text-muted">{label as string}</p>
+            </div>
+          ))}
+        </div>
+        {writable ? (
           <form action={updatePromoTraining} className="max-w-3xl space-y-4 rounded-xl border border-line bg-white p-5">
             <input type="hidden" name="promoId" value={promo.id} />
             <p className="text-sm text-muted">
@@ -219,6 +324,7 @@ export default async function PromoPage({
               <div>
                 <Label htmlFor="performanceScore">Real-world performance (1–10)</Label>
                 <Input id="performanceScore" name="performanceScore" inputMode="decimal" defaultValue={promo.performanceScore ?? ""} />
+                <p className="mt-1 text-xs text-muted">Leave blank to use the imported results percentile.</p>
               </div>
             </div>
             <div>
@@ -233,7 +339,16 @@ export default async function PromoPage({
           </form>
         ) : (
           <p className="text-sm text-muted">You can't edit training.</p>
-        )
+        )}
+        <section className="rounded-xl border border-line bg-white p-5">
+          <h2 className="mb-3 font-semibold">Calibration for {ctx.brand.name}</h2>
+          <CalibrationChart points={calibration} highlightId={promo.id} />
+        </section>
+        <section className="space-y-3">
+          <h2 className="font-semibold">Best performers</h2>
+          <BestPerformers items={gallery} />
+        </section>
+        </div>
       ) : null}
 
       {tab === "history" ? (

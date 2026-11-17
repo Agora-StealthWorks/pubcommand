@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { PROMO_STATUSES, PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
+import { retier } from "./insights";
 import { extractSource, runPromoAnalysis } from "./server";
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -114,7 +115,10 @@ export async function updatePromoDetails(formData: FormData) {
   const ctx = await promoContext("promo.write");
   const promo = await ownPromo(ctx, text(formData, "promoId", 40));
   const title = text(formData, "title", 200) || promo.title;
-  await tenantDb(ctx.resolved.id).promo.updateMany({ where: { id: promo.id }, data: { title, ...details(formData) } });
+  const next = details(formData);
+  await tenantDb(ctx.resolved.id).promo.updateMany({ where: { id: promo.id }, data: { title, ...next } });
+  // A new code or type changes which results match and which cohort the promo ranks in.
+  if (next.promoCode !== promo.promoCode || next.promoType !== promo.promoType) await retier(ctx.resolved.id, ctx.brand.id);
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.updated", targetType: "promo", targetId: promo.id });
   redirect(`/promo-studio/${promo.id}?tab=details&notice=Saved.`);
 }
@@ -143,6 +147,7 @@ export async function deletePromo(formData: FormData) {
   const ctx = await promoContext("promo.write");
   const promo = await ownPromo(ctx, text(formData, "promoId", 40));
   await tenantDb(ctx.resolved.id).promo.updateMany({ where: { id: promo.id }, data: { deletedAt: new Date() } });
+  await retier(ctx.resolved.id, ctx.brand.id);
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.deleted", targetType: "promo", targetId: promo.id });
   redirect("/promo-studio?notice=Promo deleted.");
 }
