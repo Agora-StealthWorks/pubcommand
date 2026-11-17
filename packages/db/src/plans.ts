@@ -40,7 +40,7 @@ export const DEFAULT_PLANS: readonly PlanSeed[] = [
     brandLimit: 5,
     workspaceLimit: 20,
     monthlyPriceCents: 4900,
-    moduleIds: ["knowledge", "editorial", "performance", "promo-studio", "intel", "forms", "charts", "billing", "settings"],
+    moduleIds: ["knowledge", "editorial", "performance", "promo-studio", "research", "intel", "forms", "charts", "billing", "settings"],
   },
   {
     key: "enterprise",

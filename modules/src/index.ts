@@ -9,6 +9,7 @@ import { manifest as knowledge } from "../knowledge/manifest";
 import { performanceHome } from "../performance/home";
 import { manifest as performance } from "../performance/manifest";
 import { manifest as promoStudio } from "../promo-studio/manifest";
+import { manifest as research } from "../research/manifest";
 import { manifest as settings } from "../settings/manifest";
 
 export const moduleManifests = [
@@ -17,6 +18,7 @@ export const moduleManifests = [
   editorial,
   performance,
   promoStudio,
+  research,
   intel,
   forms,
   charts,
@@ -31,6 +33,7 @@ export const PRODUCT_MODULE_IDS = [
   "editorial",
   "performance",
   "promo-studio",
+  "research",
   "intel",
   "forms",
   "charts",
@@ -47,6 +50,7 @@ export {
   knowledge,
   performance,
   promoStudio,
+  research,
   settings,
 };
 

@@ -1,0 +1,172 @@
+// Research Extractor tables (module `research`). Plain organization/brand/user columns; FKs are added in the migration.
+
+/// A research project for one brand. Private to its owner unless shared; workspace admins see all.
+model ResearchProject {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  ownerId        String    @map("owner_id") @db.Uuid
+  name           String
+  description    String    @default("")
+  /// Off by default: research stays private. When on, one Brain note per project is kept current.
+  shareWithBrain Boolean   @default(false) @map("share_with_brain")
+  /// Secret for the public read-only page. Null until a link is made.
+  publicToken    String?   @unique @map("public_token")
+  publicEnabled  Boolean   @default(false) @map("public_enabled")
+  /// "Suggest topic groups" run: NONE | QUEUED | RUNNING | DONE | FAILED.
+  groupStatus    String    @default("NONE") @map("group_status")
+  groupError     String?   @map("group_error")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+  shares         ResearchShare[]
+  sources        ResearchSource[]
+  cards          ResearchCard[]
+  sections       ResearchSection[]
+
+  @@index([organizationId, brandId, deletedAt, updatedAt])
+  @@index([ownerId])
+  @@map("research_projects")
+}
+
+/// A teammate a project is shared with, keyed by email so it works before they first sign in.
+model ResearchShare {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  projectId      String          @map("project_id") @db.Uuid
+  email          String
+  /// view | edit
+  permission     String          @default("view")
+  createdById    String?         @map("created_by_id") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at")
+  project        ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, email])
+  @@index([organizationId, email])
+  @@map("research_shares")
+}
+
+/// One ingested source (pasted text, URL, file or YouTube video). Each extraction run is tracked here.
+model ResearchSource {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  projectId      String          @map("project_id") @db.Uuid
+  /// text | url | file | youtube
+  kind           String
+  /// text | html | pdf | scanned-pdf | docx | transcript
+  inputType      String          @default("text") @map("input_type")
+  title          String
+  /// The URL, file name or video id.
+  sourceRef      String?         @map("source_ref")
+  rawText        String          @default("") @map("raw_text")
+  summary        String?
+  /// QUEUED | RUNNING | DONE | FAILED
+  status         String          @default("QUEUED")
+  error          String?
+  cardCount      Int             @default(0) @map("card_count")
+  createdById    String?         @map("created_by_id") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  project        ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  files          ResearchFile[]
+  cards          ResearchCard[]
+
+  @@index([organizationId, projectId, createdAt])
+  @@map("research_sources")
+}
+
+/// An uploaded file behind a source (kept so scanned PDFs can be re-read by the AI).
+model ResearchFile {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  sourceId       String         @map("source_id") @db.Uuid
+  filename       String
+  mimeType       String         @map("mime_type")
+  size           Int
+  data           Bytes
+  createdAt      DateTime       @default(now()) @map("created_at")
+  source         ResearchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, sourceId])
+  @@map("research_files")
+}
+
+/// An index card: topic, a short summary you can write from, and the facts and quotes behind it.
+model ResearchCard {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  projectId      String             @map("project_id") @db.Uuid
+  sourceId       String?            @map("source_id") @db.Uuid
+  topic          String
+  summary        String
+  details        String             @default("")
+  /// fact | stat | quote | story | angle | other
+  cardType       String             @default("fact") @map("card_type")
+  /// [{ text, kind: fact|stat|quote, location }]
+  keyPoints      Json               @default("[]") @map("key_points")
+  sourceLabel    String             @default("") @map("source_label")
+  sourceUrl      String?            @map("source_url")
+  groupName      String?            @map("group_name")
+  tags           String[]           @default([])
+  position       Int                @default(0)
+  /// ai | manual
+  origin         String             @default("ai")
+  createdById    String?            @map("created_by_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  project        ResearchProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source         ResearchSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  bullets        ResearchBulletCard[]
+
+  @@index([organizationId, projectId, position])
+  @@index([sourceId])
+  @@map("research_cards")
+}
+
+/// An outline section. Holds ordered bullets.
+model ResearchSection {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  projectId      String           @map("project_id") @db.Uuid
+  title          String
+  position       Int              @default(0)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  project        ResearchProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bullets        ResearchBullet[]
+
+  @@index([organizationId, projectId, position])
+  @@map("research_sections")
+}
+
+/// One outline bullet. Cards are attached through ResearchBulletCard.
+model ResearchBullet {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  projectId      String               @map("project_id") @db.Uuid
+  sectionId      String               @map("section_id") @db.Uuid
+  text           String               @default("")
+  position       Int                  @default(0)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  section        ResearchSection      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  cards          ResearchBulletCard[]
+
+  @@index([organizationId, sectionId, position])
+  @@map("research_bullets")
+}
+
+/// A card placed on a bullet. A card can sit on several bullets, once each.
+model ResearchBulletCard {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  projectId      String         @map("project_id") @db.Uuid
+  bulletId       String         @map("bullet_id") @db.Uuid
+  cardId         String         @map("card_id") @db.Uuid
+  position       Int            @default(0)
+  bullet         ResearchBullet @relation(fields: [bulletId], references: [id], onDelete: Cascade)
+  card           ResearchCard   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([bulletId, cardId])
+  @@index([organizationId, projectId])
+  @@index([cardId])
+  @@map("research_bullet_cards")
+}
