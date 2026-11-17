@@ -1,13 +1,17 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { tenantDb } from "@pubcommand/db";
+import { Prisma, tenantDb } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { CALL_TYPES, CATEGORY_COLORS, FILE_ROLES } from "../../../../../modules/performance/archive";
 import { parseSplitFactor } from "../../../../../modules/performance/gain";
-import { IMPORT_COLUMNS, parseDate, parseMoney, planImport, validatePosition, type ImportPlan, type RawPosition } from "../../../../../modules/performance/positions";
+import { pricesToCheck, storedProposal, PRICE_FIELDS } from "../../../../../modules/performance/backup-read";
+import { IMPORT_COLUMNS, parseCsv, parseDate, parseMoney, validatePosition, type ImportPlan, type RawPosition } from "../../../../../modules/performance/positions";
+import { AI_RUN_STALE_MS, runBackupRead } from "./backup-ai";
 import { trackAccess, type TrackScope } from "./context";
+import { closeWithFill, syncPositionFromFills } from "./fills";
+import { applyImportPlan, planTable } from "./importer";
 import { loadQuotes } from "./prices";
 import { afterPositionsChanged, auditTrack, getPortfolio, listPortfolios, refreshCallHistory, refreshPositionHistory, teachWeeklySummary } from "./server";
 
@@ -82,6 +86,25 @@ export async function updatePublicLink(formData: FormData) {
   go(`/performance/${portfolio.id}?tab=public`, { notice: mode === "disable" ? "Public link turned off." : "Public link updated." });
 }
 
+/** The embeddable widget: on, rotate (the old embed stops working), off, or include open positions. */
+export async function updateWidget(formData: FormData) {
+  const scope = await writer();
+  const portfolio = await getPortfolio(scope, text(formData, "portfolioId", 40));
+  if (!portfolio) go("/performance", { error: "That portfolio no longer exists." });
+  const mode = text(formData, "mode", 20);
+  const data =
+    mode === "enable"
+      ? { widgetEnabled: true, widgetToken: portfolio.widgetToken ?? randomBytes(18).toString("base64url") }
+      : mode === "rotate"
+        ? { widgetToken: randomBytes(18).toString("base64url") }
+        : mode === "disable"
+          ? { widgetEnabled: false }
+          : { widgetIncludeOpen: formData.get("includeOpen") === "on" };
+  await tenantDb(scope.organizationId).trackPortfolio.updateMany({ where: { id: portfolio.id }, data });
+  await auditTrack(scope, `trackrecord.widget.${mode || "settings"}`, "track_portfolio", portfolio.id);
+  go(`/performance/${portfolio.id}?tab=public`, { notice: mode === "disable" ? "Widget turned off. Existing embeds now show nothing." : mode === "rotate" ? "New widget link made. Update your embeds: the old one stopped working." : "Widget updated." });
+}
+
 export async function deletePortfolio(formData: FormData) {
   const scope = await writer();
   const portfolio = await getPortfolio(scope, text(formData, "portfolioId", 40));
@@ -90,7 +113,7 @@ export async function deletePortfolio(formData: FormData) {
   const db = tenantDb(scope.organizationId);
   const now = new Date();
   await db.trackPosition.updateMany({ where: { portfolioId: portfolio.id, deletedAt: null }, data: { deletedAt: now } });
-  await db.trackPortfolio.updateMany({ where: { id: portfolio.id }, data: { deletedAt: now, publicEnabled: false } });
+  await db.trackPortfolio.updateMany({ where: { id: portfolio.id }, data: { deletedAt: now, publicEnabled: false, widgetEnabled: false } });
   await auditTrack(scope, "trackrecord.portfolio.deleted", "track_portfolio", portfolio.id);
   go("/performance", { notice: `${portfolio.name} was deleted.` });
 }
@@ -149,6 +172,8 @@ export async function savePosition(formData: FormData) {
       where: { id: positionId },
       data: { ...data, peakCheckedAt: null, ...(clearSplit ? { splitFactor: 1, splitSource: "none" } : {}) },
     });
+    // Fills are the record for a position tracked by fills: entry, exit and status come back from them.
+    if (existing.fillCount > 0) await syncPositionFromFills(scope.organizationId, positionId);
     await auditTrack(scope, existing.status !== data.status && data.status === "CLOSED" ? "trackrecord.position.closed" : "trackrecord.position.updated", "track_position", positionId);
   } else {
     const created = await db.trackPosition.create({
@@ -176,7 +201,12 @@ export async function closePosition(formData: FormData) {
   if (!(exitDate instanceof Date)) go(back, { error: "Enter the exit date." });
   if (exitDate < position.entryDate) go(back, { error: "The exit date is before the entry date." });
   if (exitDate.getTime() > Date.now()) go(back, { error: "The exit date is in the future." });
-  await db.trackPosition.updateMany({ where: { id: position.id }, data: { status: "CLOSED", exitPrice, exitDate, peakCheckedAt: null } });
+  if (position.fillCount > 0) {
+    const problem = await closeWithFill({ organizationId: scope.organizationId, position, exitPrice, exitDate, actorId: scope.actorId });
+    if (problem) go(back, { error: problem });
+  } else {
+    await db.trackPosition.updateMany({ where: { id: position.id }, data: { status: "CLOSED", exitPrice, exitDate, peakCheckedAt: null } });
+  }
   await auditTrack(scope, "trackrecord.position.closed", "track_position", position.id);
   after(() => afterPositionsChanged(scope, [portfolio.id], [position.id]));
   go(`/performance/${portfolio.id}`, { notice: `${position.symbol} closed.` });
@@ -230,26 +260,7 @@ async function csvFrom(formData: FormData): Promise<string> {
 }
 
 async function planFor(scope: TrackScope, csv: string, defaultPortfolio: string): Promise<ImportPlan> {
-  const portfolios = await listPortfolios(scope);
-  const names = new Map(portfolios.map((p) => [p.id, p.name]));
-  const existing = await tenantDb(scope.organizationId).trackPosition.findMany({
-    where: { brandId: scope.brandId, deletedAt: null },
-    select: { id: true, portfolioId: true, symbol: true, direction: true, entryDate: true, status: true },
-  });
-  return planImport({
-    csv,
-    defaultPortfolio,
-    portfolios: portfolios.map((p) => p.name),
-    existing: existing.map((row) => ({
-      id: row.id,
-      portfolioName: names.get(row.portfolioId) ?? "",
-      symbol: row.symbol,
-      direction: row.direction === "SHORT" ? "SHORT" : "LONG",
-      entryDate: row.entryDate,
-      status: row.status === "CLOSED" ? "CLOSED" : "OPEN",
-    })),
-    today: new Date(),
-  });
+  return planTable(scope, parseCsv(csv), defaultPortfolio);
 }
 
 /** Dry run. Writes nothing. */
@@ -269,62 +280,10 @@ export async function commitImport(formData: FormData) {
   const plan = await planFor(scope, csv, defaultPortfolio);
   const work = plan.rows.filter((row) => (row.action === "create" || row.action === "close") && row.draft);
   if (!work.length) go("/performance/import", { error: "Nothing to import: every row was a duplicate or had an error." });
-  const db = tenantDb(scope.organizationId);
-  const portfolios = new Map((await listPortfolios(scope)).map((p) => [p.name.toLowerCase(), p.id]));
-  for (const name of plan.newPortfolios) {
-    const created = await db.trackPortfolio.create({ data: { organizationId: scope.organizationId, brandId: scope.brandId, name, createdById: scope.actorId } });
-    portfolios.set(name.toLowerCase(), created.id);
-    await auditTrack(scope, "trackrecord.portfolio.created", "track_portfolio", created.id, { via: "import" });
-  }
-  const batch = randomBytes(8).toString("hex");
-  const touchedPortfolios = new Set<string>();
-  const touchedPositions: string[] = [];
-  let created = 0;
-  let closed = 0;
-  for (const row of work) {
-    const draft = row.draft!;
-    const portfolioId = portfolios.get(row.portfolio.toLowerCase());
-    if (!portfolioId) continue;
-    touchedPortfolios.add(portfolioId);
-    if (row.action === "close" && row.existingId) {
-      await db.trackPosition.updateMany({ where: { id: row.existingId, status: "OPEN" }, data: { status: "CLOSED", exitDate: draft.exitDate, exitPrice: draft.exitPrice, peakCheckedAt: null } });
-      touchedPositions.push(row.existingId);
-      closed += 1;
-      continue;
-    }
-    const position = await db.trackPosition.create({
-      data: {
-        organizationId: scope.organizationId,
-        brandId: scope.brandId,
-        portfolioId,
-        symbol: draft.symbol,
-        name: draft.name,
-        assetType: draft.assetType,
-        direction: draft.direction,
-        optionRight: draft.optionRight,
-        strike: draft.strike,
-        expiry: draft.expiry,
-        priceSymbol: draft.priceSymbol,
-        entryDate: draft.entryDate,
-        entryPrice: draft.entryPrice,
-        stopPrice: draft.stopPrice,
-        targetPrice: draft.targetPrice,
-        exitDate: draft.exitDate,
-        exitPrice: draft.exitPrice,
-        status: draft.exitPrice != null ? "CLOSED" : "OPEN",
-        weight: draft.weight,
-        notes: draft.notes,
-        importBatch: batch,
-        createdById: scope.actorId,
-        ...(draft.splitFactor != null ? { splitFactor: draft.splitFactor, splitSource: "manual" } : {}),
-      },
-    });
-    touchedPositions.push(position.id);
-    created += 1;
-  }
-  await auditTrack(scope, "trackrecord.import.committed", "track_import", batch, { created, closed, skipped: plan.counts.skip, errors: plan.counts.error });
-  after(() => afterPositionsChanged(scope, [...touchedPortfolios], touchedPositions.slice(0, 200)));
-  go("/performance", { notice: `Imported ${created} new and closed ${closed} recommendation(s). Prices and history fill in shortly.` });
+  const result = await applyImportPlan(scope, plan, "csv");
+  after(() => afterPositionsChanged(scope, result.portfolioIds, result.positionIds.slice(0, 200)));
+  const problems = result.problems.length ? ` ${result.problems.length} close(s) could not be applied: ${result.problems.slice(0, 3).join(" ")}` : "";
+  go("/performance", { notice: `Imported ${result.created} new and closed ${result.closed} recommendation(s). Prices and history fill in shortly.${problems}` });
 }
 
 // ----------------------------------------------------------------------------- call archive
@@ -424,12 +383,15 @@ export async function saveCall(formData: FormData) {
   const exitPrice = money("exitPrice", "Exit price");
   const recordedPeak = money("recordedPeak", "Recorded peak");
   const recordedPrice = money("recordedPrice", "Last recorded price");
+  const targetPrice = money("targetPrice", "Target");
   const callDate = date("callDate", "Call date");
   const exitDate = date("exitDate", "Exit date");
   const recordedPeakAt = date("recordedPeakAt", "Peak date");
   const recordedAt = date("recordedAt", "Recorded price date");
   if (gainBasis === "EXIT" && exitPrice == null) errors.push("Entry to exit needs an exit price.");
-  if (gainBasis !== "NONE" && entryPrice == null) errors.push("A gain needs the entry price from the backup.");
+  // New backups for the AI to read: the entry price may come from its proposal, so it can wait until the review.
+  const willRead = formData.get("aiRead") === "on" && formData.getAll("files").some((file) => file instanceof File && file.size > 0);
+  if (gainBasis !== "NONE" && entryPrice == null && !willRead) errors.push("A gain needs the entry price from the backup.");
   const splitText = text(formData, "splitFactor", 20);
   const splitFactor = splitText ? parseSplitFactor(splitText) : null;
   if (splitText && splitFactor == null) errors.push("Split must look like 4:1 or 1:20.");
@@ -457,6 +419,7 @@ export async function saveCall(formData: FormData) {
     categoryIds,
     keyQuote: text(formData, "keyQuote", 4000),
     notes: text(formData, "notes", 8000),
+    targetPrice,
     peakCheckedAt: null,
     ...(splitFactor != null ? { splitFactor, splitSource: "manual" } : {}),
   };
@@ -465,7 +428,16 @@ export async function saveCall(formData: FormData) {
     const existing = UUID.test(callId) ? await db.trackCall.findFirst({ where: { id: callId, brandId: scope.brandId, deletedAt: null } }) : null;
     if (!existing) go("/performance/archive", { error: "That call no longer exists." });
     const clearSplit = splitFactor == null && existing.splitSource === "manual";
-    await db.trackCall.updateMany({ where: { id: callId }, data: { ...data, ...(clearSplit ? { splitFactor: 1, splitSource: "none" } : {}) } });
+    // Prices the AI read from a document stay flagged until a person changes them or marks them checked.
+    const aiFields = formData.getAll("aiFields").map(String);
+    const flagged = pricesToCheck(aiFields, storedProposal(existing.aiProposal), { entryPrice, targetPrice, exitPrice });
+    const kept = existing.priceCheck.filter((field) => {
+      const before = existing[field as (typeof PRICE_FIELDS)[number]];
+      const after = { entryPrice, targetPrice, exitPrice }[field as (typeof PRICE_FIELDS)[number]];
+      return (PRICE_FIELDS as readonly string[]).includes(field) && before != null && after != null && Math.abs(before - after) < 1e-9;
+    });
+    const priceCheck = [...new Set([...kept, ...flagged])];
+    await db.trackCall.updateMany({ where: { id: callId }, data: { ...data, priceCheck, ...(formData.get("fromProposal") ? { aiStatus: "reviewed" } : {}), ...(clearSplit ? { splitFactor: 1, splitSource: "none" } : {}) } });
     await auditTrack(scope, "trackrecord.call.updated", "track_call", callId);
   } else {
     const created = await db.trackCall.create({ data: { organizationId: scope.organizationId, brandId: scope.brandId, createdById: scope.actorId, ...data } });
@@ -496,11 +468,17 @@ export async function saveCall(formData: FormData) {
     });
     await auditTrack(scope, "trackrecord.call.file.added", "track_call_file", createdFile.id);
   }
+  const aiRead = formData.get("aiRead") === "on" && files.length - skipped > 0;
+  if (aiRead) await db.trackCall.updateMany({ where: { id }, data: { aiStatus: "running", aiError: null, aiRunAt: new Date() } });
   after(async () => {
     const rows = await db.trackCall.findMany({ where: { id } });
     await refreshCallHistory(scope.organizationId, rows, { force: true });
+    if (aiRead) await runBackupRead(scope, id);
   });
-  go(`/performance/archive/${id}`, skipped ? { error: `Saved, but ${skipped} file(s) over 25 MB were skipped.` } : { notice: "Call saved." });
+  go(
+    `/performance/archive/${id}`,
+    skipped ? { error: `Saved, but ${skipped} file(s) over 25 MB were skipped.` } : { notice: aiRead ? "Call saved. The AI is reading the new files." : "Call saved." },
+  );
 }
 
 export async function deleteCall(formData: FormData) {
@@ -535,4 +513,42 @@ export async function refreshCall(formData: FormData) {
   if (call.priceSymbol) await loadQuotes(scope.organizationId, [call.priceSymbol], { force: true });
   const errors = await refreshCallHistory(scope.organizationId, [call], { force: true });
   go(`/performance/archive/${call.id}`, errors.length ? { error: errors.join(" ") } : { notice: "Prices refreshed." });
+}
+
+// ----------------------------------------------------------------------------- AI read of backups
+
+/** Start the AI read of a call's backups. It proposes fields; a person reviews them in the form. */
+export async function readCallBackups(formData: FormData) {
+  const scope = await writer("/performance/archive");
+  const callId = text(formData, "callId", 40);
+  const db = tenantDb(scope.organizationId);
+  const call = UUID.test(callId) ? await db.trackCall.findFirst({ where: { id: callId, brandId: scope.brandId, deletedAt: null } }) : null;
+  if (!call) go("/performance/archive");
+  const running = call.aiStatus === "running" && call.aiRunAt && Date.now() - call.aiRunAt.getTime() < AI_RUN_STALE_MS;
+  if (running) go(`/performance/archive/${call.id}`, { notice: "The AI is already reading the backups." });
+  if (!(await db.trackCallFile.count({ where: { callId: call.id } }))) go(`/performance/archive/${call.id}`, { error: "Add a screenshot, PDF or transcript first." });
+  await db.trackCall.updateMany({ where: { id: call.id }, data: { aiStatus: "running", aiError: null, aiRunAt: new Date() } });
+  await auditTrack(scope, "trackrecord.call.ai-read", "track_call", call.id);
+  after(() => runBackupRead(scope, call.id));
+  go(`/performance/archive/${call.id}`, { notice: "Reading the backups. The proposal appears here when it is ready." });
+}
+
+/** A person checked the AI-read prices against the backup. */
+export async function markPricesChecked(formData: FormData) {
+  const scope = await writer("/performance/archive");
+  const callId = text(formData, "callId", 40);
+  const db = tenantDb(scope.organizationId);
+  const call = UUID.test(callId) ? await db.trackCall.findFirst({ where: { id: callId, brandId: scope.brandId, deletedAt: null } }) : null;
+  if (!call) go("/performance/archive");
+  await db.trackCall.updateMany({ where: { id: call.id }, data: { priceCheck: [] } });
+  await auditTrack(scope, "trackrecord.call.prices-checked", "track_call", call.id, { fields: call.priceCheck });
+  go(`/performance/archive/${call.id}`, { notice: "Marked as checked against the backup." });
+}
+
+export async function dismissProposal(formData: FormData) {
+  const scope = await writer("/performance/archive");
+  const callId = text(formData, "callId", 40);
+  if (!UUID.test(callId)) go("/performance/archive");
+  await tenantDb(scope.organizationId).trackCall.updateMany({ where: { id: callId, brandId: scope.brandId }, data: { aiProposal: Prisma.DbNull, aiStatus: "none", aiError: null } });
+  go(`/performance/archive/${callId}`, { notice: "Proposal dismissed." });
 }

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { Denied, Flash } from "@/components/ui";
-import { deletePortfolio, refreshPortfolioPrices, teachPortfolioWeek, updatePortfolio, updatePublicLink } from "@/features/trackrecord/actions";
+import { deletePortfolio, refreshPortfolioPrices, teachPortfolioWeek, updatePortfolio, updatePublicLink, updateWidget } from "@/features/trackrecord/actions";
 import { trackAccess } from "@/features/trackrecord/context";
 import { marketConnected } from "@/features/trackrecord/prices";
 import { getPortfolio, positionViews, refreshPositionHistory, toStat } from "@/features/trackrecord/server";
@@ -11,6 +11,7 @@ import { MarketBanner, PositionTable, StatsGrid } from "@/features/trackrecord/u
 import { currentRequest } from "@/lib/request";
 import { historyDue } from "@/features/trackrecord/prices";
 import { computeStats, isoWeek } from "../../../../../../../../../modules/performance/stats";
+import { embedSnippet } from "../../../../../../../../../modules/performance/widget";
 
 const TABS = [
   { key: "positions", label: "Positions" },
@@ -42,6 +43,7 @@ export default async function PortfolioPage({
   if (connected && due.length) after(() => refreshPositionHistory(scope.organizationId, due.slice(0, 25)).then(() => undefined));
   const request = await currentRequest();
   const publicUrl = portfolio.publicToken ? `${request.origin}/p/track-record/${portfolio.publicToken}` : null;
+  const widgetUrl = portfolio.widgetToken ? `${request.origin}/p/track-record/widget/${portfolio.widgetToken}` : null;
 
   return (
     <div className="space-y-4">
@@ -178,6 +180,73 @@ export default async function PortfolioPage({
               )}
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {tab === "public" ? (
+        <section className="space-y-3 rounded-xl border border-line bg-white p-4">
+          <h3 className="text-base font-semibold">Embeddable widget</h3>
+          <p className="text-sm text-muted">
+            Put this portfolio&apos;s public-safe table and stats on any website with an iframe, or read them as JSON. Same rules as the public view: closed
+            trades by default, date order, no loser count, no worst trade, no losers list. Turning it off or making a new link stops every old embed.
+          </p>
+          {portfolio.widgetEnabled && widgetUrl ? (
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="widget-snippet">Embed code (table and stats)</Label>
+                <Textarea id="widget-snippet" readOnly rows={4} className="font-mono text-xs" value={embedSnippet(widgetUrl, `${portfolio.name} track record`)} />
+                <p className="mt-1 text-xs text-muted">
+                  Add <code>?view=table</code> or <code>?view=stats</code> to show one part, and <code>&amp;limit=50</code> for more rows (stats always count every closed trade).
+                </p>
+              </div>
+              <p className="text-sm">
+                JSON:{" "}
+                <a href={`${widgetUrl}/data`} className="break-all font-semibold text-accent">
+                  {widgetUrl}/data
+                </a>
+              </p>
+              <iframe src={`${widgetUrl}?limit=5`} title="Widget preview" className="h-[28rem] w-full rounded-lg border border-line" loading="lazy" />
+              {scope.canWrite ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <form action={updateWidget} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="portfolioId" value={portfolio.id} />
+                    <input type="hidden" name="mode" value="settings" />
+                    <label className="flex min-h-11 items-center gap-2 text-sm">
+                      <input type="checkbox" name="includeOpen" defaultChecked={portfolio.widgetIncludeOpen} className="h-4 w-4" />
+                      Include open positions
+                    </label>
+                    <Button type="submit" variant="secondary" size="sm">
+                      Save
+                    </Button>
+                  </form>
+                  <form action={updateWidget}>
+                    <input type="hidden" name="portfolioId" value={portfolio.id} />
+                    <input type="hidden" name="mode" value="rotate" />
+                    <Button type="submit" variant="secondary" size="sm">
+                      New link (old embeds stop)
+                    </Button>
+                  </form>
+                  <form action={updateWidget}>
+                    <input type="hidden" name="portfolioId" value={portfolio.id} />
+                    <input type="hidden" name="mode" value="disable" />
+                    <Button type="submit" variant="danger" size="sm">
+                      Turn off widget
+                    </Button>
+                  </form>
+                </div>
+              ) : null}
+            </div>
+          ) : scope.canWrite ? (
+            <form action={updateWidget}>
+              <input type="hidden" name="portfolioId" value={portfolio.id} />
+              <input type="hidden" name="mode" value="enable" />
+              <Button type="submit" size="sm">
+                Turn on the widget
+              </Button>
+            </form>
+          ) : (
+            <p className="text-sm text-muted">The widget is off.</p>
+          )}
         </section>
       ) : null}
 

@@ -8,6 +8,10 @@ import { intelGmailSync } from "./intel-gmail-sync";
 import { intelRadar } from "./intel-radar";
 import { intelVideoCapture } from "./intel-video-capture";
 import { jobRunsCleanup } from "./job-runs-cleanup";
+import { performanceImportSync } from "./performance-import-sync";
+import { performancePriceRefresh } from "./performance-price-refresh";
+import { performanceWeeklyReport } from "./performance-weekly-report";
+import { performanceWeeklySummary } from "./performance-weekly-summary";
 
 /**
  * Every scheduled job. Apps add theirs here (one import + one entry each).
@@ -23,4 +27,8 @@ export const JOBS: JobDefinition[] = [
   intelRadar,
   intelVideoCapture,
   jobRunsCleanup,
+  performanceImportSync,
+  performancePriceRefresh,
+  performanceWeeklyReport,
+  performanceWeeklySummary,
 ];
