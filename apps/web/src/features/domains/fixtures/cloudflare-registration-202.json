@@ -1,0 +1,6 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": { "domain_name": "example-gazette.com", "status": "in_progress", "workflow_url": "https://api.cloudflare.com/client/v4/accounts/acc123/registrar/registrations/example-gazette.com/workflow" }
+}

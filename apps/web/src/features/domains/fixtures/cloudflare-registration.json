@@ -1,0 +1,6 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": { "domain_name": "example-gazette.com", "status": "active", "auto_renew": true, "expires_at": "2027-11-17T00:00:00Z" }
+}

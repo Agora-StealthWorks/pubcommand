@@ -1,11 +1,19 @@
 import { GATE_COOKIE, SESSION_COOKIE, openGate } from "@pubcommand/auth/edge";
 import { decideAdminAccess, resolveSite, type PlatformRole } from "@pubcommand/core";
 import { NextResponse, type NextRequest } from "next/server";
+import { customDomainResponse, stripCustomDomainHeaders } from "./features/domains/middleware";
 
 export async function middleware(request: NextRequest) {
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  const site = resolveSite(host, process.env.ROOT_DOMAIN ?? "localhost", request.nextUrl.searchParams);
-  if (site.kind === "unknown") return new NextResponse("Unknown host", { status: 404 });
+  const rootDomain = process.env.ROOT_DOMAIN ?? "localhost";
+  const site = resolveSite(host, rootDomain, request.nextUrl.searchParams);
+  if (site.kind === "unknown") {
+    // Custom domains (Settings → Domains): a host we do not own may be an org's
+    // custom domain, which serves only that org's public pages. Anything else
+    // stays a 404. See features/domains/middleware.ts.
+    const custom = await customDomainResponse(request, site.host, rootDomain);
+    return custom ?? new NextResponse("Unknown host", { status: 404 });
+  }
 
   const { pathname, search } = request.nextUrl;
   if (pathname === "/sites" || pathname.startsWith("/sites/")) {
@@ -13,7 +21,8 @@ export async function middleware(request: NextRequest) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const requestHeaders = new Headers(request.headers);
+  // Custom-domain headers are only ever set by customDomainResponse above.
+  const requestHeaders = stripCustomDomainHeaders(new Headers(request.headers));
   requestHeaders.set("x-pc-pathname", pathname);
   requestHeaders.set("x-pc-search", search);
   requestHeaders.set("x-pc-site", site.kind);
@@ -75,5 +84,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Node.js runtime (stable in Next 15.5) so the custom-domain lookup can use
+  // Prisma in-process with a small in-memory cache; Edge cannot reach the DB.
+  runtime: "nodejs",
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

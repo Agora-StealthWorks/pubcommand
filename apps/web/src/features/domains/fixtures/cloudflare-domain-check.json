@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "domains": [
+      { "name": "example-gazette.com", "registrable": true, "tier": "standard", "pricing": { "currency": "USD", "registration_cost": "10.46", "renewal_cost": "10.46" } },
+      { "name": "taken-example.com", "registrable": false, "reason": "domain_unavailable" },
+      { "name": "fancy.com", "registrable": true, "tier": "premium", "pricing": { "currency": "USD", "registration_cost": "2500.00", "renewal_cost": "10.46" } },
+      { "name": "example.lol", "registrable": false, "reason": "extension_not_supported_via_api" }
+    ]
+  }
+}

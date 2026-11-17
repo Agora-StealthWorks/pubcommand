@@ -1,0 +1,27 @@
+{
+  "data": {
+    "customDomain": {
+      "id": "cd_7f3a",
+      "domain": "example-gazette.com",
+      "status": {
+        "verified": true,
+        "certificateStatus": "CERTIFICATE_STATUS_TYPE_VALID",
+        "certificateErrorMessage": null,
+        "verificationDnsHost": "_railway-verify",
+        "verificationToken": "railway-verify=4b1c0e5d",
+        "dnsRecords": [
+          {
+            "recordType": "DNS_RECORD_TYPE_CNAME",
+            "fqdn": "example-gazette.com",
+            "hostlabel": "",
+            "zone": "example-gazette.com",
+            "requiredValue": "k2l9x0ab.up.railway.app",
+            "currentValue": "k2l9x0ab.up.railway.app",
+            "status": "DNS_RECORD_STATUS_PROPAGATED",
+            "purpose": "DNS_RECORD_PURPOSE_TRAFFIC_ROUTE"
+          }
+        ]
+      }
+    }
+  }
+}
