@@ -50,6 +50,13 @@ const CARDS: AppCard[] = [
     category: "Research & Knowledge",
   },
   {
+    moduleId: "wiki",
+    name: "Wiki",
+    description: "Every publication and editor in one place, with offers, branding and approved testimonials.",
+    icon: "📚",
+    category: "Research & Knowledge",
+  },
+  {
     moduleId: "intel",
     name: "Intel",
     description: "Competitor emails and promos in your market.",
@@ -84,6 +91,13 @@ const CARDS: AppCard[] = [
     name: "Mini-Blog",
     description: "Small public blogs with an archive and SMS subscribe page.",
     icon: "✍️",
+    category: "Media & Audience",
+  },
+  {
+    moduleId: "testimonials",
+    name: "Testimonials",
+    description: "Collect reader testimonials per publication, review them against your rules, and publish the approved ones.",
+    icon: "💬",
     category: "Media & Audience",
   },
   {
