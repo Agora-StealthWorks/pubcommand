@@ -14,6 +14,7 @@ describe("module registry", () => {
       "intel",
       "forms",
       "charts",
+      "funnels",
       "billing",
       "settings",
     ]);
@@ -22,6 +23,7 @@ describe("module registry", () => {
     }
     expect(moduleRegistry.permissionModules()["promo.approve"]).toBe("promo-studio");
     expect(moduleRegistry.permissionModules()["forms.export"]).toBe("forms");
+    expect(moduleRegistry.permissionModules()["funnels.publish"]).toBe("funnels");
     expect(moduleRegistry.jobs().some((job) => job.name === "example.ping")).toBe(true);
   });
 });

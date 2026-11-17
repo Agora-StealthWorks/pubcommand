@@ -1,0 +1,314 @@
+// Funnels tables: launch funnels (waitlist → day videos → close page) and
+// text-letter sites (SMS newsletter landing page, archive, posts, opt-ins).
+//
+// Opt-in emails and phone numbers are PII: they stay in these tables and leave
+// only through an admin CSV export (funnels.publish). The Brain gets aggregates.
+//
+// No relation fields to Organization/Brand/User (shared files). Foreign keys to
+// those tables are added by hand in the migration SQL.
+
+/// One launch funnel. Times are stored UTC; the builder shows the org time zone.
+model Funnel {
+  id                   String        @id @default(uuid()) @db.Uuid
+  organizationId       String        @map("organization_id") @db.Uuid
+  brandId              String        @map("brand_id") @db.Uuid
+  name                 String
+  /// Public link: https://{org}.pubcommand.com/l/<slug>. Unique per organization.
+  slug                 String
+  /// draft | published | archived
+  status               String        @default("draft")
+  /// evergreen | live
+  mode                 String        @default("evergreen")
+  /// fixed | per_viewer
+  timing               String        @default("fixed")
+  startAt              DateTime?     @map("start_at")
+  endAt                DateTime?     @map("end_at")
+  closeAfterHours      Int?          @map("close_after_hours")
+  livestreamUrl        String?       @map("livestream_url")
+  /// all_open | scheduled | watch_percent | url_key
+  progression          String        @default("all_open")
+  watchPercent         Int           @default(80) @map("watch_percent")
+  /// as_you_go | prebuilt
+  buildMode            String        @default("as_you_go") @map("build_mode")
+  /// page | redirect | never
+  closeMode            String        @default("page") @map("close_mode")
+  closeHeadline        String        @default("This event has closed") @map("close_headline")
+  closeMessageHtml     String        @default("<p>Thanks for your interest. This event is no longer available.</p>") @map("close_message_html")
+  closeButtonText      String?       @map("close_button_text")
+  closeButtonUrl       String?       @map("close_button_url")
+  closeRedirectUrl     String?       @map("close_redirect_url")
+  waitlistEnabled      Boolean       @default(true) @map("waitlist_enabled")
+  waitlistHeadline     String        @default("It starts in…") @map("waitlist_headline")
+  waitlistSubheadline  String        @default("Keep this page open. You will be taken in automatically the moment it begins.") @map("waitlist_subheadline")
+  agendaTitle          String        @default("Agenda") @map("agenda_title")
+  /// none | email | form
+  optinMode            String        @default("none") @map("optin_mode")
+  optinFormSlug        String?       @map("optin_form_slug")
+  optinHeadline        String        @default("Get a reminder before we start") @map("optin_headline")
+  optinButtonText      String        @default("Remind me") @map("optin_button_text")
+  /// Forms theme to borrow logo, colours and privacy link from. Null = the funnel's own branding.
+  formThemeId          String?       @map("form_theme_id") @db.Uuid
+  logoAssetId          String?       @map("logo_asset_id") @db.Uuid
+  logoUrl              String?       @map("logo_url")
+  logoHeight           Int           @default(40) @map("logo_height")
+  headerBg             String        @default("#111827") @map("header_bg")
+  pageBg               String        @default("#f5f6f8") @map("page_bg")
+  textColor            String        @default("#1f2937") @map("text_color")
+  accentColor          String        @default("#1d4ed8") @map("accent_color")
+  companyName          String        @default("") @map("company_name")
+  privacyUrl           String?       @map("privacy_url")
+  termsUrl             String?       @map("terms_url")
+  /// Sanitized rich text.
+  footerHtml           String        @default("") @map("footer_html")
+  lockedTitle          String        @default("This video is locked") @map("locked_title")
+  lockedScheduledMsg   String        @default("{day} unlocks on {unlock_date}. Check back then!") @map("locked_scheduled_msg")
+  lockedWatchMsg       String        @default("Watch at least {percent}% of {prev_day} to unlock {day}.") @map("locked_watch_msg")
+  lockedKeyMsg         String        @default("{day} unlocks from the link in your email.") @map("locked_key_msg")
+  lockedLiveMsg        String        @default("{day} goes live on {unlock_date}.") @map("locked_live_msg")
+  comingSoonTitle      String        @default("Coming soon") @map("coming_soon_title")
+  comingSoonMessage    String        @default("This video will be available shortly. Check back soon!") @map("coming_soon_message")
+  replayPendingTitle   String        @default("The replay is on its way") @map("replay_pending_title")
+  replayPendingMessage String        @default("The live session has ended. The replay will be posted here shortly.") @map("replay_pending_message")
+  liveHeadline         String        @default("We're live!") @map("live_headline")
+  liveSubheadline      String        @default("Taking you to the livestream room…") @map("live_subheadline")
+  nextButtonText       String        @default("Watch the next day") @map("next_button_text")
+  brainSyncEnabled     Boolean       @default(true) @map("brain_sync_enabled")
+  publishedAt          DateTime?     @map("published_at")
+  createdById          String?       @map("created_by_id") @db.Uuid
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+  deletedAt            DateTime?     @map("deleted_at")
+  days                 FunnelDay[]
+  events               FunnelEvent[]
+  watches              FunnelWatch[]
+  optins               FunnelOptin[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, brandId, updatedAt])
+  @@map("funnels")
+}
+
+model FunnelDay {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  funnelId          String    @map("funnel_id") @db.Uuid
+  /// 1-based order.
+  position          Int
+  title             String    @default("")
+  navLabel          String?   @map("nav_label")
+  /// Agenda bullets.
+  topics            String[]  @default([])
+  /// Sanitized rich text under the video.
+  bodyHtml          String    @default("") @map("body_html")
+  /// wistia | youtube
+  videoProvider     String?   @map("video_provider")
+  videoId           String?   @map("video_id")
+  videoTitle        String?   @map("video_title")
+  /// From oEmbed (automatic).
+  videoThumbUrl     String?   @map("video_thumb_url")
+  videoDuration     Int?      @map("video_duration")
+  /// Manual thumbnail overrides; either one wins over the automatic one.
+  thumbAssetId      String?   @map("thumb_asset_id") @db.Uuid
+  thumbUrl          String?   @map("thumb_url")
+  unlockOffsetHours Int       @default(0) @map("unlock_offset_hours")
+  unlockAt          DateTime? @map("unlock_at")
+  unlockKey         String    @map("unlock_key")
+  isLive            Boolean   @default(false) @map("is_live")
+  liveStartAt       DateTime? @map("live_start_at")
+  liveEndAt         DateTime? @map("live_end_at")
+  liveUrl           String?   @map("live_url")
+  /// auto | on | off
+  liveOverride      String    @default("auto") @map("live_override")
+  resourcesHeading  String    @default("Resources") @map("resources_heading")
+  /// [{ label, url }]
+  resources         Json      @default("[]")
+  /// none | always | video_time | datetime
+  ctaReveal         String    @default("none") @map("cta_reveal")
+  ctaText           String    @default("") @map("cta_text")
+  ctaUrl            String    @default("") @map("cta_url")
+  ctaSeconds        Int       @default(0) @map("cta_seconds")
+  ctaAt             DateTime? @map("cta_at")
+  ctaSubtext        String    @default("") @map("cta_subtext")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  funnel            Funnel    @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, funnelId, position])
+  @@map("funnel_days")
+}
+
+/// Logos and thumbnails in Postgres (no volume). Public: they render on public pages.
+model FunnelAsset {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  /// The funnel or text-letter site that owns it.
+  ownerId        String   @map("owner_id") @db.Uuid
+  /// logo | thumb
+  kind           String
+  filename       String
+  mimeType       String   @map("mime_type")
+  size           Int
+  data           Bytes
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, ownerId])
+  @@map("funnel_assets")
+}
+
+/// First-party funnel analytics: page views and CTA clicks. Admin previews are never recorded.
+model FunnelEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  funnelId       String   @map("funnel_id") @db.Uuid
+  /// Null = the waitlist / front door.
+  dayId          String?  @map("day_id") @db.Uuid
+  /// view | cta
+  kind           String
+  /// Random id from the viewer cookie. Not linked to any person.
+  visitorId      String   @map("visitor_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, funnelId, createdAt])
+  @@map("funnel_events")
+}
+
+/// Highest watched percent per viewer per day.
+model FunnelWatch {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  funnelId       String   @map("funnel_id") @db.Uuid
+  dayId          String   @map("day_id") @db.Uuid
+  visitorId      String   @map("visitor_id")
+  percent        Int
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@unique([funnelId, dayId, visitorId])
+  @@index([organizationId, funnelId])
+  @@map("funnel_watches")
+}
+
+/// Waitlist email capture (when the funnel does not reuse a Form). PII.
+model FunnelOptin {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  funnelId       String   @map("funnel_id") @db.Uuid
+  email          String
+  /// The exact consent sentence the page showed.
+  consentText    String   @map("consent_text")
+  ipHash         String?  @map("ip_hash")
+  pageUrl        String?  @map("page_url")
+  createdAt      DateTime @default(now()) @map("created_at")
+  funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@unique([funnelId, email])
+  @@index([organizationId, funnelId, createdAt])
+  @@map("funnel_optins")
+}
+
+/// A text-letter (SMS newsletter) site: subscribe page, archive and posts.
+model TextSite {
+  id               String       @id @default(uuid()) @db.Uuid
+  organizationId   String       @map("organization_id") @db.Uuid
+  brandId          String       @map("brand_id") @db.Uuid
+  name             String
+  /// Public link: https://{org}.pubcommand.com/t/<slug>. Unique per organization.
+  slug             String
+  /// draft | live
+  status           String       @default("draft")
+  tagline          String       @default("")
+  /// Shown on the subscribe page. Sanitized rich text.
+  introHtml        String       @default("") @map("intro_html")
+  programName      String       @default("") @map("program_name")
+  companyName      String       @default("") @map("company_name")
+  messageFrequency String       @default("Message frequency varies") @map("message_frequency")
+  helpContact      String       @default("") @map("help_contact")
+  privacyUrl       String?      @map("privacy_url")
+  termsUrl         String?      @map("terms_url")
+  logoAssetId      String?      @map("logo_asset_id") @db.Uuid
+  logoUrl          String?      @map("logo_url")
+  logoHeight       Int          @default(36) @map("logo_height")
+  headerBg         String       @default("#111827") @map("header_bg")
+  accentColor      String       @default("#1d4ed8") @map("accent_color")
+  archivesEnabled  Boolean      @default(true) @map("archives_enabled")
+  /// Marketing Calendar publication code; when set, each published post adds a calendar issue.
+  calendarCode     String?      @map("calendar_code")
+  brainSyncEnabled Boolean      @default(true) @map("brain_sync_enabled")
+  createdById      String?      @map("created_by_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  deletedAt        DateTime?    @map("deleted_at")
+  posts            TextPost[]
+  optins           TextOptin[]
+  views            TextView[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, brandId, updatedAt])
+  @@map("text_sites")
+}
+
+/// A post. Published with a future publishAt = scheduled (hidden until then).
+model TextPost {
+  id              String     @id @default(uuid()) @db.Uuid
+  organizationId  String     @map("organization_id") @db.Uuid
+  siteId          String     @map("site_id") @db.Uuid
+  title           String
+  slug            String
+  /// draft | published
+  status          String     @default("draft")
+  publishAt       DateTime   @default(now()) @map("publish_at")
+  /// Sanitized rich text.
+  bodyHtml        String     @default("") @map("body_html")
+  actionToTake    String?    @map("action_to_take")
+  buttonText      String?    @map("button_text")
+  buttonUrl       String?    @map("button_url")
+  /// The Marketing Calendar issue this post created (idempotent re-saves).
+  calendarIssueId String?    @map("calendar_issue_id") @db.Uuid
+  createdById     String?    @map("created_by_id") @db.Uuid
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  deletedAt       DateTime?  @map("deleted_at")
+  site            TextSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  views           TextView[]
+
+  @@unique([siteId, slug])
+  @@index([organizationId, siteId, publishAt])
+  @@map("text_posts")
+}
+
+/// A subscribe-page opt-in with the exact consent text shown. Append-only. PII.
+model TextOptin {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  /// E.164
+  phone          String
+  consentText    String   @map("consent_text")
+  /// Salted SHA-256 of the IP. The raw IP is never stored.
+  ipHash         String?  @map("ip_hash")
+  pageUrl        String?  @map("page_url")
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+  site           TextSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, siteId, createdAt])
+  @@index([siteId, phone])
+  @@map("text_optins")
+}
+
+/// First-party page views on a text-letter site. No visitor id is kept.
+model TextView {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  siteId         String    @map("site_id") @db.Uuid
+  /// Null = the site home / subscribe page.
+  postId         String?   @map("post_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  site           TextSite  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  post           TextPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, siteId, createdAt])
+  @@index([postId])
+  @@map("text_views")
+}

@@ -4,6 +4,7 @@ import { manifest as charts } from "../charts/manifest";
 import { manifest as editorial } from "../editorial/manifest";
 import { manifest as example } from "../example/manifest";
 import { manifest as forms } from "../forms/manifest";
+import { manifest as funnels } from "../funnels/manifest";
 import { manifest as intel } from "../intel/manifest";
 import { manifest as knowledge } from "../knowledge/manifest";
 import { manifest as performance } from "../performance/manifest";
@@ -21,6 +22,7 @@ export const moduleManifests = [
   intel,
   forms,
   charts,
+  funnels,
   billing,
   settings,
 ] as const;
@@ -36,6 +38,7 @@ export const PRODUCT_MODULE_IDS = [
   "intel",
   "forms",
   "charts",
+  "funnels",
   "billing",
 ] as const;
 
@@ -45,6 +48,7 @@ export {
   editorial,
   example,
   forms,
+  funnels,
   intel,
   knowledge,
   performance,
