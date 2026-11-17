@@ -1,0 +1,371 @@
+"use server";
+
+import { runText } from "@pubcommand/ai";
+import { brandProfile, brandPromptContext } from "@pubcommand/core";
+import { appendOrgAudit, tenantDb } from "@pubcommand/db";
+import { after } from "next/server";
+import { redirect } from "next/navigation";
+import { writingAssist } from "../../../../../modules/editorial/assist";
+import { isDay } from "../../../../../modules/editorial/dates";
+import { normalizeScope } from "../../../../../modules/editorial/recurrence";
+import { missingRequired, parseCsv } from "../../../../../modules/editorial/stats";
+import { EVENT_STAGES, ISSUE_STATUSES, isHexColor, validateEventDates } from "../../../../../modules/editorial/stages";
+import { calendarAction, field, int, list, money, optional, time, url, UUID, withMessage, type CalendarCtx } from "./context";
+import { createEvent, deleteEvent, parseRepeat, updateEvent, type EventInput } from "./events";
+import { logAiUsage } from "../ai/usage";
+import { importStats, mappingFromForm } from "./stats";
+import { teachEvent, teachIssue } from "./teach";
+import { runWhatsWorking, WINDOW_DAYS } from "./whats-working";
+
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+
+function day(formData: FormData, key: string): string | null {
+  const value = field(formData, key, 10);
+  return isDay(value) ? value : null;
+}
+
+function eventInput(formData: FormData): EventInput {
+  const stage = field(formData, "stage", 40);
+  return {
+    name: field(formData, "name", 200),
+    eventType: optional(formData, "eventType", 80),
+    format: optional(formData, "format", 80),
+    stage: (EVENT_STAGES as readonly string[]).includes(stage) ? stage : "Idea",
+    marketingStart: day(formData, "marketingStart"),
+    eventDate: day(formData, "eventDate"),
+    eventEnd: day(formData, "eventEnd"),
+    marketingEnd: day(formData, "marketingEnd"),
+    startTime: time(formData, "startTime"),
+    endTime: time(formData, "endTime"),
+    channels: list(formData, "channels"),
+    hosts: list(formData, "hosts"),
+    offer: optional(formData, "offer", 300),
+    promoCode: optional(formData, "promoCode", 80),
+    ctaLink: url(formData, "ctaLink"),
+    registrationLink: url(formData, "registrationLink"),
+    replayLink: url(formData, "replayLink"),
+    notes: optional(formData, "notes", 10000),
+    peakAttendance: int(formData, "peakAttendance"),
+    avgAttendance: int(formData, "avgAttendance"),
+    registrations: int(formData, "registrations"),
+    newSubscribers: int(formData, "newSubscribers"),
+    leads: int(formData, "leads"),
+    orders: int(formData, "orders"),
+    revenue: money(formData, "revenue"),
+    messages: int(formData, "messages"),
+  };
+}
+
+function teachEventsLater(ctx: CalendarCtx, ids: string[]) {
+  after(async () => {
+    for (const id of ids.slice(0, 30)) await teachEvent({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, eventId: id, actorId: ctx.actorId });
+  });
+}
+
+export async function createEventAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write", "/editorial/events/new");
+  const data = eventInput(formData);
+  if (!data.name) redirect(withMessage("/editorial/events/new", "error", "Give the event a name."));
+  const errors = validateEventDates(data);
+  if (errors.length) redirect(withMessage("/editorial/events/new", "error", errors.join(" ")));
+  const repeat = parseRepeat(field(formData, "repeat", 20));
+  if (repeat && !data.eventDate) redirect(withMessage("/editorial/events/new", "error", "A repeating event needs an event date."));
+  const { id, generated } = await createEvent({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.actorId, data, repeat, until: day(formData, "repeatUntil") });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.event.created", targetType: "calendar_event", targetId: id });
+  teachEventsLater(ctx, [id]);
+  redirect(withMessage(`/editorial/events/${id}`, "notice", generated ? `Event saved with ${generated} more occurrences.` : "Event saved."));
+}
+
+export async function quickAddAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write");
+  const kind = field(formData, "kind", 10);
+  const title = field(formData, "title", 200);
+  const date = day(formData, "date");
+  if (!title) redirect(withMessage("/editorial", "error", "Type a name first."));
+  const db = tenantDb(ctx.resolved.id);
+  if (kind === "issue") {
+    const code = field(formData, "publicationCode", 40);
+    const pub = await db.calendarPublication.findFirst({ where: { brandId: ctx.brand.id, code } });
+    if (!pub) redirect(withMessage("/editorial", "error", "Pick a publication for the issue (add one under Setup)."));
+    const issue = await db.calendarIssue.create({
+      data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, title, publicationCode: pub.code, mailDate: date ? new Date(`${date}T00:00:00Z`) : null, createdById: ctx.actorId, updatedById: ctx.actorId },
+      select: { id: true },
+    });
+    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.issue.created", targetType: "calendar_issue", targetId: issue.id });
+    after(() => teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId: issue.id, actorId: ctx.actorId }));
+    redirect(withMessage(`/editorial/issues/${issue.id}`, "notice", "Issue added. Fill in the rest when you are ready."));
+  }
+  const { id } = await createEvent({
+    organizationId: ctx.resolved.id,
+    brandId: ctx.brand.id,
+    actorId: ctx.actorId,
+    data: { ...eventInput(new FormData()), name: title, eventDate: date, stage: "Idea" },
+    repeat: null,
+    until: null,
+  });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.event.created", targetType: "calendar_event", targetId: id });
+  teachEventsLater(ctx, [id]);
+  redirect(withMessage(`/editorial/events/${id}`, "notice", "Event added. Fill in the rest when you are ready."));
+}
+
+async function ownEvent(ctx: CalendarCtx, id: string) {
+  const event = UUID.test(id) ? await tenantDb(ctx.resolved.id).calendarEvent.findFirst({ where: { id, brandId: ctx.brand.id, deletedAt: null } }) : null;
+  if (!event) redirect(withMessage("/editorial", "error", "That event no longer exists."));
+  return event;
+}
+
+export async function updateEventAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write");
+  const before = await ownEvent(ctx, field(formData, "eventId", 40));
+  const scope = normalizeScope(field(formData, "scope", 20));
+  const back = `/editorial/events/${before.id}/edit?scope=${scope}`;
+  const data = eventInput(formData);
+  if (!data.name) redirect(withMessage(back, "error", "Give the event a name."));
+  const errors = validateEventDates(data);
+  if (errors.length) redirect(withMessage(back, "error", errors.join(" ")));
+  // In single scope the cadence controls are hidden and ignored: one edit never reshapes the series.
+  const repeat = parseRepeat(field(formData, "repeat", 20));
+  const { touched, action } = await updateEvent({
+    organizationId: ctx.resolved.id,
+    brandId: ctx.brand.id,
+    actorId: ctx.actorId,
+    before,
+    data,
+    scope,
+    repeat,
+    until: day(formData, "repeatUntil"),
+  });
+  await appendOrgAudit(ctx.resolved.id, {
+    actorId: ctx.actorId,
+    action: "calendar.event.updated",
+    targetType: "calendar_event",
+    targetId: before.id,
+    metadata: { scope, seriesAction: action, touched: touched.length },
+  });
+  teachEventsLater(ctx, touched);
+  const message = touched.length > 1 ? `Saved this and ${touched.length - 1} later occurrences.` : "Saved.";
+  redirect(withMessage(`/editorial/events/${before.id}`, "notice", message));
+}
+
+export async function deleteEventAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write");
+  const event = await ownEvent(ctx, field(formData, "eventId", 40));
+  const scope = normalizeScope(field(formData, "scope", 20));
+  const count = await deleteEvent({ organizationId: ctx.resolved.id, event, scope });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.event.deleted", targetType: "calendar_event", targetId: event.id, metadata: { scope, count } });
+  redirect(withMessage("/editorial", "notice", count > 1 ? `Deleted ${count} occurrences.` : "Event deleted."));
+}
+
+function issueData(formData: FormData) {
+  const status = field(formData, "status", 40);
+  return {
+    title: field(formData, "title", 200),
+    publicationCode: field(formData, "publicationCode", 40),
+    mailDate: day(formData, "mailDate"),
+    subjectLines: String(formData.get("subjectLines") ?? "")
+      .split("\n")
+      .map((line) => line.trim().slice(0, 300))
+      .filter(Boolean)
+      .slice(0, 10),
+    status: (ISSUE_STATUSES as readonly string[]).includes(status) ? status : "Planned",
+    issueType: optional(formData, "issueType", 80),
+    writer: optional(formData, "writer", 120),
+    body: optional(formData, "body", 100_000),
+    notes: optional(formData, "notes", 10_000),
+    websiteLink: url(formData, "websiteLink"),
+    ctaLink: url(formData, "ctaLink"),
+    offer: optional(formData, "offer", 300),
+  };
+}
+
+async function checkPublication(ctx: CalendarCtx, code: string, back: string) {
+  const pub = code ? await tenantDb(ctx.resolved.id).calendarPublication.findFirst({ where: { brandId: ctx.brand.id, code } }) : null;
+  if (!pub) redirect(withMessage(back, "error", "Pick a publication. Add publications under Setup."));
+}
+
+export async function createIssueAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write", "/editorial/issues/new");
+  const data = issueData(formData);
+  if (!data.title) redirect(withMessage("/editorial/issues/new", "error", "Give the issue a title."));
+  await checkPublication(ctx, data.publicationCode, "/editorial/issues/new");
+  const issue = await tenantDb(ctx.resolved.id).calendarIssue.create({
+    data: {
+      organizationId: ctx.resolved.id,
+      brandId: ctx.brand.id,
+      ...data,
+      mailDate: data.mailDate ? new Date(`${data.mailDate}T00:00:00Z`) : null,
+      createdById: ctx.actorId,
+      updatedById: ctx.actorId,
+    },
+    select: { id: true },
+  });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.issue.created", targetType: "calendar_issue", targetId: issue.id });
+  after(() => teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId: issue.id, actorId: ctx.actorId }));
+  redirect(withMessage(`/editorial/issues/${issue.id}`, "notice", "Issue saved."));
+}
+
+async function ownIssue(ctx: CalendarCtx, id: string) {
+  const issue = UUID.test(id) ? await tenantDb(ctx.resolved.id).calendarIssue.findFirst({ where: { id, brandId: ctx.brand.id, deletedAt: null } }) : null;
+  if (!issue) redirect(withMessage("/editorial", "error", "That issue no longer exists."));
+  return issue;
+}
+
+export async function updateIssueAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write");
+  const issue = await ownIssue(ctx, field(formData, "issueId", 40));
+  const back = `/editorial/issues/${issue.id}/edit`;
+  const data = issueData(formData);
+  if (!data.title) redirect(withMessage(back, "error", "Give the issue a title."));
+  await checkPublication(ctx, data.publicationCode, back);
+  await tenantDb(ctx.resolved.id).calendarIssue.updateMany({
+    where: { id: issue.id },
+    data: { ...data, mailDate: data.mailDate ? new Date(`${data.mailDate}T00:00:00Z`) : null, updatedById: ctx.actorId },
+  });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.issue.updated", targetType: "calendar_issue", targetId: issue.id });
+  after(() => teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId: issue.id, actorId: ctx.actorId }));
+  redirect(withMessage(`/editorial/issues/${issue.id}`, "notice", "Saved."));
+}
+
+export async function deleteIssueAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write");
+  const issue = await ownIssue(ctx, field(formData, "issueId", 40));
+  await tenantDb(ctx.resolved.id).calendarIssue.updateMany({ where: { id: issue.id }, data: { deletedAt: new Date() } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.issue.deleted", targetType: "calendar_issue", targetId: issue.id });
+  redirect(withMessage("/editorial", "notice", "Issue deleted."));
+}
+
+async function logoFrom(formData: FormData) {
+  const file = formData.get("logo");
+  if (!(file instanceof File) || file.size === 0) return null;
+  if (file.size > MAX_LOGO_BYTES) redirect(withMessage("/editorial/setup", "error", "Logos must be under 2 MB."));
+  if (!/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(file.type)) redirect(withMessage("/editorial/setup", "error", "Upload a PNG, JPG, GIF, WebP or SVG logo."));
+  return { logoFilename: file.name.slice(0, 200), logoMime: file.type, logoData: new Uint8Array(await file.arrayBuffer()) };
+}
+
+function publicationFields(formData: FormData) {
+  const color = field(formData, "color", 7);
+  return {
+    code: field(formData, "code", 20).toUpperCase().replace(/[^A-Z0-9_-]/g, ""),
+    name: field(formData, "name", 120),
+    color: isHexColor(color) ? color : "#7f77dd",
+    description: optional(formData, "description", 2000),
+    sortOrder: int(formData, "sortOrder") ?? 0,
+    active: formData.get("active") !== "off",
+  };
+}
+
+export async function savePublicationAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write", "/editorial/setup");
+  const id = field(formData, "publicationId", 40);
+  const data = publicationFields(formData);
+  if (!data.code || !data.name) redirect(withMessage("/editorial/setup", "error", "A publication needs a code and a name."));
+  const db = tenantDb(ctx.resolved.id);
+  const clash = await db.calendarPublication.findFirst({ where: { brandId: ctx.brand.id, code: data.code, ...(id ? { id: { not: id } } : {}) } });
+  if (clash) redirect(withMessage("/editorial/setup", "error", `Code ${data.code} is already used.`));
+  const logo = await logoFrom(formData);
+  if (id && UUID.test(id)) {
+    const existing = await db.calendarPublication.findFirst({ where: { id, brandId: ctx.brand.id } });
+    if (!existing) redirect(withMessage("/editorial/setup", "error", "That publication no longer exists."));
+    await db.calendarPublication.updateMany({
+      where: { id },
+      data: { ...data, ...(logo ?? {}), ...(formData.get("removeLogo") === "on" ? { logoData: null, logoMime: null, logoFilename: null } : {}) },
+    });
+    if (existing.code !== data.code) {
+      // Keep the issues attached when a code is renamed.
+      await db.calendarIssue.updateMany({ where: { brandId: ctx.brand.id, publicationCode: existing.code }, data: { publicationCode: data.code } });
+    }
+    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.publication.updated", targetType: "calendar_publication", targetId: id });
+  } else {
+    const created = await db.calendarPublication.create({ data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, ...data, ...(logo ?? {}) }, select: { id: true } });
+    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.publication.created", targetType: "calendar_publication", targetId: created.id });
+  }
+  redirect(withMessage("/editorial/setup", "notice", `${data.code} saved.`));
+}
+
+export async function deletePublicationAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write", "/editorial/setup");
+  const id = field(formData, "publicationId", 40);
+  const db = tenantDb(ctx.resolved.id);
+  const pub = UUID.test(id) ? await db.calendarPublication.findFirst({ where: { id, brandId: ctx.brand.id } }) : null;
+  if (!pub) redirect(withMessage("/editorial/setup", "error", "That publication no longer exists."));
+  const used = await db.calendarIssue.count({ where: { brandId: ctx.brand.id, publicationCode: pub.code, deletedAt: null } });
+  if (used) redirect(withMessage("/editorial/setup", "error", `${pub.code} has ${used} issues. Turn it off instead of deleting it.`));
+  await db.calendarPublication.deleteMany({ where: { id: pub.id } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.publication.deleted", targetType: "calendar_publication", targetId: pub.id });
+  redirect(withMessage("/editorial/setup", "notice", `${pub.code} deleted.`));
+}
+
+export async function saveChannelAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write", "/editorial/setup");
+  const name = field(formData, "name", 80);
+  const color = field(formData, "color", 7);
+  if (!name) redirect(withMessage("/editorial/setup", "error", "Name the channel."));
+  const db = tenantDb(ctx.resolved.id);
+  if (await db.calendarChannel.findFirst({ where: { brandId: ctx.brand.id, name } })) redirect(withMessage("/editorial/setup", "error", `${name} already exists.`));
+  const created = await db.calendarChannel.create({
+    data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, name, color: isHexColor(color) ? color : "#27455c" },
+    select: { id: true },
+  });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.channel.created", targetType: "calendar_channel", targetId: created.id });
+  redirect(withMessage("/editorial/setup", "notice", `${name} added.`));
+}
+
+export async function deleteChannelAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write", "/editorial/setup");
+  const id = field(formData, "channelId", 40);
+  if (!UUID.test(id)) redirect("/editorial/setup");
+  await tenantDb(ctx.resolved.id).calendarChannel.deleteMany({ where: { id, brandId: ctx.brand.id } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.channel.deleted", targetType: "calendar_channel", targetId: id });
+  redirect(withMessage("/editorial/setup", "notice", "Channel removed. Events keep the name they had."));
+}
+
+export type AssistState = { status: "idle" | "ok" | "unavailable" | "failed" | "todo"; text?: string; reason?: string };
+
+/** Writing assist on an issue: the AI drafts from the editor's prompt. It never invents stats. */
+export async function issueAssistAction(_prev: AssistState, formData: FormData): Promise<AssistState> {
+  const ctx = await calendarAction("editorial.write");
+  const issue = await ownIssue(ctx, field(formData, "issueId", 40));
+  const prompt = field(formData, "prompt", 4000);
+  const context = [brandPromptContext(brandProfile(ctx.brand)), issue.body ? `Current draft:\n${issue.body.slice(0, 12000)}` : ""].filter(Boolean).join("\n\n");
+  const result = await writingAssist({ organizationId: ctx.resolved.id, issueTitle: issue.title, prompt: prompt ? `${context}\n\nRequest: ${prompt}` : "" }, runText);
+  if (result.status === "ok") {
+    await logAiUsage({ organizationId: ctx.resolved.id, moduleId: "editorial", feature: "calendar.issue.assist", actorId: ctx.actorId, usage: result.usage });
+    return { status: "ok", text: result.text };
+  }
+  return { status: result.status, reason: result.reason };
+}
+
+const MAX_CSV_BYTES = 20 * 1024 * 1024;
+
+export async function importStatsAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write", "/editorial/stats");
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) redirect(withMessage("/editorial/stats", "error", "Choose a CSV file."));
+  if (file.size > MAX_CSV_BYTES) redirect(withMessage("/editorial/stats", "error", "That file is over 20 MB."));
+  const csv = await file.text();
+  const header = parseCsv(csv.slice(0, 200_000))[0] ?? [];
+  const mapping = mappingFromForm(formData, header.length);
+  const missing = missingRequired(mapping);
+  if (missing.length) redirect(withMessage("/editorial/stats", "error", `Choose a column for: ${missing.join(", ")}.`));
+  const rateFormat = field(formData, "rateFormat", 10) === "ratio" ? "ratio" : "percent";
+  const result = await importStats({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.actorId, filename: file.name, csv, mapping, rateFormat });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.stats.imported", targetType: "calendar_stat_import", targetId: result.id, metadata: { rows: result.rows, matched: result.matched } });
+  after(async () => {
+    for (const issueId of result.matchedIssueIds.slice(0, 300)) await teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId, actorId: ctx.actorId });
+  });
+  redirect(withMessage(`/editorial/stats?import=${result.id}`, "notice", `Matched ${result.matched} of ${result.rows} rows to issues.`));
+}
+
+export async function regenerateWhatsWorkingAction() {
+  const ctx = await calendarAction("editorial.write", "/editorial/whats-working");
+  const db = tenantDb(ctx.resolved.id);
+  const busy = await db.calendarInsight.findFirst({ where: { brandId: ctx.brand.id, status: { in: ["QUEUED", "RUNNING"] }, updatedAt: { gt: new Date(Date.now() - 10 * 60 * 1000) } } });
+  if (busy) redirect("/editorial/whats-working");
+  const insight = await db.calendarInsight.create({
+    data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, windowDays: WINDOW_DAYS, createdById: ctx.actorId },
+    select: { id: true },
+  });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.whats-working.generated", targetType: "calendar_insight", targetId: insight.id });
+  after(() => runWhatsWorking({ organizationId: ctx.resolved.id, brand: ctx.brand, insightId: insight.id, actorId: ctx.actorId }));
+  redirect("/editorial/whats-working");
+}

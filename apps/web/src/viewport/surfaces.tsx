@@ -10,7 +10,6 @@ import {
   createSeat,
   stripeEnvStatus,
 } from "../../../../modules/billing/index";
-import { renderEditorialPage } from "../../../../modules/editorial/render";
 import { loadIntelScreen } from "../../../../modules/intel/index";
 import { AdminShell } from "@/components/admin-shell";
 import { OrgShell } from "@/components/org-shell";
@@ -568,8 +567,17 @@ export async function ViewportSurface({
   }
 
   if (route === "org/editorial") {
-    const html = await renderEditorialPage({ organizationId: VIEWPORT_ORG_ID, canWrite: true });
-    return <div data-surface="editorial">{orgFrame("/editorial", <div dangerouslySetInnerHTML={{ __html: html }} />)}</div>;
+    return (
+      <div data-surface="editorial">
+        {orgFrame(
+          "/editorial",
+          <div>
+            <PageHeader title="Marketing Calendar" description="Live events, editorial issues and send stats for every publication, on one calendar." />
+            <p className="rounded-xl border border-line bg-white p-4 text-sm text-muted">The calendar reads live data; sign in to see it.</p>
+          </div>,
+        )}
+      </div>
+    );
   }
 
   if (route === "org/performance") {
