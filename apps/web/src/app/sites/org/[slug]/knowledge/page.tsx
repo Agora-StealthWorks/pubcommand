@@ -23,11 +23,11 @@ export default async function BrainHome({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ scope?: string; q?: string; folder?: string; shared?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ q?: string; folder?: string; shared?: string; error?: string; notice?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
-  const loaded = await loadBrain(slug, query.scope);
+  const loaded = await loadBrain(slug);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "denied") return <Denied title={loaded.title} />;
   const { ctx } = loaded;
@@ -42,22 +42,18 @@ export default async function BrainHome({
   const inFolder = folder && !q ? await notesInFolder(orgId, scope, folder) : [];
   const recent = !q && !folder && !showShared ? await recentNotes(orgId, scope, 20) : [];
   const shared = showShared ? await sharedNotes(orgId, scope) : [];
-  const scopeInput = scope.kind === "main" ? <input type="hidden" name="scope" value="main" /> : null;
 
   return (
     <div className="max-w-4xl">
       <h1 className="break-words text-2xl font-semibold tracking-tight">{ctx.scopeLabel}</h1>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        {scope.kind === "main"
-          ? "What every brand has learned, in one place. Brand notes stay private to their brand unless an admin shares them."
-          : "Notes this brand's apps and team have taught it, plus best practices shared with every brand."}
+        Notes this brand's apps and team have taught it, with best practices to build on.
       </p>
       <div className="mt-4">
         <Flash error={query.error} notice={query.notice} />
       </div>
 
       <form action="/knowledge" className="pc-form-row">
-        {scopeInput}
         {folder ? <input type="hidden" name="folder" value={folder} /> : null}
         <Input name="q" defaultValue={q} placeholder={folder ? `Search in ${folder}` : "Search titles and notes"} aria-label="Search the Brain" className="sm:flex-1" />
         <Button type="submit" variant="secondary">
@@ -75,13 +71,13 @@ export default async function BrainHome({
       ) : folder ? (
         <section className="mt-6">
           <nav className="mb-2 flex flex-wrap items-center gap-1 text-sm text-muted" aria-label="Folder">
-            <Link href={brainHref("/knowledge", scope)} className="hover:text-ink">
+            <Link href={brainHref("/knowledge")} className="hover:text-ink">
               All
             </Link>
             {folderAncestors(folder).map((path) => (
               <span key={path} className="flex min-w-0 items-center gap-1">
                 <span aria-hidden>/</span>
-                <Link href={brainHref("/knowledge", scope, { folder: path })} className="break-all hover:text-ink">
+                <Link href={brainHref("/knowledge", { folder: path })} className="break-all hover:text-ink">
                   {path.split("/").pop()}
                 </Link>
               </span>
@@ -91,7 +87,7 @@ export default async function BrainHome({
             <ul className="mb-4 flex flex-wrap gap-2">
               {folderNode.children.map((child) => (
                 <li key={child.path}>
-                  <Link href={brainHref("/knowledge", scope, { folder: child.path })} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm hover:bg-canvas">
+                  <Link href={brainHref("/knowledge", { folder: child.path })} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm hover:bg-canvas">
                     <span className="break-all">{child.name}</span>
                     <span className="text-xs text-muted">{child.total}</span>
                   </Link>
@@ -101,24 +97,23 @@ export default async function BrainHome({
           ) : null}
           <NoteList notes={inFolder} scope={scope} brandNames={ctx.brandNames} empty="No notes directly in this folder." />
           {ctx.canWrite ? (
-            <Link href={brainHref("/knowledge/new", scope, { folder })} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent">
+            <Link href={brainHref("/knowledge/new", { folder })} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent">
               + New note in {folder.split("/").pop()}
             </Link>
           ) : null}
         </section>
       ) : showShared ? (
         <section className="mt-6">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Shared with every brand</h2>
-          <NoteList notes={shared} scope={scope} brandNames={ctx.brandNames} empty="Nothing is shared yet. An admin can share a generic best-practice note from its page." />
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Shared across brands</h2>
+          <NoteList notes={shared} scope={scope} brandNames={ctx.brandNames} empty="Nothing is shared yet. An admin can share a generic note with the organization's other brands from its page." />
         </section>
       ) : (
         <>
           <form action={askBrain} className="mt-6 rounded-xl border border-line bg-white p-4">
-            {scopeInput}
-            <label htmlFor="brain-question" className="text-sm font-semibold">
+                <label htmlFor="brain-question" className="text-sm font-semibold">
               Ask the Brain
             </label>
-            <p className="mt-0.5 text-xs text-muted">Answers come only from notes in {ctx.scopeLabel}, with links to the notes used.</p>
+            <p className="mt-0.5 text-xs text-muted">Answers come only from notes in this Brain, with links to the notes used.</p>
             <div className="pc-form-row mt-2">
               <Input id="brain-question" name="question" required minLength={3} maxLength={1000} placeholder="e.g. What makes our best headlines work?" className="sm:flex-1" />
               <Button type="submit">Ask</Button>
@@ -127,8 +122,8 @@ export default async function BrainHome({
           <section className="mt-6">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Recently updated</h2>
-              <Link href={brainHref("/knowledge", scope, { shared: "1" })} className="text-xs font-semibold text-accent">
-                Shared with every brand →
+              <Link href={brainHref("/knowledge", { shared: "1" })} className="text-xs font-semibold text-accent">
+                Shared across brands →
               </Link>
             </div>
             <NoteList

@@ -1,11 +1,12 @@
 /**
- * Which notes a Brain view may see. This is the one place the rule lives.
+ * Which notes a brand's Brain may see. This is the one place the rule lives
+ * (SQL twin in apps/web/src/features/brain/search.ts).
  *
- * - main Brain (brandId null view): every note in the organization. Learning flows up.
- * - a brand's mini-brain: its own notes, plus notes marked SHARED (from any brand
- *   or the main Brain). Nothing PRIVATE from another brand or the main Brain.
+ * A brand sees its own notes, plus notes another brand of the same organization
+ * marked SHARED. Rows with no brand (legacy organization-level notes, moved to
+ * the platform's own tables) are never visible in an organization.
  */
-export type BrainScope = { kind: "main" } | { kind: "brand"; brandId: string };
+export type BrainScope = { kind: "brand"; brandId: string };
 
 export type NoteVisibility = "PRIVATE" | "SHARED";
 
@@ -13,18 +14,27 @@ export type VisibleNoteShape = {
   brandId: string | null;
   visibility: NoteVisibility;
   deletedAt?: Date | string | null;
+  source?: string;
 };
 
-export const MAIN_SCOPE: BrainScope = { kind: "main" };
+/** Notes a brand receives as read-only best practices carry this source. */
+export const BEST_PRACTICE_SOURCE = "best-practices";
+/** Folder those notes live in. Plain wording: it never says where they come from. */
+export const BEST_PRACTICE_FOLDER = "Best practices";
 
 export function brandScope(brandId: string): BrainScope {
   return { kind: "brand", brandId };
 }
 
+export function isBestPractice(note: { source?: string }): boolean {
+  return note.source === BEST_PRACTICE_SOURCE;
+}
+
 export function canSeeNote(scope: BrainScope, note: VisibleNoteShape): boolean {
   if (note.deletedAt) return false;
-  if (scope.kind === "main") return true;
-  return note.brandId === scope.brandId || note.visibility === "SHARED";
+  if (!note.brandId) return false;
+  if (note.brandId === scope.brandId) return true;
+  return note.visibility === "SHARED" && !isBestPractice(note);
 }
 
 /**
@@ -32,47 +42,35 @@ export function canSeeNote(scope: BrainScope, note: VisibleNoteShape): boolean {
  * organization filter on top.
  */
 export function scopeWhere(scope: BrainScope): Record<string, unknown> {
-  if (scope.kind === "main") return { deletedAt: null };
-  return { deletedAt: null, OR: [{ brandId: scope.brandId }, { visibility: "SHARED" }] };
+  return {
+    deletedAt: null,
+    OR: [{ brandId: scope.brandId }, { AND: [{ visibility: "SHARED" }, { brandId: { not: null } }, { source: { not: BEST_PRACTICE_SOURCE } }] }],
+  };
 }
 
 /**
- * Editing stays inside the note's own Brain: a brand edits only its own notes
- * (never another brand's Shared note); the main Brain can edit any note.
+ * Editing stays inside the note's own brand. Best-practice notes are read-only
+ * everywhere in an organization.
  */
 export function canEditNoteInScope(scope: BrainScope, note: VisibleNoteShape): boolean {
   if (note.deletedAt) return false;
-  if (scope.kind === "main") return true;
+  if (isBestPractice(note)) return false;
   return note.brandId === scope.brandId;
 }
 
 /** The brandId new notes get in this scope. */
-export function scopeBrandId(scope: BrainScope): string | null {
-  return scope.kind === "brand" ? scope.brandId : null;
+export function scopeBrandId(scope: BrainScope): string {
+  return scope.brandId;
 }
 
-export function scopeParam(scope: BrainScope): "main" | "brand" {
-  return scope.kind;
+/** Pick the brand Brain for a request; null when the organization has no brand yet. */
+export function resolveScope(input: { brandId: string | null }): BrainScope | null {
+  return input.brandId ? brandScope(input.brandId) : null;
 }
 
-/**
- * Pick the scope for a request. `requested` is the ?scope= value. Members tied
- * to one brand never get the main Brain, whatever they ask for.
- */
-export function resolveScope(input: {
-  requested: string | undefined | null;
-  brandId: string | null;
-  mainAllowed: boolean;
-}): BrainScope | null {
-  const wantsMain = input.requested === "main";
-  if (wantsMain && input.mainAllowed) return MAIN_SCOPE;
-  if (input.brandId) return brandScope(input.brandId);
-  return input.mainAllowed ? MAIN_SCOPE : null;
-}
-
-/** Where a note lives, for the "from" label. */
+/** The brand a visible note belongs to, for the "from" label on another brand's shared note. */
 export function originLabel(note: { brandId: string | null }, brandNames: ReadonlyMap<string, string>): string {
-  if (!note.brandId) return "Main Brain";
+  if (!note.brandId) return "This organization";
   return brandNames.get(note.brandId) ?? "Another brand";
 }
 
@@ -80,6 +78,8 @@ export function originLabel(note: { brandId: string | null }, brandNames: Readon
 export function sourceLabel(source: string): string {
   if (source === "member") return "Written by a member";
   if (source === "vault-import") return "Vault import";
+  if (source === BEST_PRACTICE_SOURCE) return "Best practice";
+  if (source === "staff") return "Written in the console";
   const words = source.split(/[-_\s]+/).filter(Boolean);
   if (words.length === 0) return "Unknown";
   return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");

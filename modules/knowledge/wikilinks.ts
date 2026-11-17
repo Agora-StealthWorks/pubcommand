@@ -73,7 +73,7 @@ export type LinkCandidate = { id: string; title: string; brandId: string | null;
 
 /**
  * Build a resolver over the notes visible in one scope. When two visible notes
- * share a title, the scope's own brand wins, then the main Brain, then any other.
+ * share a title, the scope's own brand wins, then any other.
  */
 export function linkResolver<T extends LinkCandidate>(notes: readonly T[], preferBrandId: string | null) {
   const byKey = new Map<string, T>();

@@ -18,14 +18,14 @@ export const STALE_ASK_MS = 5 * 60 * 1000;
 
 /**
  * Answer one stored question in the background. Only notes visible in the
- * question's own scope are searched and sent to the AI.
+ * brand's Brain are searched and sent to the AI.
  */
 export async function runAsk(input: {
   organizationId: string;
   questionId: string;
   scope: BrainScope;
   scopeLabel: string;
-  brandContext: string | null;
+  brandContext: string;
   brandNames: Map<string, string>;
   actorId: string | null;
 }): Promise<void> {

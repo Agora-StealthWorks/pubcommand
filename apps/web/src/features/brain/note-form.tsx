@@ -4,14 +4,12 @@ import Link from "next/link";
 /** Shared create/edit form. `action` is a server action. */
 export function NoteForm({
   action,
-  scopeMain,
   cancelHref,
   note,
   folder,
   targetLabel,
 }: {
   action: (formData: FormData) => Promise<void>;
-  scopeMain: boolean;
   cancelHref: string;
   note?: { id: string; title: string; body: string; folder: string | null };
   folder?: string | null;
@@ -19,7 +17,6 @@ export function NoteForm({
 }) {
   return (
     <form action={action} className="space-y-4 rounded-xl border border-line bg-white p-5">
-      {scopeMain ? <input type="hidden" name="scope" value="main" /> : null}
       {note ? <input type="hidden" name="noteId" value={note.id} /> : null}
       <p className="text-sm text-muted">
         Saves to <strong className="text-ink">{targetLabel}</strong>.

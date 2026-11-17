@@ -1,7 +1,7 @@
 import { Badge } from "@pubcommand/ui";
 import Link from "next/link";
 import type { FolderNode } from "../../../../../modules/knowledge/folders";
-import { originLabel, type BrainScope } from "../../../../../modules/knowledge/visibility";
+import { isBestPractice, originLabel, type BrainScope } from "../../../../../modules/knowledge/visibility";
 import { brainHref } from "./context";
 import { HIT_CLOSE, HIT_OPEN } from "./search";
 
@@ -15,13 +15,14 @@ export type NoteRow = {
   updatedAt: Date;
 };
 
-/** Shared / origin badges. In a brand scope, notes from elsewhere say where they came from. */
-export function NoteBadges({ note, scope, brandNames }: { note: Pick<NoteRow, "brandId" | "visibility">; scope: BrainScope; brandNames: Map<string, string> }) {
-  const foreign = scope.kind === "brand" && note.brandId !== scope.brandId;
+/** Badges: a best practice, or a note another brand shared (with that brand's name). */
+export function NoteBadges({ note, scope, brandNames }: { note: Pick<NoteRow, "brandId" | "visibility" | "source">; scope: BrainScope; brandNames: Map<string, string> }) {
+  if (isBestPractice(note)) return <Badge tone="neutral">Best practice</Badge>;
+  const foreign = note.brandId !== scope.brandId;
   return (
     <>
       {note.visibility === "SHARED" ? <Badge tone="ok">Shared</Badge> : null}
-      {scope.kind === "main" || foreign ? <Badge tone={foreign ? "accent" : "neutral"}>{foreign ? `From ${originLabel(note, brandNames)}` : originLabel(note, brandNames)}</Badge> : null}
+      {foreign ? <Badge tone="accent">{`From ${originLabel(note, brandNames)}`}</Badge> : null}
     </>
   );
 }
@@ -32,7 +33,7 @@ export function NoteList({ notes, scope, brandNames, empty, snippets }: { notes:
     <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
       {notes.map((note) => (
         <li key={note.id}>
-          <Link href={brainHref(`/knowledge/${note.id}`, scope)} className="block px-4 py-3 hover:bg-canvas">
+          <Link href={brainHref(`/knowledge/${note.id}`)} className="block px-4 py-3 hover:bg-canvas">
             <span className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 break-words text-sm font-semibold text-ink">{note.title}</span>
               <NoteBadges note={note} scope={scope} brandNames={brandNames} />
@@ -60,17 +61,17 @@ export function Snippet({ text }: { text: string }) {
   );
 }
 
-export function FolderTree({ nodes, scope, active }: { nodes: FolderNode[]; scope: BrainScope; active: string | null }) {
+export function FolderTree({ nodes, hrefFor, active }: { nodes: FolderNode[]; hrefFor: (path: string) => string; active: string | null }) {
   if (nodes.length === 0) return <p className="px-2 py-1 text-xs text-muted">No folders yet.</p>;
-  return <ul className="space-y-0.5">{nodes.map((node) => <FolderItem key={node.path} node={node} scope={scope} active={active} />)}</ul>;
+  return <ul className="space-y-0.5">{nodes.map((node) => <FolderItem key={node.path} node={node} hrefFor={hrefFor} active={active} />)}</ul>;
 }
 
-function FolderItem({ node, scope, active }: { node: FolderNode; scope: BrainScope; active: string | null }) {
+function FolderItem({ node, hrefFor, active }: { node: FolderNode; hrefFor: (path: string) => string; active: string | null }) {
   const isActive = active === node.path;
   const open = Boolean(active && (active === node.path || active.startsWith(`${node.path}/`)));
   const link = (
     <Link
-      href={brainHref("/knowledge", scope, { folder: node.path })}
+      href={hrefFor(node.path)}
       className={`flex min-h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 text-sm ${isActive ? "bg-[#eef2ff] font-semibold text-[#1e3a8a]" : "text-ink hover:bg-canvas"}`}
     >
       <span className="truncate">{node.name}</span>
@@ -88,7 +89,7 @@ function FolderItem({ node, scope, active }: { node: FolderNode; scope: BrainSco
           {link}
         </summary>
         <div className="ml-2 border-l border-line pl-1">
-          <FolderTree nodes={node.children} scope={scope} active={active} />
+          <FolderTree nodes={node.children} hrefFor={hrefFor} active={active} />
         </div>
       </details>
     </li>

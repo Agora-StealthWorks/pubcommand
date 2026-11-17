@@ -1,58 +1,67 @@
 import { Badge, Button, Input } from "@pubcommand/ui";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
-import { deleteNote, moveNote, setNoteShared } from "@/features/brain/actions";
+import { deleteAttachment, deleteNote, moveNote, setNoteShared, uploadAttachment } from "@/features/brain/actions";
 import { brainHref, loadBrain } from "@/features/brain/context";
 import { renderNote } from "@/features/brain/markdown";
-import { backlinks, getVisibleNote, noteExists, noteResolver } from "@/features/brain/notes";
+import { backlinks, getVisibleNote, noteAttachments, noteResolver } from "@/features/brain/notes";
 import { NoteBadges } from "@/features/brain/parts";
+import { findAttachment, isInlineImage } from "../../../../../../../../../modules/knowledge/attachments";
 import { folderAncestors } from "../../../../../../../../../modules/knowledge/folders";
-import { canEditNoteInScope, MAIN_SCOPE, originLabel, sourceLabel } from "../../../../../../../../../modules/knowledge/visibility";
+import { canEditNoteInScope, isBestPractice, originLabel, sourceLabel } from "../../../../../../../../../modules/knowledge/visibility";
+
+function kb(size: number) {
+  return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
+}
 
 export default async function NotePage({
   params,
   searchParams,
 }: {
   params: Promise<{ slug: string; noteId: string }>;
-  searchParams: Promise<{ scope?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
   const { slug, noteId } = await params;
   const query = await searchParams;
-  const loaded = await loadBrain(slug, query.scope);
+  const loaded = await loadBrain(slug);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "denied") return <Denied title={loaded.title} />;
   const { ctx } = loaded;
   const scope = ctx.brain;
   const orgId = ctx.resolved.id;
   const note = await getVisibleNote(orgId, scope, noteId);
-  if (!note) {
-    // A brand-private note opened from the wrong mini-brain: only the main Brain may show it.
-    if (scope.kind === "brand" && ctx.mainAllowed && (await noteExists(orgId, noteId))) redirect(brainHref(`/knowledge/${noteId}`, MAIN_SCOPE));
-    notFound();
-  }
-  const resolve = await noteResolver(orgId, scope);
-  const { html, properties } = renderNote(note.body, (target) => {
-    const hit = resolve(target);
-    return hit ? { href: brainHref(`/knowledge/${hit.id}`, scope), title: hit.title } : null;
-  });
-  const linksIn = await backlinks(orgId, scope, note);
+  if (!note) notFound();
+  const [resolve, files, linksIn] = await Promise.all([noteResolver(orgId, scope), noteAttachments(orgId, note.id), backlinks(orgId, scope, note)]);
+  const { html, properties } = renderNote(
+    note.body,
+    (target) => {
+      const hit = resolve(target);
+      return hit ? { href: brainHref(`/knowledge/${hit.id}`), title: hit.title } : null;
+    },
+    (target) => {
+      const file = findAttachment(files, target);
+      if (!file) return null;
+      const href = `/knowledge/files/${file.id}`;
+      return isInlineImage(file.contentType) ? { kind: "image", src: href, alt: file.filename } : { kind: "file", href, name: file.filename };
+    },
+  );
   const editable = ctx.canWrite && canEditNoteInScope(scope, note);
-  const foreign = scope.kind === "brand" && note.brandId !== scope.brandId;
+  const bestPractice = isBestPractice(note);
+  const foreign = !bestPractice && note.brandId !== scope.brandId;
   const origin = originLabel(note, ctx.brandNames);
-  const scopeInput = scope.kind === "main" ? <input type="hidden" name="scope" value="main" /> : null;
 
   return (
     <div className="grid max-w-6xl gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
       <article className="min-w-0">
         <nav className="mb-2 flex flex-wrap items-center gap-1 text-sm text-muted" aria-label="Folder">
-          <Link href={brainHref("/knowledge", scope)} className="hover:text-ink">
+          <Link href={brainHref("/knowledge")} className="hover:text-ink">
             {ctx.scopeLabel}
           </Link>
           {folderAncestors(note.folder).map((path) => (
             <span key={path} className="flex min-w-0 items-center gap-1">
               <span aria-hidden>/</span>
-              <Link href={brainHref("/knowledge", scope, { folder: path })} className="break-all hover:text-ink">
+              <Link href={brainHref("/knowledge", { folder: path })} className="break-all hover:text-ink">
                 {path.split("/").pop()}
               </Link>
             </span>
@@ -65,8 +74,11 @@ export default async function NotePage({
         </div>
         {foreign ? (
           <p className="mt-3 rounded-md border border-[#c7d7fe] bg-[#eef4ff] px-3 py-2 text-sm text-[#1e3a8a]">
-            Shared from <strong>{origin}</strong> as a best practice for every brand. You can read it here; it is edited in its own Brain.
+            Shared by <strong>{origin}</strong>. You can read it here; that brand edits it.
           </p>
+        ) : null}
+        {bestPractice ? (
+          <p className="mt-3 rounded-md border border-line bg-white px-3 py-2 text-sm text-muted">A best-practice note included in your Brain. It is read-only and kept up to date for you.</p>
         ) : null}
         {properties.length > 0 ? (
           <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 rounded-lg border border-line bg-white px-4 py-3 text-sm">
@@ -85,13 +97,17 @@ export default async function NotePage({
         <section className="rounded-xl border border-line bg-white p-4 text-sm">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">About this note</h2>
           <dl className="mt-2 space-y-1.5">
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted">Brain</dt>
-              <dd className="text-right">{origin}</dd>
-            </div>
+            {foreign ? (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">Brand</dt>
+                <dd className="text-right">{origin}</dd>
+              </div>
+            ) : null}
             <div className="flex justify-between gap-3">
               <dt className="text-muted">Visibility</dt>
-              <dd className="text-right">{note.visibility === "SHARED" ? <Badge tone="ok">Shared with every brand</Badge> : note.brandId ? "Private to this brand" : "Main Brain only"}</dd>
+              <dd className="text-right">
+                {bestPractice ? "Read-only" : note.visibility === "SHARED" ? <Badge tone="ok">Shared across brands</Badge> : "Private to this brand"}
+              </dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-muted">Taught by</dt>
@@ -107,13 +123,52 @@ export default async function NotePage({
               <dt className="text-muted">Updated</dt>
               <dd className="text-right">{note.updatedAt.toISOString().slice(0, 10)}</dd>
             </div>
-            {note.sharedAt ? (
+            {note.sharedAt && !bestPractice ? (
               <div className="flex justify-between gap-3">
                 <dt className="text-muted">Shared</dt>
                 <dd className="text-right">{note.sharedAt.toISOString().slice(0, 10)}</dd>
               </div>
             ) : null}
           </dl>
+        </section>
+
+        <section className="rounded-xl border border-line bg-white p-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Attachments · {files.length}</h2>
+          {files.length === 0 ? <p className="mt-2 text-sm text-muted">No files attached.</p> : null}
+          <ul className="mt-2 space-y-1.5">
+            {files.map((file) => (
+              <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
+                <a href={`/knowledge/files/${file.id}`} className="min-w-0 break-all text-accent hover:underline">
+                  {file.filename}
+                </a>
+                <span className="flex shrink-0 items-center gap-2 text-xs text-muted">
+                  {kb(file.size)}
+                  {editable ? (
+                    <form action={deleteAttachment}>
+                      <input type="hidden" name="noteId" value={note.id} />
+                      <input type="hidden" name="attachmentId" value={file.id} />
+                      <button type="submit" className="min-h-8 px-1 text-[#b42318] hover:underline" aria-label={`Remove ${file.filename}`}>
+                        Remove
+                      </button>
+                    </form>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {editable ? (
+            <form action={uploadAttachment} className="mt-3 space-y-2 border-t border-line pt-3">
+              <input type="hidden" name="noteId" value={note.id} />
+              <label htmlFor="attach-file" className="text-sm font-semibold">
+                Attach an image or file
+              </label>
+              <input id="attach-file" name="file" type="file" required className="block w-full text-sm file:mr-2 file:rounded-md file:border-0 file:bg-canvas file:px-3 file:py-2 file:text-sm" />
+              <p className="text-xs text-muted">Up to 10 MB. Images are shown in the note where ![[file name]] appears; one is added at the end.</p>
+              <Button type="submit" variant="secondary" className="w-full">
+                Attach
+              </Button>
+            </form>
+          ) : null}
         </section>
 
         <section className="rounded-xl border border-line bg-white p-4">
@@ -124,7 +179,7 @@ export default async function NotePage({
             <ul className="mt-2 space-y-1">
               {linksIn.slice(0, 40).map((row) => (
                 <li key={row.id}>
-                  <Link href={brainHref(`/knowledge/${row.id}`, scope)} className="block break-words text-sm text-accent hover:underline">
+                  <Link href={brainHref(`/knowledge/${row.id}`)} className="block break-words text-sm text-accent hover:underline">
                     {row.title}
                   </Link>
                 </li>
@@ -136,11 +191,10 @@ export default async function NotePage({
 
         {editable ? (
           <section className="space-y-4 rounded-xl border border-line bg-white p-4">
-            <Link href={brainHref(`/knowledge/${note.id}/edit`, scope)} className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-3 text-sm font-semibold text-white">
+            <Link href={brainHref(`/knowledge/${note.id}/edit`)} className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-3 text-sm font-semibold text-white">
               Edit note
             </Link>
             <form action={moveNote} className="space-y-2">
-              {scopeInput}
               <input type="hidden" name="noteId" value={note.id} />
               <label htmlFor="move-folder" className="text-sm font-semibold">
                 Folder
@@ -150,28 +204,26 @@ export default async function NotePage({
                 Move
               </Button>
             </form>
-            {ctx.canShare ? (
+            {ctx.canShare && ctx.brands.length > 1 ? (
               <form action={setNoteShared} className="space-y-2 border-t border-line pt-4">
-                {scopeInput}
                 <input type="hidden" name="noteId" value={note.id} />
                 <input type="hidden" name="shared" value={note.visibility === "SHARED" ? "false" : "true"} />
-                <p className="text-sm font-semibold">{note.visibility === "SHARED" ? "Shared with every brand" : "Share with every brand"}</p>
+                <p className="text-sm font-semibold">{note.visibility === "SHARED" ? "Shared across brands" : "Share with your other brands"}</p>
                 <p className="text-xs text-muted">
                   {note.visibility === "SHARED"
-                    ? "Every brand's mini-brain can read this note. Unshare it to keep it in its own Brain only."
-                    : "Only share generic best practices. Never share a brand's private data, results or plans."}
+                    ? "Your organization's other brands can read this note. Unshare it to keep it to this brand."
+                    : "Only share generic know-how. Never share a brand's private data, results or plans."}
                 </p>
                 <Button type="submit" variant="secondary" className="w-full">
-                  {note.visibility === "SHARED" ? "Unshare" : "Share with every brand"}
+                  {note.visibility === "SHARED" ? "Unshare" : "Share with other brands"}
                 </Button>
               </form>
             ) : null}
             <details className="border-t border-line pt-4">
               <summary className="cursor-pointer text-sm font-semibold text-[#b42318]">Delete…</summary>
               <form action={deleteNote} className="mt-2 space-y-2">
-                {scopeInput}
                 <input type="hidden" name="noteId" value={note.id} />
-                <p className="text-xs text-muted">The note disappears from every Brain and from search. An app that taught it may write it again.</p>
+                <p className="text-xs text-muted">The note disappears from the Brain and from search. An app that taught it may write it again.</p>
                 <Button type="submit" variant="danger" className="w-full">
                   Delete note
                 </Button>

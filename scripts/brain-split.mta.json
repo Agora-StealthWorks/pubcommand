@@ -1,0 +1,54 @@
+{
+  "$comment": "Rules for splitting the MTA vault: what is MTA's own (-> the MTA brand Brain) vs general know-how (-> the platform main Brain). Editor and publication names are read at build time from the MTA wiki and MTARIX (see scripts/build-brain-split.ts), not stored here. First matching rule wins; see modules/knowledge/classify.ts. Folder entries may also name single notes (without .md).",
+  "brandFolders": [
+    "Areas/MTA",
+    "AI",
+    "Projects",
+    "Resources/Editorial Issues",
+    "Resources/Editorial Guides",
+    "Resources/Publications",
+    "Resources/Promos/FE's",
+    "Resources/Promos/Promo Notes/BE's",
+    "Resources/Promo Analysis/Promo Catalog/MTA",
+    "Resources/Promo Analysis/Performance"
+  ],
+  "generalFolders": [
+    "Areas/Copy/Writing Promos (Sales Letters)",
+    "Resources/Promo Analysis/Copywriting Principles",
+    "Resources/Promo Analysis/Slideshow Promo Playbook",
+    "Resources/Promo Analysis/Promo Database/Competitor Promos",
+    "Resources/Promo Analysis/Promo Database/Agora Archive Promos",
+    "Resources/Promo Analysis/Promo Database/Oxford Club Promos",
+    "Resources/Financial Publishing Directory",
+    "Resources/Financial Publishing Knowledge Graph",
+    "Areas/Copywriting Mastery",
+    "Areas/Marketing Mastery",
+    "Areas/Business Mastery",
+    "Resources/Competitors",
+    "Resources/Industry Tactics",
+    "Resources/Market Intelligence",
+    "Resources/Publication Descriptions",
+    "Resources/Publishers",
+    "Resources/Promos/Promo Notes/External Files",
+    "Resources/Promo Analysis/Promo Catalog/Oxford Club",
+    "Resources/Promo Analysis/Source Copy",
+    "Resources/Promo Analysis/Promo Intelligence",
+    "Resources/Promo Analysis/Promo Analysis Tool",
+    "Resources/Promo Analysis/Knowledge"
+  ],
+  "brandNames": [
+    "Monument Traders Alliance",
+    "Monument Traders",
+    "MTARIX",
+    "OxfordHub"
+  ],
+  "brandMarks": [
+    "MTA"
+  ],
+  "brandTags": [
+    "monument-traders-alliance",
+    "mta",
+    "mta-operations",
+    "mtarix"
+  ]
+}

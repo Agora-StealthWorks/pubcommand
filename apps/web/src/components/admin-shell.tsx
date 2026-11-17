@@ -9,6 +9,7 @@ const links: { href: string; label: string; permissions: string[] }[] = [
   { href: "/plans", label: "Plans", permissions: [PLATFORM_PERMISSIONS.managePlans, PLATFORM_PERMISSIONS.manageModules] },
   { href: "/domains", label: "Domains", permissions: [PLATFORM_PERMISSIONS.manageDomains] },
   { href: "/staff", label: "Staff", permissions: [PLATFORM_PERMISSIONS.manageStaff] },
+  { href: "/brain", label: "Main Brain", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
   { href: "/jobs", label: "Jobs", permissions: [PLATFORM_PERMISSIONS.manageJobs] },
   { href: "/audit", label: "Audit", permissions: [PLATFORM_PERMISSIONS.viewAudit] },
 ];

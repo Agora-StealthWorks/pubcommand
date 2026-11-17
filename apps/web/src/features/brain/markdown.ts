@@ -6,13 +6,16 @@ import { parseWikiLinkBody, type WikiLink } from "../../../../../modules/knowled
 /** What a [[link]] points at, or null when no visible note has that title. */
 export type LinkTarget = { href: string; title: string } | null;
 
+/** What an ![[embed]] points at: an attached image, an attached file, or nothing. */
+export type EmbedTarget = { kind: "image"; src: string; alt: string } | { kind: "file"; href: string; name: string } | null;
+
 type WikiToken = Tokens.Generic & { link: WikiLink };
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function wikiExtension(resolve: (target: string) => LinkTarget): TokenizerAndRendererExtension {
+function wikiExtension(resolve: (target: string) => LinkTarget, embed?: (target: string) => EmbedTarget): TokenizerAndRendererExtension {
   return {
     name: "wikilink",
     level: "inline",
@@ -30,7 +33,12 @@ function wikiExtension(resolve: (target: string) => LinkTarget): TokenizerAndRen
     renderer(token) {
       const { link } = token as WikiToken;
       const label = escapeHtml(link.alias ?? (link.target ? link.target.split("/").pop() ?? link.target : `#${link.heading ?? ""}`));
-      if (link.embed) return `<span class="brain-embed" title="Attachments are not imported">${label}</span>`;
+      if (link.embed) {
+        const file = embed?.(link.target) ?? null;
+        if (file?.kind === "image") return `<img src="${escapeHtml(file.src)}" alt="${escapeHtml(file.alt)}" />`;
+        if (file?.kind === "file") return `<a class="brain-link" href="${escapeHtml(file.href)}">${escapeHtml(file.name)}</a>`;
+        return `<span class="brain-embed" title="No attachment with this name on the note">${label}</span>`;
+      }
       if (!link.target) return `<span class="brain-link-local">${label}</span>`;
       const target = resolve(link.target);
       if (!target) return `<span class="brain-link-missing" title="No note called “${escapeHtml(link.target)}” in this Brain">${label}</span>`;
@@ -76,13 +84,17 @@ const SANITIZE: sanitizeHtml.IOptions = {
 
 /**
  * Render a note's Markdown to safe HTML: GitHub-flavoured Markdown, [[wiki links]]
- * resolved through `resolve`, then sanitized (no scripts, styles, iframes or
+ * resolved through `resolve`, ![[attachments]] through `embed`, then sanitized (no scripts, styles, iframes or
  * event handlers). Front matter is returned separately as properties.
  */
-export function renderNote(body: string, resolve: (target: string) => LinkTarget): { html: string; properties: [string, string][] } {
+export function renderNote(
+  body: string,
+  resolve: (target: string) => LinkTarget,
+  embed?: (target: string) => EmbedTarget,
+): { html: string; properties: [string, string][] } {
   const { data, body: content, raw } = parseFrontmatter(body);
   const marked = new Marked({ gfm: true, breaks: false, async: false });
-  marked.use({ extensions: [wikiExtension(resolve)] });
+  marked.use({ extensions: [wikiExtension(resolve, embed)] });
   const html = marked.parse(content) as string;
   const properties: [string, string][] = raw
     ? Object.entries(data).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : value])

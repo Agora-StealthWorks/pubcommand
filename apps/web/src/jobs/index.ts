@@ -9,6 +9,8 @@ import { intelGmailSync } from "./intel-gmail-sync";
 import { intelRadar } from "./intel-radar";
 import { intelVideoCapture } from "./intel-video-capture";
 import { jobRunsCleanup } from "./job-runs-cleanup";
+import { knowledgeLearnUp } from "./knowledge-learn-up";
+import { knowledgePushDown } from "./knowledge-push-down";
 import { miniblogCalendarStatus } from "./miniblog-calendar-status";
 import { performanceImportSync } from "./performance-import-sync";
 import { performancePriceRefresh } from "./performance-price-refresh";
@@ -32,6 +34,8 @@ export const JOBS: JobDefinition[] = [
   intelRadar,
   intelVideoCapture,
   jobRunsCleanup,
+  knowledgeLearnUp,
+  knowledgePushDown,
   miniblogCalendarStatus,
   performanceImportSync,
   performancePriceRefresh,

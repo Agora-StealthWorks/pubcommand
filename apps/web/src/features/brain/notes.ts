@@ -20,12 +20,6 @@ export async function getVisibleNote(organizationId: string, scope: BrainScope, 
   return tenantDb(organizationId).knowledgePage.findFirst({ where: { AND: [{ id }, scopeWhere(scope)] } });
 }
 
-/** True when the note exists (not deleted) but only the main Brain may see it. */
-export async function noteExists(organizationId: string, id: string): Promise<boolean> {
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return false;
-  return (await tenantDb(organizationId).knowledgePage.count({ where: { id, deletedAt: null } })) > 0;
-}
-
 export async function recentNotes(organizationId: string, scope: BrainScope, take = 20) {
   return tenantDb(organizationId).knowledgePage.findMany({ where: scopeWhere(scope), select: NOTE_LIST_SELECT, orderBy: { updatedAt: "desc" }, take });
 }
@@ -48,6 +42,25 @@ export async function sharedNotes(organizationId: string, scope: BrainScope, tak
   });
 }
 
+/** Notes with bodies for the graph view (same visibility rule). */
+export async function graphNotes(organizationId: string, scope: BrainScope, folder: string | null, take = 3000) {
+  return tenantDb(organizationId).knowledgePage.findMany({
+    where: { AND: [scopeWhere(scope), folder ? { OR: [{ folder }, { folder: { startsWith: `${folder}/` } }] } : {}] },
+    select: { id: true, title: true, folder: true, brandId: true, visibility: true, body: true },
+    orderBy: { updatedAt: "desc" },
+    take,
+  });
+}
+
+/** Attachments of a note the caller may already see (list only, no bytes). */
+export async function noteAttachments(organizationId: string, noteId: string) {
+  return tenantDb(organizationId).knowledgeAttachment.findMany({
+    where: { noteId },
+    select: { id: true, filename: true, contentType: true, size: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 /** Titles of every note visible in this scope, for [[link]] resolution. */
 export async function linkIndex(organizationId: string, scope: BrainScope): Promise<LinkCandidate[]> {
   return tenantDb(organizationId).knowledgePage.findMany({
@@ -57,7 +70,7 @@ export async function linkIndex(organizationId: string, scope: BrainScope): Prom
 }
 
 export async function noteResolver(organizationId: string, scope: BrainScope) {
-  return linkResolver(await linkIndex(organizationId, scope), scope.kind === "brand" ? scope.brandId : null);
+  return linkResolver(await linkIndex(organizationId, scope), scope.brandId);
 }
 
 /** Visible notes that link to this one with [[Title]]. */
