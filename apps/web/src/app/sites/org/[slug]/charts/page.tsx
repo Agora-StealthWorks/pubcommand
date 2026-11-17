@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Denied } from "@/components/ui";
-import { createProjectAction, fetchSeriesAction, saveChartAction, saveTemplateAction, uploadImageAction } from "@/features/charts/actions";
+import { createProjectAction, fetchSeriesAction, saveChartAction, saveTemplateAction, searchTickersAction, uploadImageAction } from "@/features/charts/actions";
 import { chartsAccess } from "@/features/charts/context";
 import { listProjects } from "@/features/charts/data";
 import { ChartEditor } from "@/features/charts/editor";
@@ -35,7 +35,7 @@ export default async function ChartsEditorPage({ params, searchParams }: { param
   }
   // Reopened charts show the exact bars that were saved; new charts load fresh data.
   const loaded = stored
-    ? { ok: true as const, series: { symbol: stored.symbol, name: stored.seriesName, source: stored.source, unit: (stored.unit === "" ? "" : "$") as "" | "$", warnings: stored.warningsList, bars: stored.barsList } }
+    ? { ok: true as const, series: { symbol: stored.symbol, name: stored.seriesName, source: stored.source, unit: (stored.unit === "" ? "" : "$") as "" | "$", warnings: stored.warningsList, bars: stored.barsList, compare: stored.compareList } }
     : await loadSeries(spec.data);
 
   return (
@@ -54,7 +54,7 @@ export default async function ChartsEditorPage({ params, searchParams }: { param
           ? null
           : "Market data is not connected yet: MASSIVE_API_KEY and TIINGO_API_KEY are not set, so tickers cannot load. FRED series (FRED:DGS10) and pasted CSV work now. The chart below uses example CSV data."
       }
-      actions={{ fetchSeries: fetchSeriesAction, save: saveChartAction, createProject: createProjectAction, saveTemplate: saveTemplateAction, uploadImage: uploadImageAction }}
+      actions={{ fetchSeries: fetchSeriesAction, save: saveChartAction, createProject: createProjectAction, saveTemplate: saveTemplateAction, uploadImage: uploadImageAction, searchTickers: searchTickersAction }}
     />
   );
 }

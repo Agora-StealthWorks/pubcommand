@@ -1,11 +1,18 @@
 import { zipSync } from "fflate";
 import { renderChartSvg } from "../../../../../modules/charts/render";
 import { normalizeSpec } from "../../../../../modules/charts/spec";
-import { EXPORT_FORMATS, MIME, svgToJpeg, svgToPdf, svgToPng, type ExportFormat } from "./export";
-import { todayIso, unpackBars } from "./market";
+import { EXPORT_FORMATS, MAX_EXPORT_PIXELS, MIME, embedSvgFonts, svgToJpeg, svgToPdf, svgToPng, type ExportFormat } from "./export";
+import { todayIso, unpackBars, unpackCompare } from "./market";
 import { assetDataUris } from "./server";
 
-type ChartRow = { id: string; name: string; symbol: string; spec: unknown; bars: unknown; source: string; seriesName: string; unit: string };
+type ChartRow = { id: string; name: string; symbol: string; spec: unknown; bars: unknown; source: string; seriesName: string; unit: string; compareBars?: unknown };
+
+export type RenderOptions = {
+  /** PNG/JPG resolution multiplier, 1-4. */
+  scale?: number;
+  /** SVG only: embed subset fonts so the file looks right without Inter installed. */
+  embedFonts?: boolean;
+};
 
 export function parseFormat(value: string | null): ExportFormat | "thumb" | null {
   if (value === "thumb") return "thumb";
@@ -16,20 +23,37 @@ export function fileBase(name: string, symbol: string): string {
   return (name || symbol).replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").slice(0, 80) || "chart";
 }
 
-/** Render a stored chart from its saved spec and bars: the same function the editor previews with. */
-export async function renderStored(organizationId: string, rows: ChartRow[], format: ExportFormat | "thumb") {
+/** The SVG of a stored chart: its saved spec, bars and compare lines through the same renderer the editor uses. */
+export async function storedSvgs(organizationId: string, rows: ChartRow[]) {
   const specs = rows.map((row) => normalizeSpec(row.spec, todayIso()));
   const imageHref = await assetDataUris(organizationId, specs);
   return rows.map((row, index) => {
     const spec = specs[index]!;
-    const svg = renderChartSvg({ spec, bars: unpackBars(row.bars), meta: { ticker: row.symbol, name: row.seriesName, source: row.source, unit: row.unit }, imageHref, idPrefix: `x${index}` });
-    const base = `${fileBase(row.name, row.symbol)}-${spec.size.w}x${spec.size.h}`;
-    if (format === "thumb") return { body: svgToPng(svg, spec.size.w, 560 / spec.size.w).png, mime: "image/png", filename: `${base}.png` };
-    if (format === "svg") return { body: Buffer.from(svg), mime: MIME.svg, filename: `${base}.svg` };
-    if (format === "jpg") return { body: svgToJpeg(svg, spec.size.w), mime: MIME.jpg, filename: `${base}.jpg` };
-    if (format === "pdf") return { body: svgToPdf(svg, spec.size.w, spec.size.h), mime: MIME.pdf, filename: `${base}.pdf` };
-    return { body: svgToPng(svg, spec.size.w).png, mime: MIME.png, filename: `${base}.png` };
+    const compare = unpackCompare(row.compareBars);
+    const svg = renderChartSvg({ spec, bars: unpackBars(row.bars), compare, meta: { ticker: row.symbol, name: row.seriesName, source: row.source, unit: row.unit }, imageHref, idPrefix: `x${index}` });
+    return { row, spec, svg };
   });
+}
+
+/** Render stored charts to files. Every format is drawn from the same SVG. */
+export async function renderStored(organizationId: string, rows: ChartRow[], format: ExportFormat | "thumb", options: RenderOptions = {}) {
+  const scale = Math.min(4, Math.max(1, Math.round(options.scale ?? 1)));
+  const drawn = await storedSvgs(organizationId, rows);
+  return Promise.all(
+    drawn.map(async ({ row, spec, svg }) => {
+      const base = `${fileBase(row.name, row.symbol)}-${spec.size.w}x${spec.size.h}`;
+      const pixels = spec.size.w * spec.size.h * scale * scale;
+      const safeScale = pixels > MAX_EXPORT_PIXELS ? Math.sqrt(MAX_EXPORT_PIXELS / (spec.size.w * spec.size.h)) : scale;
+      if (format === "thumb") return { body: svgToPng(svg, spec.size.w, 560 / spec.size.w).png, mime: "image/png", filename: `${base}.png` };
+      if (format === "svg") return { body: Buffer.from(options.embedFonts ? await embedSvgFonts(svg) : svg), mime: MIME.svg, filename: `${base}${options.embedFonts ? "-fonts" : ""}.svg` };
+      if (format === "jpg") return { body: svgToJpeg(svg, spec.size.w, safeScale), mime: MIME.jpg, filename: `${base}.jpg` };
+      if (format === "pdf" || format === "ai") {
+        const body = await svgToPdf(svg, spec.size.w, spec.size.h, { title: row.name || row.symbol, ai: format === "ai" });
+        return { body, mime: MIME[format], filename: `${base}.${format}` };
+      }
+      return { body: svgToPng(svg, spec.size.w, safeScale).png, mime: MIME.png, filename: `${base}.png` };
+    }),
+  );
 }
 
 export function zipFiles(files: Array<{ body: Buffer; filename: string; mime: string }>): Uint8Array {

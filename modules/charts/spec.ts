@@ -120,9 +120,20 @@ export type Theme = {
   titleAccent: string | null;
 };
 
+export const CHART_TYPES = ["area", "line", "candle", "ohlc"] as const;
+export type ChartType = (typeof CHART_TYPES)[number];
+
+/**
+ * Performance coloring, in the theme's up/down colors (theme.candle):
+ * overall = the whole line and fill by the total move; segments = each bar-to-bar step by its direction.
+ */
+export const PERF_COLORS = ["off", "overall", "segments"] as const;
+export type PerfColors = (typeof PERF_COLORS)[number];
+
 /** What a template stores: everything except the data and the title. */
 export type StyleSpec = {
-  chartType: "line" | "area" | "candle";
+  chartType: ChartType;
+  perfColors: PerfColors;
   design: { w: number; h: number };
   theme: Theme;
   overlays: Overlay[];
@@ -131,8 +142,15 @@ export type StyleSpec = {
   footerRight: string;
 };
 
+/** Another line on the same chart. Its numbers come from its own bars, like the main line's. */
+export type CompareLine = { symbol: string; label: string; color: string };
+export const MAX_COMPARE = 4;
+/** rebase = every line starts at 100; pct = every line is % change from its first bar. */
+export const COMPARE_MODES = ["pct", "rebase"] as const;
+export type CompareMode = (typeof COMPARE_MODES)[number];
+
 export type DataSpec = {
-  /** Ticker (AMD), ratio (CPER/GLD), FRED series (FRED:PCOPPUSDM), or CSV. */
+  /** Ticker (AMD), crypto (BTC-USD), ratio (CPER/GLD), FRED series (FRED:PCOPPUSDM), or CSV. */
   symbol: string;
   period: ChartPeriod;
   from: string;
@@ -142,6 +160,11 @@ export type DataSpec = {
   adjust: "split" | "total";
   /** Pasted data when symbol is CSV. */
   csv: string;
+  /** Intraday only: include pre-market (from 4:00) and after-hours (to 20:00 New York), shaded. */
+  extended: boolean;
+  /** Extra lines. When set, every line is drawn rebased (see compareMode) on one axis. */
+  compare: CompareLine[];
+  compareMode: CompareMode;
 };
 
 export type ChartSpec = StyleSpec & {
@@ -367,7 +390,8 @@ export function normalizeStyle(value: unknown): StyleSpec {
   const o = obj(value);
   const design = obj(o.design);
   return {
-    chartType: pick(o.chartType, ["line", "area", "candle"] as const, "area"),
+    chartType: pick(o.chartType, CHART_TYPES, "area"),
+    perfColors: pick(o.perfColors, PERF_COLORS, "off"),
     design: { w: Math.round(num(design.w, 2000, 200, 4000)), h: Math.round(num(design.h, 1000, 200, 4000)) },
     theme: normalizeTheme(o.theme),
     overlays: overlays(o.overlays),
@@ -380,6 +404,23 @@ export function normalizeStyle(value: unknown): StyleSpec {
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 export const CSV_MAX_CHARS = 2_000_000;
 
+export const COMPARE_COLORS = ["#f97316", "#a855f7", "#10b981", "#ef4444"] as const;
+const COMPARE_SYMBOL = /^[A-Za-z0-9.\-^:=&/ ]{1,40}$/;
+
+export function normalizeCompare(value: unknown): CompareLine[] {
+  if (!Array.isArray(value)) return [];
+  const out: CompareLine[] = [];
+  for (const item of value.slice(0, MAX_COMPARE * 2)) {
+    const o = typeof item === "string" ? { symbol: item } : obj(item);
+    const symbol = str(o.symbol, "", 40).trim();
+    if (!symbol || !COMPARE_SYMBOL.test(symbol) || /^CSV$/i.test(symbol)) continue;
+    if (out.some((line) => line.symbol.toUpperCase() === symbol.toUpperCase())) continue;
+    out.push({ symbol, label: str(o.label, "", 60).trim(), color: safeColor(o.color, COMPARE_COLORS[out.length % COMPARE_COLORS.length] as string) });
+    if (out.length >= MAX_COMPARE) break;
+  }
+  return out;
+}
+
 export function normalizeData(value: unknown, today: string): DataSpec {
   const o = obj(value);
   const symbol = str(o.symbol, "AAPL", 60).trim() || "AAPL";
@@ -391,6 +432,9 @@ export function normalizeData(value: unknown, today: string): DataSpec {
     interval: pick(o.interval, INTERVALS, "day"),
     adjust: pick(o.adjust, ["split", "total"] as const, "split"),
     csv: str(o.csv, "", CSV_MAX_CHARS),
+    extended: bool(o.extended, false),
+    compare: normalizeCompare(o.compare),
+    compareMode: pick(o.compareMode, COMPARE_MODES, "pct"),
   };
 }
 

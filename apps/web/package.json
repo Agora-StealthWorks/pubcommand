@@ -30,13 +30,17 @@
     "mammoth": "^1.13.0",
     "marked": "^18.2.1",
     "next": "^15.1.0",
+    "pdfkit": "^0.20.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sanitize-html": "^2.18.2",
+    "subset-font": "^2.9.0",
+    "svg-to-pdfkit": "^0.1.8",
     "unpdf": "^2.2.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",
+    "@types/pdfkit": "^0.17.7",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@types/sanitize-html": "^2.16.2",

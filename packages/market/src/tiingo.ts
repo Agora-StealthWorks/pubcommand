@@ -4,7 +4,7 @@
  */
 import { isoDate } from "./dates";
 import { failure, get } from "./http";
-import { MarketError, type Adjust, type Bar, type FetchLike } from "./types";
+import { MarketError, type Adjust, type Bar, type FetchLike, type SymbolHit } from "./types";
 
 export interface TiingoRow {
   date: string;
@@ -75,6 +75,37 @@ export function createTiingo(options: { apiKey: string; fetch: FetchLike; today:
       const row = Array.isArray(rows) ? rows.at(-1) : undefined;
       if (!row || !(row.close > 0)) throw new MarketError("not_found", `Tiingo has no recent price for ${ticker}.`);
       return { price: row.close, at: Date.parse(`${row.date.slice(0, 10)}T00:00:00Z`) };
+    },
+
+    /** Crypto daily bars in USD: /tiingo/crypto/prices?tickers=btcusd&resampleFreq=1day. */
+    async crypto(coin: string, from: string, to: string): Promise<Bar[]> {
+      const pair = `${coin.toLowerCase()}usd`;
+      const url = `https://api.tiingo.com/tiingo/crypto/prices?tickers=${encodeURIComponent(pair)}&startDate=${from}&endDate=${to}&resampleFreq=1day`;
+      const response = await get(options.fetch, url, "Tiingo", headers, options.timeoutMs ?? 30_000);
+      if (!response.ok) throw await failure("Tiingo", response.status, await response.text(), `${coin}-USD`);
+      const data = (await response.json()) as Array<{ priceData?: Array<{ date: string; open: number; high: number; low: number; close: number; volume?: number }> }>;
+      if (!Array.isArray(data)) throw new MarketError("bad_request", "Tiingo returned an unexpected payload.");
+      const rows = data[0]?.priceData ?? [];
+      return rows
+        .map((row) => ({ t: Date.parse(`${row.date.slice(0, 10)}T00:00:00Z`), o: row.open, h: row.high, l: row.low, c: row.close, v: row.volume }))
+        .filter((bar) => Number.isFinite(bar.t) && bar.c > 0);
+    },
+
+    /** Symbol search: /tiingo/utilities/search?query=. */
+    async search(query: string): Promise<SymbolHit[]> {
+      const url = `https://api.tiingo.com/tiingo/utilities/search?query=${encodeURIComponent(query)}&limit=20`;
+      const response = await get(options.fetch, url, "Tiingo", headers, 8000);
+      if (!response.ok) throw await failure("Tiingo", response.status, await response.text(), "symbol search");
+      const rows = (await response.json()) as Array<{ ticker?: string; name?: string; assetType?: string; countryCode?: string; isActive?: boolean }>;
+      if (!Array.isArray(rows)) return [];
+      return rows
+        .filter((row) => row.ticker && row.isActive !== false)
+        .map((row) => {
+          const type = (row.assetType ?? "").toLowerCase();
+          const kind: SymbolHit["kind"] = type.includes("etf") || type.includes("fund") ? "etf" : type.includes("crypto") ? "crypto" : "stock";
+          const ticker = String(row.ticker).toUpperCase();
+          return { symbol: kind === "crypto" ? ticker.replace(/USD$/, "-USD") : ticker.replace("-", "."), name: row.name ?? ticker, kind, exchange: row.countryCode ?? "", source: "Tiingo" };
+        });
     },
 
     async name(ticker: string): Promise<string | null> {

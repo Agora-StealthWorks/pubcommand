@@ -5,7 +5,8 @@ import { renderChart, type ChartMeta } from "../../../../../modules/charts/rende
 import { applyStyle, normalizeSpec, normalizeStyle, type ChartSpec, type HeadlineOverlay, type StyleSpec } from "../../../../../modules/charts/spec";
 import { STARTER_TEMPLATES, defaultSpec } from "../../../../../modules/charts/templates";
 import { claimPattern, displayText, isOverridden, literalFigures, type SeriesStats } from "../../../../../modules/charts/tokens";
-import { loadSeries, packBars, rangeOf, todayIso, unpackBars, type LoadedSeries } from "./market";
+import { generateFileToken } from "../../../../../modules/charts/api-keys";
+import { loadSeries, packBars, packCompare, rangeOf, todayIso, unpackBars, unpackCompare, type LoadedSeries } from "./market";
 
 export type Scope = { organizationId: string; brandId: string; brandName: string; actorId: string | null };
 
@@ -66,7 +67,7 @@ export async function buildChart(rawSpec: unknown): Promise<{ ok: true; built: B
   const loaded = await loadSeries(spec.data);
   if (!loaded.ok) return { ok: false, error: loaded.error };
   for (const overlay of spec.overlays) if (overlay.type === "headline") overlay.overridden = isOverridden(overlay.text);
-  const { stats, tokens } = renderChart({ spec, bars: loaded.series.bars, meta: metaOf(loaded.series) });
+  const { stats, tokens } = renderChart({ spec, bars: loaded.series.bars, compare: loaded.series.compare, meta: metaOf(loaded.series) });
   const head = firstHeadline(spec);
   return {
     ok: true,
@@ -97,6 +98,8 @@ function ledgerNote(input: { id: string; built: Built; brandName: string; name: 
     head ? `- Headline as shown: "${built.headline}"` : "- No headline",
     head ? `- Claim pattern: ${claimPattern(head.text)}` : "",
     `- Headline overridden: ${built.overridden ? `YES, typed figure(s) ${literalFigures(head?.text ?? "").join(", ")} instead of the data` : "no"}`,
+    series.compare?.length ? `- Compared with: ${series.compare.map((line, i) => `${line.symbol} ${tokens[`gain${i + 2}`] ?? "n/a"}`).join(", ")} (${spec.data.compareMode === "rebase" ? "rebased to 100" : "% change"})` : "",
+    `- Chart: ${spec.chartType}${spec.perfColors !== "off" ? `, performance colors (${spec.perfColors})` : ""}${spec.data.extended ? ", extended hours" : ""}`,
     `- Size: ${spec.size.w}×${spec.size.h} (${spec.size.preset})`,
     "",
     `Source ref: chart:${input.id}`,
@@ -106,8 +109,8 @@ function ledgerNote(input: { id: string; built: Built; brandName: string; name: 
 
 export async function saveChart(
   scope: Scope,
-  input: { spec: unknown; chartId?: string | null; projectId?: string | null; name?: string; batchId?: string | null; via?: "ui" | "bulk" },
-): Promise<{ ok: true; id: string; overridden: boolean } | { ok: false; error: string }> {
+  input: { spec: unknown; chartId?: string | null; projectId?: string | null; name?: string; batchId?: string | null; via?: "ui" | "bulk" | "api"; apiKeyId?: string | null; teach?: boolean },
+): Promise<{ ok: true; id: string; overridden: boolean; built: Built } | { ok: false; error: string }> {
   const built = await buildChart(input.spec);
   if (!built.ok) return built;
   const db = tenantDb(scope.organizationId);
@@ -133,6 +136,7 @@ export async function saveChart(
     headline: built.built.headline.slice(0, 400),
     headlineOverridden: built.built.overridden,
     templateId: spec.templateId,
+    compareBars: packCompare(series.compare) ?? Prisma.DbNull,
   };
   let id: string;
   const existing = input.chartId
@@ -150,14 +154,22 @@ export async function saveChart(
         batchId: input.batchId ?? null,
         createdById: scope.actorId,
         createdVia: input.via ?? "ui",
+        apiKeyId: input.apiKeyId ?? null,
+        fileToken: generateFileToken(),
         ...data,
       },
     });
     id = created.id;
     if (spec.templateId) await db.chartTemplate.updateMany({ where: { id: spec.templateId }, data: { usageCount: { increment: 1 } } });
   }
-  await appendOrgAudit(scope.organizationId, { actorId: scope.actorId, action: existing ? "chart.updated" : "chart.created", targetType: "chart", targetId: id });
-  if (input.via !== "bulk") {
+  await appendOrgAudit(scope.organizationId, {
+    actorId: scope.actorId,
+    action: existing ? "chart.updated" : "chart.created",
+    targetType: "chart",
+    targetId: id,
+    metadata: input.apiKeyId ? { via: input.via ?? "api", apiKeyId: input.apiKeyId } : undefined,
+  });
+  if (input.via !== "bulk" && input.teach !== false) {
     await teachBrain({
       organizationId: scope.organizationId,
       brandId: scope.brandId,
@@ -169,7 +181,7 @@ export async function saveChart(
       actorId: scope.actorId,
     });
   }
-  return { ok: true, id, overridden: built.built.overridden };
+  return { ok: true, id, overridden: built.built.overridden, built: built.built };
 }
 
 export type StoredChart = Awaited<ReturnType<typeof loadChart>>;
@@ -182,6 +194,7 @@ export async function loadChart(organizationId: string, brandId: string, chartId
     ...row,
     spec: normalizeSpec(row.spec, todayIso()),
     barsList: unpackBars(row.bars),
+    compareList: unpackCompare(row.compareBars),
     meta: { ticker: row.symbol, name: row.seriesName, source: row.source, unit: row.unit } satisfies ChartMeta,
     warningsList: Array.isArray(row.warnings) ? (row.warnings as unknown[]).filter((w): w is string => typeof w === "string") : [],
   };
@@ -198,7 +211,7 @@ export async function assetDataUris(organizationId: string, specs: ChartSpec[]):
 
 // ----------------------------------------------------------------------------- bulk
 
-export type BulkDesign = { templateId: string | null; style: StyleSpec; size: ChartSpec["size"] };
+export type BulkDesign = { templateId: string | null; style: StyleSpec; size: ChartSpec["size"]; kind?: "rows" | "specs"; apiKeyId?: string | null; projectId?: string | null };
 
 export function bulkSpec(row: BulkRow, design: BulkDesign): ChartSpec {
   const base = defaultSpec(todayIso(), design.style, design.templateId);
@@ -231,16 +244,24 @@ export async function runBulk(scope: Scope, batchId: string): Promise<void> {
   try {
     const batch = await db.chartBatch.findFirst({ where: { id: batchId } });
     if (!batch) return;
-    const rows = batch.rows as unknown as BulkRow[];
     const design = batch.design as unknown as BulkDesign;
     design.style = normalizeStyle(design.style);
+    // Bot API batches store finished specs (one per row); UI batches store rows + one design.
+    const rows: Array<{ line: number; symbol: string; title: string | null; spec: ChartSpec }> =
+      design.kind === "specs"
+        ? (batch.rows as unknown as unknown[]).map((raw, index) => {
+            const spec = normalizeSpec(raw, todayIso());
+            return { line: index + 1, symbol: spec.data.symbol, title: null, spec };
+          })
+        : (batch.rows as unknown as BulkRow[]).map((row) => ({ line: row.line, symbol: row.symbol, title: row.title, spec: bulkSpec(row, design) }));
+    const via = design.kind === "specs" ? ("api" as const) : ("bulk" as const);
     await db.chartBatch.updateMany({ where: { id: batchId }, data: { status: "RUNNING" } });
     const errors: string[] = [];
     const results = await mapLimit(rows, BULK_CONCURRENCY, async (row) => {
-      const saved = await saveChart(scope, { spec: bulkSpec(row, design), batchId, name: row.title ?? undefined, via: "bulk" }).catch((error: unknown) => ({ ok: false as const, error: String(error) }));
+      const saved = await saveChart(scope, { spec: row.spec, batchId, projectId: design.projectId ?? null, name: row.title ?? undefined, via, apiKeyId: design.apiKeyId ?? null, teach: false }).catch((error: unknown) => ({ ok: false as const, error: String(error) }));
       if (saved.ok) await db.chartBatch.updateMany({ where: { id: batchId }, data: { done: { increment: 1 } } });
       else {
-        errors.push(`Line ${row.line} (${row.symbol}): ${saved.error}`);
+        errors.push(`${via === "api" ? "Row" : "Line"} ${row.line} (${row.symbol}): ${saved.error}`);
         await db.chartBatch.updateMany({ where: { id: batchId }, data: { failed: { increment: 1 }, errors } });
       }
       return saved.ok ? row : null;

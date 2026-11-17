@@ -34,6 +34,9 @@ export function todayIso(): string {
   return isoDate(Date.now());
 }
 
+/** A compare line as loaded (and stored with the chart): its own bars, drawn rebased. */
+export type CompareSeries = { symbol: string; label: string; color: string; name: string; source: string; bars: Bar[] };
+
 export type LoadedSeries = {
   symbol: string;
   name: string;
@@ -43,6 +46,8 @@ export type LoadedSeries = {
   from: string;
   to: string;
   bars: Bar[];
+  /** Present when the spec has compare lines (the ones that loaded). */
+  compare?: CompareSeries[];
 };
 
 export type SeriesResult = { ok: true; series: LoadedSeries } | { ok: false; error: string; code: string };
@@ -55,8 +60,40 @@ export function rangeOf(data: Pick<DataSpec, "period" | "from" | "to">, today = 
 
 const MAX_BARS = 12_000;
 
-/** Load the bars a chart draws. CSV comes from the spec itself; everything else from @pubcommand/market. */
+/** Load the bars a chart draws (and its compare lines). CSV comes from the spec; the rest from @pubcommand/market. */
 export async function loadSeries(data: DataSpec): Promise<SeriesResult> {
+  const main = await loadMain(data);
+  if (!main.ok || !data.compare?.length) return main;
+  const { from, to } = rangeOf(data);
+  const warnings = [...main.series.warnings];
+  const compare: CompareSeries[] = [];
+  const loaded = await Promise.all(
+    data.compare.map(async (line) => {
+      try {
+        const m = market();
+        const series =
+          data.interval === "hour" || data.interval === "5min"
+            ? await m.intradayBars(line.symbol, from, to, { interval: data.interval, extended: data.extended })
+            : await m.dailyBars(line.symbol, from, to, { adjust: data.adjust, interval: data.interval });
+        return { line, series, error: null };
+      } catch (error) {
+        return { line, series: null, error: error instanceof MarketError ? error.message : "the request failed" };
+      }
+    }),
+  );
+  for (const { line, series, error } of loaded) {
+    if (!series) {
+      warnings.push(`Compare line ${line.symbol} was left out: ${error}`);
+      continue;
+    }
+    for (const warning of series.warnings) if (!warnings.includes(warning)) warnings.push(warning);
+    compare.push({ symbol: series.symbol, label: line.label || series.name || series.symbol, color: line.color, name: series.name, source: series.source, bars: series.bars.slice(-MAX_BARS) });
+  }
+  const sources = [...new Set([main.series.source, ...compare.map((line) => line.source)])];
+  return { ok: true, series: { ...main.series, source: sources.join(" + "), warnings, compare } };
+}
+
+async function loadMain(data: DataSpec): Promise<SeriesResult> {
   const { from, to } = rangeOf(data);
   try {
     if (data.symbol.trim().toUpperCase() === "CSV") {
@@ -76,7 +113,7 @@ export async function loadSeries(data: DataSpec): Promise<SeriesResult> {
     const m = market();
     let series: Series;
     if (data.interval === "hour" || data.interval === "5min") {
-      series = await m.intradayBars(data.symbol, from, to, { interval: data.interval });
+      series = await m.intradayBars(data.symbol, from, to, { interval: data.interval, extended: Boolean(data.extended) });
     } else {
       series = await m.dailyBars(data.symbol, from, to, { adjust: data.adjust, interval: data.interval });
     }
@@ -101,4 +138,30 @@ export function unpackBars(value: unknown): Bar[] {
   return value
     .filter((row): row is number[] => Array.isArray(row) && row.length >= 5 && row.every((n) => typeof n === "number"))
     .map(([t, o, h, l, c]) => ({ t: t as number, o: o as number, h: h as number, l: l as number, c: c as number }));
+}
+
+/** Compare lines for storage: bars packed like the main series. */
+export function packCompare(lines: readonly CompareSeries[] | undefined): Array<Omit<CompareSeries, "bars"> & { bars: number[][] }> | null {
+  if (!lines?.length) return null;
+  return lines.map((line) => ({ ...line, bars: packBars(line.bars) }));
+}
+
+export function unpackCompare(value: unknown): CompareSeries[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    if (typeof row.symbol !== "string") return [];
+    const text = (key: string) => (typeof row[key] === "string" ? (row[key] as string) : "");
+    return [{ symbol: row.symbol, label: text("label") || row.symbol, color: text("color") || "#f97316", name: text("name"), source: text("source"), bars: unpackBars(row.bars) }];
+  });
+}
+
+/** Cached provider symbol search (stocks, ETFs, crypto) plus built-in index and coin names. */
+export async function searchSymbols(query: string) {
+  try {
+    return await market().searchSymbols(query, 10);
+  } catch {
+    return [];
+  }
 }
