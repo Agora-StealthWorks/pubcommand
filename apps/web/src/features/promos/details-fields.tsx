@@ -1,5 +1,9 @@
 import { Input, Label } from "@pubcommand/ui";
 import { PROMO_STATUSES, PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
+import { NamePicker } from "../pubsetup/pickers";
+
+/** Picks from Publication Setup (features/pubsetup/read.ts getPickerOptions). Free text still works. */
+export type DetailsOptions = { publishers: string[]; publications: { code: string; name: string }[]; editors: string[] };
 
 type Values = {
   publisher?: string | null;
@@ -13,20 +17,35 @@ type Values = {
 };
 
 /** Shared by the upload form and the Details tab. */
-export function PromoDetailsFields({ values = {} }: { values?: Values }) {
+export function PromoDetailsFields({ values = {}, options }: { values?: Values; options?: DetailsOptions }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
+      {options ? (
+        <>
+          <datalist id="pubsetup-publishers">
+            {options.publishers.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <datalist id="pubsetup-products">
+            {options.publications.map((pub) => (
+              <option key={pub.code} value={pub.name} label={pub.code} />
+            ))}
+          </datalist>
+        </>
+      ) : null}
       <div>
         <Label htmlFor="publisher">Publisher</Label>
-        <Input id="publisher" name="publisher" defaultValue={values.publisher ?? ""} maxLength={200} />
+        <Input id="publisher" name="publisher" defaultValue={values.publisher ?? ""} maxLength={200} list={options ? "pubsetup-publishers" : undefined} />
       </div>
       <div>
         <Label htmlFor="gurus">Guru(s)</Label>
         <Input id="gurus" name="gurus" defaultValue={values.gurus?.join(", ") ?? ""} placeholder="Comma separated" />
+        {options ? <NamePicker inputId="gurus" names={options.editors} label="Pick editors" /> : null}
       </div>
       <div>
         <Label htmlFor="product">Product</Label>
-        <Input id="product" name="product" defaultValue={values.product ?? ""} maxLength={200} />
+        <Input id="product" name="product" defaultValue={values.product ?? ""} maxLength={200} list={options ? "pubsetup-products" : undefined} />
       </div>
       <div>
         <Label htmlFor="pricePoint">Price</Label>

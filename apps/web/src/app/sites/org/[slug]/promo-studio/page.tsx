@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { Flash } from "@/components/ui";
 import { createPromo } from "@/features/promos/actions";
 import { PromoDetailsFields } from "@/features/promos/details-fields";
+import { getPickerOptions } from "@/features/pubsetup/read";
 import { getOrgContext } from "@/lib/org";
 
 export default async function NewPromoPage({
@@ -19,6 +20,7 @@ export default async function NewPromoPage({
   const ctx = await getOrgContext(slug);
   if (ctx.kind !== "ok") notFound();
   const writable = can(ctx.subject, "promo.write", ctx.scope);
+  const picks = ctx.brand && writable ? { publishers: [ctx.brand.name], ...(await getPickerOptions(ctx.resolved.id, ctx.brand.id)) } : undefined;
 
   return (
     <div className="max-w-3xl">
@@ -61,7 +63,7 @@ export default async function NewPromoPage({
           <details>
             <summary className="cursor-pointer text-sm font-semibold text-accent">Details (optional — the AI fills blanks)</summary>
             <div className="mt-3">
-              <PromoDetailsFields />
+              <PromoDetailsFields options={picks} />
             </div>
           </details>
           <Button type="submit" className="w-full sm:w-auto">

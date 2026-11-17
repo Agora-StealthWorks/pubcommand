@@ -1,0 +1,160 @@
+// Publication Setup tables (module id "pubsetup"). Publication Setup is the single
+// owner of a brand's publications, editors and branding; every other app reads them.
+//
+// CalendarPublication keeps its model name, its table (calendar_publications) and
+// every column it had in the Marketing Calendar, so issues, send stats and Mini-Blog
+// keep working unchanged. Everything below the "Publication Setup" line was added
+// additively. Branding columns left null inherit the brand defaults (PubBrandBranding).
+
+/// A publication (newsletter, service, list) a brand publishes. Code is the key send stats match on.
+model CalendarPublication {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  code           String
+  name           String
+  color          String   @default("#7f77dd")
+  /// The short description.
+  description    String?
+  logoFilename   String?  @map("logo_filename")
+  logoMime       String?  @map("logo_mime")
+  logoData       Bytes?   @map("logo_data")
+  /// False hides the publication from pickers (retired or archived). Old issues keep it.
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // ── Publication Setup ──────────────────────────────────────────────
+  /// URL name, unique per brand. Null only on rows created before Publication Setup.
+  slug                String?
+  tagline             String?
+  pubType             String?                @map("pub_type")
+  tier                String?
+  frequency           String?
+  /// "active" | "launching" | "paused" | "retired"
+  status              String                 @default("active")
+  launchDate          DateTime?              @map("launch_date") @db.Date
+  longDescription     String?                @map("long_description")
+  positioning         String?
+  audience            String?
+  deliverables        String[]               @default([])
+  /// [{ label, price, term }] price points and offers, as people typed them.
+  offers              Json?
+  websiteUrl          String?                @map("website_url")
+  signupUrl           String?                @map("signup_url")
+  archiveUrl          String?                @map("archive_url")
+  /// [{ title, url }]
+  sampleIssues        Json?                  @map("sample_issues")
+  complianceNotes     String?                @map("compliance_notes")
+  voiceNotes          String?                @map("voice_notes")
+  coverFilename       String?                @map("cover_filename")
+  coverMime           String?                @map("cover_mime")
+  coverData           Bytes?                 @map("cover_data")
+  // Branding overrides. Null inherits the brand default.
+  primaryColor        String?                @map("primary_color")
+  accentColor         String?                @map("accent_color")
+  textColor           String?                @map("text_color")
+  backgroundColor     String?                @map("background_color")
+  headingFont         String?                @map("heading_font")
+  bodyFont            String?                @map("body_font")
+  emailHeaderFilename String?                @map("email_header_filename")
+  emailHeaderMime     String?                @map("email_header_mime")
+  emailHeaderData     Bytes?                 @map("email_header_data")
+  senderName          String?                @map("sender_name")
+  senderEmail         String?                @map("sender_email")
+  footerText          String?                @map("footer_text")
+  /// Structured field -> value snapshot for the Brain conflict checker (see modules/pubsetup/README.md).
+  facts               Json?
+  createdById         String?                @map("created_by_id") @db.Uuid
+  updatedById         String?                @map("updated_by_id") @db.Uuid
+  deletedAt           DateTime?              @map("deleted_at")
+  editorLinks         PubPublicationEditor[]
+
+  @@unique([brandId, code])
+  @@unique([brandId, slug])
+  @@index([organizationId, brandId])
+  @@map("calendar_publications")
+}
+
+/// An editor, expert or guru who writes for one or more of a brand's publications.
+model PubEditor {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String                 @map("organization_id") @db.Uuid
+  brandId          String                 @map("brand_id") @db.Uuid
+  name             String
+  slug             String
+  title            String?
+  shortBio         String?                @map("short_bio")
+  longBio          String?                @map("long_bio")
+  credentials      String?
+  trackRecord      String?                @map("track_record")
+  specialties      String[]               @default([])
+  /// [{ label, url }]
+  socialLinks      Json?                  @map("social_links")
+  voiceNotes       String?                @map("voice_notes")
+  email            String?
+  /// "active" | "inactive"
+  status           String                 @default("active")
+  sortOrder        Int                    @default(0) @map("sort_order")
+  photoFilename    String?                @map("photo_filename")
+  photoMime        String?                @map("photo_mime")
+  photoData        Bytes?                 @map("photo_data")
+  facts            Json?
+  createdById      String?                @map("created_by_id") @db.Uuid
+  updatedById      String?                @map("updated_by_id") @db.Uuid
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+  deletedAt        DateTime?              @map("deleted_at")
+  publicationLinks PubPublicationEditor[]
+
+  @@unique([brandId, slug])
+  @@index([organizationId, brandId])
+  @@map("pubsetup_editors")
+}
+
+/// Who writes a publication, and in what role (lead editor, contributor...).
+model PubPublicationEditor {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  publicationId  String              @map("publication_id") @db.Uuid
+  publication    CalendarPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  editorId       String              @map("editor_id") @db.Uuid
+  editor         PubEditor           @relation(fields: [editorId], references: [id], onDelete: Cascade)
+  role           String              @default("lead")
+  sortOrder      Int                 @default(0) @map("sort_order")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  @@unique([publicationId, editorId])
+  @@index([organizationId, editorId])
+  @@map("pubsetup_publication_editors")
+}
+
+/// Brand-level branding every publication inherits unless it overrides a field.
+model PubBrandBranding {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  brandId             String   @unique @map("brand_id") @db.Uuid
+  tagline             String?
+  primaryColor        String?  @map("primary_color")
+  accentColor         String?  @map("accent_color")
+  textColor           String?  @map("text_color")
+  backgroundColor     String?  @map("background_color")
+  headingFont         String?  @map("heading_font")
+  bodyFont            String?  @map("body_font")
+  logoFilename        String?  @map("logo_filename")
+  logoMime            String?  @map("logo_mime")
+  logoData            Bytes?   @map("logo_data")
+  emailHeaderFilename String?  @map("email_header_filename")
+  emailHeaderMime     String?  @map("email_header_mime")
+  emailHeaderData     Bytes?   @map("email_header_data")
+  senderName          String?  @map("sender_name")
+  senderEmail         String?  @map("sender_email")
+  footerText          String?  @map("footer_text")
+  updatedById         String?  @map("updated_by_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@map("pubsetup_brand_branding")
+}

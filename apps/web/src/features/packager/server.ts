@@ -3,6 +3,7 @@ import { brandProfile, brandPromptContext } from "@pubcommand/core";
 import { tenantDb, type Prisma } from "@pubcommand/db";
 import { logAiUsage } from "../ai/usage";
 import { teachBrain } from "../brain/teach";
+import { publicationPromptBlock } from "../pubsetup/read";
 import type { PromoAnalysisResult } from "../../../../../modules/promo-studio/analysis";
 import {
   COMPONENT_SCHEMA,
@@ -99,7 +100,10 @@ export async function runPackageGeneration(input: {
   const ids = input.requests.map((r) => r.componentId);
   try {
     const profile = brandProfile(input.brand);
-    const brandContext = brandPromptContext(profile);
+    // When the promo's product is one of the brand's publications (Publication Setup), its
+    // positioning, audience, voice and editors ride along with the brand context.
+    const publicationBlock = await publicationPromptBlock(input.organizationId, promo.brandId, promo.product).catch(() => "");
+    const brandContext = [brandPromptContext(profile), publicationBlock].filter(Boolean).join("\n\n");
     const direction = parseDirection(pkg.direction);
     const analysis = await latestAnalysis(db, promo.id);
     const [performers, notes] = await Promise.all([bestPerformers(db, promo.brandId, promo.id), brainNotes(db, promo.brandId, promo.id, pkg.id)]);

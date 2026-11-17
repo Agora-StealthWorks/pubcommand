@@ -10,6 +10,7 @@ import { loadPromo } from "@/features/promos/data";
 import { listPackages } from "@/features/packager/data";
 import { PackageTab } from "@/features/packager/views";
 import { PromoDetailsFields } from "@/features/promos/details-fields";
+import { getPickerOptions } from "@/features/pubsetup/read";
 import { bestPerformers, calibrationPoints, promoInsights, trainingPairs } from "@/features/promos/insights";
 import { BestPerformers, CalibrationChart, TierBadge, fmtMoney, fmtNumber, fmtPercent } from "@/features/promos/insights-view";
 import { TableScroll } from "@/components/table-scroll";
@@ -61,9 +62,10 @@ export default async function PromoPage({
   const tab = query.tab ?? (current ? "overview" : "copy");
   const result = current?.result ?? null;
   const tabs = [...(result ? ANALYSIS_TABS : []), ...OTHER_TABS];
-  const [packages, insights] = await Promise.all([
+  const [packages, insights, pickerOptions] = await Promise.all([
     tab === "package" ? listPackages(ctx.resolved.id, promo.id) : Promise.resolve([]),
     promoInsights(ctx.resolved.id, ctx.brand.id, promo.id),
+    tab === "details" ? getPickerOptions(ctx.resolved.id, ctx.brand.id) : Promise.resolve(null),
   ]);
   const shown = displayEntities(promo, insights.overrides);
   const perf = insights.performance.find((row) => row.tier) ?? insights.performance[0] ?? null;
@@ -250,7 +252,7 @@ export default async function PromoPage({
               <Label htmlFor="title">Title</Label>
               <Input id="title" name="title" defaultValue={promo.title} maxLength={200} />
             </div>
-            <PromoDetailsFields values={promo} />
+            <PromoDetailsFields values={promo} options={pickerOptions ? { publishers: [ctx.brand.name], ...pickerOptions } : undefined} />
             <Button type="submit">Save details</Button>
           </form>
         ) : (

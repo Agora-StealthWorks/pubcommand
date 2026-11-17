@@ -1,50 +1,12 @@
-import { Button, Input, Textarea } from "@pubcommand/ui";
+import { Button, Input } from "@pubcommand/ui";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Flash } from "@/components/ui";
-import { deleteChannelAction, deletePublicationAction, saveChannelAction, savePublicationAction } from "@/features/calendar/actions";
+import { deleteChannelAction, saveChannelAction } from "@/features/calendar/actions";
 import { calendarPage } from "@/features/calendar/context";
-import { listChannels, listPublications, type PublicationView } from "@/features/calendar/data";
+import { listChannels, listPublications } from "@/features/calendar/data";
+import { canManagePublications } from "@/features/pubsetup/module";
 import { Field, PubChip, Section } from "@/features/calendar/ui";
-
-function PublicationFields({ pub }: { pub?: PublicationView }) {
-  return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)_110px]">
-        <Field label="Code" hint="Matches your ESP list names.">
-          <Input name="code" required maxLength={20} defaultValue={pub?.code ?? ""} className="uppercase" />
-        </Field>
-        <Field label="Name">
-          <Input name="name" required maxLength={120} defaultValue={pub?.name ?? ""} />
-        </Field>
-        <Field label="Color">
-          <input type="color" name="color" defaultValue={pub?.color ?? "#7f77dd"} className="h-11 w-full rounded-md border border-line bg-white" />
-        </Field>
-      </div>
-      <Field label="Description">
-        <Textarea name="description" rows={2} defaultValue={pub?.description ?? ""} />
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Logo (optional)">
-          <input type="file" name="logo" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" className="block w-full text-sm" />
-        </Field>
-        <Field label="Order">
-          <Input name="sortOrder" inputMode="numeric" defaultValue={String(pub?.sortOrder ?? 0)} />
-        </Field>
-        <Field label="Status">
-          <select name="active" defaultValue={pub?.active === false ? "off" : "on"} className="pc-control w-full">
-            <option value="on">Active</option>
-            <option value="off">Retired (kept for old issues)</option>
-          </select>
-        </Field>
-      </div>
-      {pub?.hasLogo ? (
-        <label className="inline-flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" name="removeLogo" /> Remove the current logo
-        </label>
-      ) : null}
-    </div>
-  );
-}
 
 export default async function SetupPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
   const { slug } = await params;
@@ -52,55 +14,40 @@ export default async function SetupPage({ params, searchParams }: { params: Prom
   const ctx = await calendarPage(slug);
   if (!ctx) notFound();
   const [publications, channels] = await Promise.all([listPublications(ctx.resolved.id, ctx.brand.id, true), listChannels(ctx.resolved.id, ctx.brand.id)]);
+  const canManage = canManagePublications(ctx.subject, ctx.scope);
 
   return (
     <div className="max-w-4xl space-y-5">
       <Flash error={query.error} notice={query.notice} />
       <Section title={`Publications · ${publications.length}`}>
-        <p className="mb-3 text-sm text-muted">Each newsletter or list {ctx.brand.name} mails. The code is how send stats find the right issues.</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="min-w-0 flex-1 text-sm text-muted">
+            Each newsletter or list {ctx.brand.name} mails. The code is how send stats find the right issues. Publications, their editors and branding are managed in Publication Setup.
+          </p>
+          {canManage ? (
+            <Link href="/publication-setup" className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
+              Manage in Publication Setup →
+            </Link>
+          ) : (
+            <span className="text-xs text-muted">Ask an admin to add or change publications.</span>
+          )}
+        </div>
         <ul className="divide-y divide-line rounded-lg border border-line">
           {publications.map((pub) => (
-            <li key={pub.id} className="p-3">
-              <details>
-                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3">
-                  {pub.hasLogo ? (
-                    <img src={`/editorial/setup/logo/${pub.id}`} alt="" className="h-8 w-8 rounded object-contain" />
-                  ) : null}
-                  <PubChip code={pub.code} color={pub.color} />
-                  <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] font-medium">{pub.name}</span>
-                  {!pub.active ? <span className="text-xs text-muted">Retired</span> : null}
-                  {ctx.canWrite ? <span className="text-sm font-semibold text-accent">Edit</span> : null}
-                </summary>
-                {pub.description ? <p className="mt-2 text-sm text-muted">{pub.description}</p> : null}
-                {ctx.canWrite ? (
-                  <div className="mt-3 space-y-3">
-                    <form action={savePublicationAction} className="space-y-3">
-                      <input type="hidden" name="publicationId" value={pub.id} />
-                      <PublicationFields pub={pub} />
-                      <Button type="submit">Save {pub.code}</Button>
-                    </form>
-                    <form action={deletePublicationAction}>
-                      <input type="hidden" name="publicationId" value={pub.id} />
-                      <Button type="submit" variant="danger" size="sm">
-                        Delete {pub.code}
-                      </Button>
-                    </form>
-                  </div>
-                ) : null}
-              </details>
+            <li key={pub.id} className="flex flex-wrap items-center gap-3 p-3">
+              {pub.hasLogo ? <img src={`/editorial/setup/logo/${pub.id}`} alt="" className="h-8 w-8 rounded object-contain" /> : null}
+              <PubChip code={pub.code} color={pub.color} />
+              <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] font-medium">{pub.name}</span>
+              {!pub.active ? <span className="text-xs text-muted">Retired</span> : null}
+              {canManage ? (
+                <Link href={`/publication-setup/publications/${pub.id}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
+                  Edit
+                </Link>
+              ) : null}
             </li>
           ))}
           {publications.length === 0 ? <li className="p-4 text-sm text-muted">No publications yet.</li> : null}
         </ul>
-        {ctx.canWrite ? (
-          <details className="mt-4 rounded-lg border border-dashed border-line p-3" open={publications.length === 0}>
-            <summary className="cursor-pointer text-sm font-semibold text-accent">+ Add a publication</summary>
-            <form action={savePublicationAction} className="mt-3 space-y-3">
-              <PublicationFields />
-              <Button type="submit">Add publication</Button>
-            </form>
-          </details>
-        ) : null}
       </Section>
 
       <Section title={`Channels and rooms · ${channels.length}`}>
