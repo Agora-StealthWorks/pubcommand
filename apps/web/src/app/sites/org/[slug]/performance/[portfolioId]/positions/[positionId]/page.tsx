@@ -1,4 +1,3 @@
-import { tenantDb } from "@pubcommand/db";
 import { Button, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,8 +5,8 @@ import { Denied, Flash } from "@/components/ui";
 import { closePosition, deletePosition } from "@/features/trackrecord/actions";
 import { trackAccess } from "@/features/trackrecord/context";
 import { PositionForm } from "@/features/trackrecord/position-form";
-import { loadQuotes } from "@/features/trackrecord/prices";
-import { getPortfolio, positionGain } from "@/features/trackrecord/server";
+import { FillsPanel } from "@/features/trackrecord/fills-panel";
+import { getPortfolio, positionViews } from "@/features/trackrecord/server";
 import { GainText, PriceNote, iso } from "@/features/trackrecord/ui";
 import { formatPct, formatPrice } from "../../../../../../../../../../../modules/performance/gain";
 
@@ -24,11 +23,10 @@ export default async function PositionPage({
   if (!access.ok) return <Denied title={access.error} />;
   const portfolio = await getPortfolio(access.scope, portfolioId);
   if (!portfolio || !/^[0-9a-f-]{36}$/i.test(positionId)) notFound();
-  const position = await tenantDb(access.scope.organizationId).trackPosition.findFirst({ where: { id: positionId, portfolioId: portfolio.id, deletedAt: null } });
+  const [position] = await positionViews(access.scope.organizationId, { id: positionId, portfolioId: portfolio.id, brandId: access.scope.brandId }, { refresh: true });
   if (!position) notFound();
-  const quotes = position.status !== "CLOSED" && position.priceSymbol ? await loadQuotes(access.scope.organizationId, [position.priceSymbol]) : new Map();
-  const quote = position.priceSymbol ? (quotes.get(position.priceSymbol) ?? null) : null;
-  const gain = positionGain(position, quote);
+  const gain = position.gain;
+  const multiLeg = position.legs.length > 1;
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -69,7 +67,8 @@ export default async function PositionPage({
           <dd>{gain.splitNote ?? (position.splitSource === "unknown" ? "Entry does not match the market; check it" : "None found")}</dd>
         </div>
       </dl>
-      {position.status !== "CLOSED" ? (
+      <FillsPanel view={position} portfolioId={portfolio.id} today={today} />
+      {position.status !== "CLOSED" && !multiLeg ? (
         <form action={closePosition} className="grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <input type="hidden" name="portfolioId" value={portfolio.id} />
           <input type="hidden" name="positionId" value={position.id} />
@@ -81,10 +80,11 @@ export default async function PositionPage({
             <Label htmlFor="close-price">Exit price</Label>
             <Input id="close-price" name="exitPrice" inputMode="decimal" required />
           </div>
-          <Button type="submit">Close position</Button>
+          <Button type="submit">{position.fills.length ? "Close what is open" : "Close position"}</Button>
         </form>
       ) : null}
       <h3 className="text-sm font-semibold">Edit</h3>
+      {position.fills.length ? <p className="text-xs text-muted">Entry, exit and status follow the fills above; edit the fills to change them.</p> : null}
       <PositionForm portfolioId={portfolio.id} position={position} />
       <form action={deletePosition} className="rounded-xl border border-[#fecdca] bg-white p-4">
         <input type="hidden" name="portfolioId" value={portfolio.id} />

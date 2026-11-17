@@ -13,6 +13,11 @@ model TrackPortfolio {
   publicEnabled     Boolean         @default(false) @map("public_enabled")
   /// The public view shows open positions too (closed only by default).
   publicIncludeOpen Boolean         @default(false) @map("public_include_open")
+  /// Embeddable widget (iframe + JSON) /p/track-record/widget/<widgetToken>. Revocable: rotate or turn off.
+  widgetToken       String?         @unique @map("widget_token")
+  widgetEnabled     Boolean         @default(false) @map("widget_enabled")
+  /// The widget shows open positions too (closed only by default).
+  widgetIncludeOpen Boolean         @default(false) @map("widget_include_open")
   sortOrder         Int             @default(100) @map("sort_order")
   createdById       String?         @map("created_by_id") @db.Uuid
   createdAt         DateTime        @default(now()) @map("created_at")
@@ -68,7 +73,13 @@ model TrackPosition {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
   deletedAt      DateTime?      @map("deleted_at")
+  /// Cached from fills when the position is tracked by legs and fills (see legs.ts). Entry basis dollars.
+  realizedPnl    Float?         @map("realized_pnl")
+  /// Number of fills; 0 = a simple single-entry recommendation.
+  fillCount      Int            @default(0) @map("fill_count")
   portfolio      TrackPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  legs           TrackLeg[]
+  fills          TrackFill[]
 
   @@index([organizationId, brandId, deletedAt])
   @@index([portfolioId, status, deletedAt])
@@ -154,6 +165,16 @@ model TrackCall {
   categoryIds    String[]        @default([]) @map("category_ids") @db.Uuid
   keyQuote       String          @default("") @map("key_quote")
   notes          String          @default("")
+  /// A target named in the call, as written (entry basis).
+  targetPrice    Float?          @map("target_price")
+  /// AI read of the backup files: none | running | done | failed | unavailable.
+  aiStatus       String          @default("none") @map("ai_status")
+  aiError        String?         @map("ai_error")
+  /// The proposed fields (see backup-read.ts CallProposal). A person reviews them; nothing is applied on its own.
+  aiProposal     Json?           @map("ai_proposal")
+  aiRunAt        DateTime?       @map("ai_run_at")
+  /// Price fields that were read from a document by the AI and not yet checked by a person.
+  priceCheck     String[]        @default([]) @map("price_check")
   createdById    String?         @map("created_by_id") @db.Uuid
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -168,18 +189,143 @@ model TrackCall {
 
 /// A backup file (screenshot, PDF, video) stored in Postgres.
 model TrackCallFile {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  callId         String    @map("call_id") @db.Uuid
-  role           String    @default("BACKUP")
-  filename       String
-  mimeType       String    @map("mime_type")
-  size           Int
-  data           Bytes
-  uploadedById   String?   @map("uploaded_by_id") @db.Uuid
-  createdAt      DateTime  @default(now()) @map("created_at")
-  call           TrackCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  callId           String    @map("call_id") @db.Uuid
+  role             String    @default("BACKUP")
+  filename         String
+  mimeType         String    @map("mime_type")
+  size             Int
+  data             Bytes
+  /// What the AI read from this file (OCR, PDF text, a transcript). none | done | skipped | failed.
+  transcript       String?   @map("transcript")
+  transcriptStatus String    @default("none") @map("transcript_status")
+  transcriptError  String?   @map("transcript_error")
+  uploadedById     String?   @map("uploaded_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  call             TrackCall @relation(fields: [callId], references: [id], onDelete: Cascade)
 
   @@index([callId])
   @@map("track_call_files")
+}
+
+/// One instrument inside a position (a stock, or one option of a spread). State is derived from its fills.
+model TrackLeg {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  positionId     String        @map("position_id") @db.Uuid
+  legIndex       Int           @map("leg_index")
+  /// STOCK | OPTION
+  kind           String        @default("STOCK")
+  symbol         String
+  /// What market data is fetched with (OCC "O:..." for options). Null = not priced automatically.
+  priceSymbol    String?       @map("price_symbol")
+  optionRight    String?       @map("option_right")
+  strike         Float?
+  expiry         DateTime?     @db.Date
+  /// Opening side: BUY (long) | SELL (short).
+  side           String        @default("BUY")
+  /// Contracts per one unit of the position (2 for the short side of a 1x2).
+  ratio          Int           @default(1)
+  /// 1 for stock, 100 for options. Copied onto each fill so history never changes.
+  multiplier     Int           @default(1)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  position       TrackPosition @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  fills          TrackFill[]
+
+  @@unique([positionId, legIndex])
+  @@map("track_legs")
+}
+
+/// One buy or sell on a leg: an opening fill scales in, a closing fill scales out.
+model TrackFill {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  positionId     String        @map("position_id") @db.Uuid
+  legId          String        @map("leg_id") @db.Uuid
+  /// OPEN | CLOSE
+  intent         String
+  quantity       Float
+  price          Float
+  multiplier     Int           @default(1)
+  executedAt     DateTime      @map("executed_at") @db.Date
+  note           String        @default("")
+  createdById    String?       @map("created_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+  deletedAt      DateTime?     @map("deleted_at")
+  position       TrackPosition @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  leg            TrackLeg      @relation(fields: [legId], references: [id], onDelete: Cascade)
+
+  @@index([positionId, deletedAt])
+  @@index([legId])
+  @@map("track_fills")
+}
+
+/// Who gets the Friday weekly report for one brand. Recipients are team members (user ids), never typed addresses.
+model TrackReportSettings {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  enabled        Boolean  @default(false)
+  /// true = the Friday job sends it; false = it is saved as a draft and someone presses Send.
+  autoSend       Boolean  @default(true) @map("auto_send")
+  recipientIds   String[] @default([]) @map("recipient_ids") @db.Uuid
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, brandId])
+  @@map("track_report_settings")
+}
+
+/// One weekly report per brand and ISO week.
+model TrackWeeklyReport {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  week           String
+  subject        String
+  html           String
+  text           String
+  /// DRAFT | SENT | LOGGED (email not set up) | FAILED
+  status         String    @default("DRAFT")
+  sentAt         DateTime? @map("sent_at")
+  sentCount      Int       @default(0) @map("sent_count")
+  error          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([organizationId, brandId, week])
+  @@map("track_weekly_reports")
+}
+
+/// A Google Sheet or Airtable table that recommendations are imported from (and re-synced hourly).
+model TrackImportSource {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  brandId          String    @map("brand_id") @db.Uuid
+  /// GSHEET | AIRTABLE
+  kind             String
+  name             String
+  /// Google: spreadsheet id, tab gid or A1 range. Airtable: base, table and optional view.
+  sheetId          String?   @map("sheet_id")
+  sheetGid         String?   @map("sheet_gid")
+  sheetRange       String?   @map("sheet_range")
+  airtableBase     String?   @map("airtable_base")
+  airtableTable    String?   @map("airtable_table")
+  airtableView     String?   @map("airtable_view")
+  /// The person's own token (Airtable PAT or Google API key), AES-256-GCM with a key from AUTH_SECRET.
+  tokenEnc         String?   @map("token_enc")
+  defaultPortfolio String    @default("") @map("default_portfolio")
+  autoSync         Boolean   @default(true) @map("auto_sync")
+  lastSyncAt       DateTime? @map("last_sync_at")
+  /// ok | failed
+  lastStatus       String?   @map("last_status")
+  lastMessage      String?   @map("last_message")
+  createdById      String?   @map("created_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  @@index([organizationId, brandId, deletedAt])
+  @@map("track_import_sources")
 }

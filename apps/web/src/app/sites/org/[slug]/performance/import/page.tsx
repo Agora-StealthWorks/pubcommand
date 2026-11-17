@@ -1,14 +1,17 @@
+import { tenantDb } from "@pubcommand/db";
 import { Denied, Flash } from "@/components/ui";
 import { trackAccess } from "@/features/trackrecord/context";
 import { ImportForm } from "@/features/trackrecord/import-form";
 import { listPortfolios } from "@/features/trackrecord/server";
+import { SourceForm, SourceList } from "@/features/trackrecord/source-ui";
 
-export default async function ImportPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string }> }) {
+export default async function ImportPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
   const { slug } = await params;
   const query = await searchParams;
   const access = await trackAccess("performance.write", slug);
   if (!access.ok) return <Denied title={access.error} />;
   const portfolios = await listPortfolios(access.scope);
+  const sources = await tenantDb(access.scope.organizationId).trackImportSource.findMany({ where: { brandId: access.scope.brandId, deletedAt: null }, orderBy: { createdAt: "asc" } });
   return (
     <div className="max-w-4xl space-y-4">
       <div>
@@ -21,7 +24,22 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
           the row has an exit.
         </p>
       </div>
-      <Flash error={query.error} />
+      <Flash error={query.error} notice={query.notice} />
+      <section className="space-y-3 rounded-xl border border-line bg-white p-4">
+        <h3 className="text-base font-semibold">Google Sheets and Airtable</h3>
+        <p className="text-sm text-muted">
+          Connect a sheet or table with the same columns. You see a dry run first; after that it re-syncs every hour. A sync only adds new recommendations and
+          closes open ones. It never deletes or rewrites what is already recorded.
+        </p>
+        <SourceList sources={sources} />
+        <details className="border-t border-line pt-3">
+          <summary className="cursor-pointer text-sm font-semibold text-accent">Connect a source</summary>
+          <div className="mt-3">
+            <SourceForm portfolios={portfolios.map((p) => p.name)} />
+          </div>
+        </details>
+      </section>
+      <h3 className="text-base font-semibold">CSV file or pasted rows</h3>
       <ImportForm portfolios={portfolios.map((p) => p.name)} />
     </div>
   );

@@ -17,8 +17,12 @@
  *
  * Shorts invert the move: (entry − current) / entry.
  *
+ * Positions tracked by legs and fills (scale in/out, spreads) pass `legs`: the gain is then the return on capital
+ * at risk from legs.ts positionPnl (realized + unrealized), still through this one function.
+ *
  * The AI never feeds this function. Every number comes from stored data or a market provider.
  */
+import { positionPnl, type FillRecord, type LegError, type LegMark, type LegSpec, type PositionPnl } from "./legs";
 
 export type Direction = "LONG" | "SHORT";
 export type GainBasis = "TODAY" | "PEAK" | "EXIT" | "NONE";
@@ -42,6 +46,15 @@ export interface GainInput {
   marketPeak?: PricePoint | null;
   /** A peak a person recorded, entry basis. */
   recordedPeak?: PricePoint | null;
+  /**
+   * Legs and fills. When present (with at least one fill) the gain comes from them. `marks` are market quotes per
+   * leg id, MARKET basis (splitFactor converts stock legs; option legs are never split-adjusted).
+   */
+  legs?: {
+    specs: readonly (LegSpec & { kind: "STOCK" | "OPTION" })[];
+    fills: readonly FillRecord[];
+    marks: ReadonlyMap<string, (PricePoint & { stale?: boolean }) | null>;
+  } | null;
 }
 
 export interface Gain {
@@ -57,6 +70,10 @@ export interface Gain {
   splitNote: string | null;
   /** Best price known since entry, entry basis, and the gain to it. */
   peak: { price: number; at: Date | null; pct: number } | null;
+  /** Set for positions tracked by legs and fills. */
+  pnl?: PositionPnl | null;
+  /** A leg's fill history is impossible (over-close, reopen after flat). */
+  legError?: string | null;
 }
 
 function factorOf(value: number | null | undefined): number {
@@ -83,6 +100,7 @@ export function computeGain(input: GainInput): Gain {
   const splitNote = describeSplit(input.splitFactor);
   const blank: Gain = { pct: null, current: null, currentAt: null, source: "none", stale: false, splitNote, peak: null };
   if (input.basis === "NONE") return blank;
+  if (input.legs && input.legs.fills.length) return legsGain(input, splitNote);
   const entry = input.entryPrice;
   if (entry == null || !Number.isFinite(entry) || entry <= 0) return { ...blank, source: "missing" };
 
@@ -130,6 +148,55 @@ export function computeGain(input: GainInput): Gain {
 
   if (!current) return { ...blank, source: "missing", peak: peakOut };
   return { pct: pctOf(current.price), current: current.price, currentAt: current.at, source, stale, splitNote, peak: peakOut };
+}
+
+function legsGain(input: GainInput, splitNote: string | null): Gain {
+  const legs = input.legs as NonNullable<GainInput["legs"]>;
+  const factor = factorOf(input.splitFactor);
+  const marks = new Map<string, LegMark | null>();
+  let markAt: Date | null = null;
+  for (const spec of legs.specs) {
+    const quote = legs.marks.get(spec.id);
+    if (!quote || !Number.isFinite(quote.price) || quote.price < 0) {
+      marks.set(spec.id, null);
+      continue;
+    }
+    marks.set(spec.id, { price: spec.kind === "STOCK" ? quote.price * factor : quote.price, stale: Boolean(quote.stale), at: quote.at });
+    if (quote.at && (!markAt || quote.at > markAt)) markAt = quote.at;
+  }
+  let pnl: PositionPnl;
+  try {
+    pnl = positionPnl(legs.specs, legs.fills, marks);
+  } catch (error) {
+    return { pct: null, current: null, currentAt: null, source: "missing", stale: false, splitNote, peak: null, pnl: null, legError: (error as LegError).message };
+  }
+  const closed = pnl.status === "CLOSED";
+  const single = pnl.legs.filter((leg) => leg.openedQty > 0).length === 1 ? pnl.legs.find((leg) => leg.openedQty > 0) ?? null : null;
+  const singleMark = single ? (marks.get(single.legId) ?? null) : null;
+  // Peak: only for a single leg, measured from its average cost.
+  let peak: Gain["peak"] = null;
+  if (single && single.wavgEntry && single.wavgEntry > 0) {
+    const direction: Direction = single.direction === -1 ? "SHORT" : "LONG";
+    const candidates: PricePoint[] = [];
+    if (input.marketPeak && input.marketPeak.price > 0) candidates.push({ price: input.marketPeak.price * factor, at: input.marketPeak.at });
+    if (!closed && singleMark) candidates.push({ price: singleMark.price, at: singleMark.at });
+    if (closed && single.wavgExit) candidates.push({ price: single.wavgExit, at: single.closedAt });
+    for (const point of candidates) {
+      const pct = gainPct(direction, single.wavgEntry, point.price);
+      if (!peak || pct > peak.pct) peak = { price: point.price, at: point.at, pct };
+    }
+  }
+  if (pnl.pct == null) return { pct: null, current: null, currentAt: null, source: "missing", stale: false, splitNote, peak, pnl };
+  return {
+    pct: pnl.pct,
+    current: closed ? pnl.exitPerUnit : (singleMark?.price ?? null),
+    currentAt: closed ? pnl.lastAt : markAt,
+    source: closed ? "exit" : pnl.stale ? "stale" : "live",
+    stale: !closed && pnl.stale,
+    splitNote,
+    peak,
+    pnl,
+  };
 }
 
 /** The basis a position uses by default: frozen at exit once closed, live while open. */

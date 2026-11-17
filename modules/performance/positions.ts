@@ -278,7 +278,19 @@ export function planImport(input: {
   existing: readonly ExistingPosition[];
   today: Date;
 }): ImportPlan {
-  const table = parseCsv(input.csv);
+  const { csv, ...rest } = input;
+  return planImportTable({ ...rest, table: parseCsv(csv) });
+}
+
+/** The same dry run over rows already split into cells (a Google Sheet or an Airtable table). */
+export function planImportTable(input: {
+  table: string[][];
+  defaultPortfolio: string;
+  portfolios: readonly string[];
+  existing: readonly ExistingPosition[];
+  today: Date;
+}): ImportPlan {
+  const table = input.table.filter((r) => r.some((cell) => String(cell ?? "").trim() !== ""));
   const empty: ImportPlan = { rows: [], newPortfolios: [], unknownColumns: [], counts: { create: 0, close: 0, skip: 0, error: 0 } };
   if (table.length < 2) return { ...empty, rows: [{ line: 1, portfolio: "", action: "error", message: "Paste a header row and at least one recommendation.", draft: null, existingId: null }], counts: { ...empty.counts, error: 1 } };
   const header = table[0] as string[];
