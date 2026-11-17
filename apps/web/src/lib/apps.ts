@@ -68,8 +68,15 @@ const CARDS: AppCard[] = [
   {
     moduleId: "funnels",
     name: "Funnels",
-    description: "Launch video funnels and text-letter sites with opt-ins.",
+    description: "Launch video funnels and microsites with waitlist opt-ins.",
     icon: "🚀",
+    category: "Media & Audience",
+  },
+  {
+    moduleId: "miniblog",
+    name: "Mini-Blog",
+    description: "Small public blogs with an archive and SMS subscribe page.",
+    icon: "✍️",
     category: "Media & Audience",
   },
   {
