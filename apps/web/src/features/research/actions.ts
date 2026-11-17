@@ -8,8 +8,9 @@ import { isEmail, normalizeEmail } from "../../../../../modules/research/access"
 import { CARD_TYPES, normalizeKeyPoints, normalizeTags } from "../../../../../modules/research/extract";
 import { nextPosition } from "../../../../../modules/research/outline";
 import { canEdit, canManage, projectFor, researchContext, type ResearchViewer } from "./context";
-import { ingestFile, ingestPasted, ingestUrl, ingestYoutube, type IngestOutcome } from "./ingest";
-import { refreshBrainNote, removeBrainNote, runExtraction, runGrouping } from "./server";
+import { CAPTURE_MAX_CHARS, CAPTURE_MIN_CHARS } from "../../../../../modules/research/capture";
+import { ingestFile, ingestPasted, ingestUrl, ingestX, ingestYoutube, type IngestOutcome } from "./ingest";
+import { refreshBrainNote, removeBrainNote, runCondense, runExtraction, runGrouping } from "./server";
 
 function text(formData: FormData, key: string, max = 300): string {
   return String(formData.get(key) ?? "").trim().slice(0, max);
@@ -149,22 +150,29 @@ export async function addSource(formData: FormData) {
   let outcome: IngestOutcome;
   if (kind === "url") outcome = await ingestUrl(text(formData, "url", 2000), title);
   else if (kind === "youtube") outcome = await ingestYoutube(text(formData, "youtube", 2000), title, String(formData.get("transcript") ?? "").slice(0, 400_000));
+  else if (kind === "x") outcome = await ingestX(text(formData, "xUrl", 2000), title, String(formData.get("xText") ?? "").slice(0, 400_000));
   else if (kind === "file") {
     const file = formData.get("file");
     outcome = file instanceof File && file.size > 0 ? await ingestFile(file, title) : { error: "Choose a file to upload." };
   } else outcome = ingestPasted({ text: String(formData.get("pasted") ?? "").slice(0, 400_000), title, url: text(formData, "pastedUrl", 2000) });
   if ("error" in outcome) go(`${back}?add=${encodeURIComponent(kind || "text")}`, { error: outcome.error });
+  await saveSource(viewer, project.id, outcome);
+  go(back, { notice: outcome.readVia === "jina" || outcome.readVia === "wayback" ? `Source added (read through ${outcome.readVia === "jina" ? "a reader service" : "the Wayback Machine archive"}, because the page blocked a direct read). Cards will appear in a minute.` : "Source added. Cards will appear in a minute." });
+}
 
+/** Store an ingested source and start extracting its cards. */
+async function saveSource(viewer: ResearchViewer, projectId: string, outcome: Exclude<IngestOutcome, { error: string }>) {
   const db = tenantDb(viewer.organizationId);
   const source = await db.researchSource.create({
     data: {
       organizationId: viewer.organizationId,
-      projectId: project.id,
+      projectId,
       kind: outcome.kind,
       inputType: outcome.inputType,
       title: outcome.title,
       sourceRef: outcome.sourceRef,
       rawText: outcome.text,
+      readVia: outcome.readVia ?? null,
       status: "QUEUED",
       createdById: viewer.actorId,
     },
@@ -181,10 +189,46 @@ export async function addSource(formData: FormData) {
       },
     });
   }
-  await touch(viewer, project.id);
-  await audit(viewer, "research.source.added", project.id, { sourceId: source.id, kind: outcome.kind });
-  after(() => runExtraction({ ...runInput(viewer, project.id), sourceId: source.id }));
-  go(back, { notice: "Source added. Cards will appear in a minute." });
+  await touch(viewer, projectId);
+  await audit(viewer, "research.source.added", projectId, { sourceId: source.id, kind: outcome.kind, readVia: outcome.readVia ?? null });
+  after(() => runExtraction({ ...runInput(viewer, projectId), sourceId: source.id }));
+  return source.id;
+}
+
+/**
+ * The bookmarklet's capture page: the text of a page the person had open in
+ * their own browser. It goes into an existing project or a new one.
+ */
+export async function addCapturedSource(formData: FormData) {
+  const viewer = await viewerOrBack();
+  let projectId = text(formData, "projectId", 40);
+  if (projectId === "new") {
+    if (!viewer.canWrite) go("/research/capture", { error: "You need research.write to start a project." });
+    const project = await tenantDb(viewer.organizationId).researchProject.create({
+      data: { organizationId: viewer.organizationId, brandId: viewer.brandId, ownerId: viewer.userId, name: text(formData, "newName", 160) || text(formData, "title", 160) || "Captured research", description: "" },
+    });
+    await audit(viewer, "research.project.created", project.id, { via: "capture" });
+    projectId = project.id;
+  }
+  const { project } = await projectOrBack(projectId, "edit");
+  const body = String(formData.get("text") ?? "").slice(0, CAPTURE_MAX_CHARS);
+  if (body.trim().length < CAPTURE_MIN_CHARS) go("/research/capture", { error: "Too little text arrived. Select the article text on the page and click the bookmarklet again." });
+  const outcome = ingestPasted({ text: body, title: text(formData, "title", 200), url: text(formData, "url", 2000) });
+  if ("error" in outcome) go("/research/capture", { error: outcome.error });
+  await saveSource(viewer, project.id, { ...outcome, kind: outcome.sourceRef ? "url" : "text", readVia: "capture" });
+  go(`/research/${project.id}`, { notice: "Captured. Cards will appear in a minute." });
+}
+
+/** Condense: merge the chosen cards (a group, or all) into fewer, denser cards. */
+export async function condenseCards(formData: FormData) {
+  const { viewer, project } = await projectOrBack(text(formData, "projectId", 40), "edit");
+  const scope = text(formData, "scope", 80);
+  const target = Number(text(formData, "target", 4)) || null;
+  const replace = formData.get("replace") === "on";
+  await tenantDb(viewer.organizationId).researchProject.updateMany({ where: { id: project.id }, data: { condenseStatus: "QUEUED", condenseError: null } });
+  await audit(viewer, "research.cards.condense_requested", project.id, { scope: scope || "all", replace });
+  after(() => runCondense({ ...runInput(viewer, project.id), scope: scope || null, target, replace }));
+  go(`/research/${project.id}`, { notice: "Condensing cards…" });
 }
 
 export async function rerunSource(formData: FormData) {

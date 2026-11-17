@@ -8,6 +8,7 @@ export const INSIGHT_VIEWS = [
   ["lessons", "Lessons"],
   ["directory", "Directory"],
   ["bulk", "Bulk re-analyze"],
+  ["training", "Training library"],
 ] as const;
 
 export function InsightsNav({ active }: { active: string }) {

@@ -29,6 +29,12 @@ model PromoPackage {
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   deletedAt      DateTime?          @map("deleted_at")
+  /// Live web research for timely hooks: [{ id, headline, summary, when, whyItMatters, sourceTitle, sourceUrl, checked }].
+  research       Json               @default("[]")
+  /// NONE | QUEUED | RUNNING | DONE | FAILED
+  researchStatus String             @default("NONE") @map("research_status")
+  researchError  String?            @map("research_error")
+  researchedAt   DateTime?          @map("researched_at")
   components     PromoPackageComponent[]
 
   @@index([organizationId, brandId, promoId])
@@ -51,6 +57,8 @@ model PromoPackageComponent {
   /// Risky phrases found by the claims post-check on the current content.
   flags          Json                   @default("[]")
   currentVersion Int                    @default(0) @map("current_version")
+  /// Training-library examples the last generation used: [{ id, title }].
+  examplesUsed   Json                   @default("[]") @map("examples_used")
   createdAt      DateTime               @default(now()) @map("created_at")
   updatedAt      DateTime               @updatedAt @map("updated_at")
   package        PromoPackage           @relation(fields: [packageId], references: [id], onDelete: Cascade)
@@ -81,4 +89,34 @@ model PromoPackageComponentVersion {
   @@unique([componentId, version])
   @@index([organizationId])
   @@map("promo_package_component_versions")
+}
+
+/// A reusable example for the Packager: an approved component or a best performer. Generation retrieves the closest ones as context.
+model PromoTrainingExample {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  /// The component type it teaches (a PACKAGE_COMPONENTS kind).
+  kind           String
+  publication    String?
+  niche          String    @default("general")
+  title          String
+  content        String
+  /// component | best-performer | manual
+  source         String    @default("manual")
+  /// "component:<id>" or "best-performer:<promoId>"; null for manual examples.
+  sourceRef      String?   @map("source_ref")
+  promoId        String?   @map("promo_id") @db.Uuid
+  tags           String[]  @default([])
+  note           String?
+  enabled        Boolean   @default(true)
+  /// A person changed it: automatic refreshes leave it alone.
+  edited         Boolean   @default(false)
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([brandId, sourceRef])
+  @@index([organizationId, brandId, kind])
+  @@map("promo_training_examples")
 }

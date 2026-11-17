@@ -10,8 +10,13 @@ export type { Niche };
 
 export type ComponentGroup = "Page" | "Email" | "Ad" | "Editorial";
 export type Voice = "third" | "mixed" | "editorial";
+/** premium = the launch-critical copy, written by the strongest model; standard = high-volume short pieces. */
+export type ModelTier = "premium" | "standard";
+export type Effort = "low" | "medium" | "high" | "xhigh";
+/** internal: sees every web-research finding (editorial use); reader: only editor-checked ones. */
+export type ResearchUse = "internal" | "reader" | null;
 
-export type ComponentSpec = {
+type BaseSpec = {
   kind: string;
   label: string;
   group: ComponentGroup;
@@ -30,9 +35,11 @@ export type ComponentSpec = {
   instructions: string;
 };
 
+export type ComponentSpec = BaseSpec & { tier: ModelTier; effort: Effort; research: ResearchUse };
+
 const SUBJECTS = ["Subject line 1", "Subject line 2", "Subject line 3", "Subject line 4", "Preview text", "Body", "P.S."];
 
-export const PACKAGE_COMPONENTS: readonly ComponentSpec[] = [
+const BASE_COMPONENTS: readonly BaseSpec[] = [
   {
     kind: "alternative-headlines",
     label: "Alternative headlines",
@@ -213,7 +220,7 @@ Order forms are long. Name and sell each item on its own line rather than compre
     voice: "editorial",
     heavy: true,
     fields: ["Big idea and themes", "Emotional thread", "The expert's angle", "Article ideas", "Timely hooks to research", "Do not spoil"],
-    instructions: `An internal guide of 600 to 1,000 words for the editorial team, so their regular content warms readers up for this promo. Not reader-facing copy. Cover the promo's themes and big idea, the emotional thread, the expert's angle, five to eight article or segment ideas that support the promo without spoiling it, timely hooks the editors should research and confirm themselves (do not state news or facts as true), and what must stay unrevealed.`,
+    instructions: `An internal guide of 600 to 1,000 words for the editorial team, so their regular content warms readers up for this promo. Not reader-facing copy. Cover the promo's themes and big idea, the emotional thread, the expert's angle, five to eight article or segment ideas that support the promo without spoiling it, timely hooks (from the web research provided: put each one's source link next to it, present unchecked items as leads for the editors to confirm, never state news or facts that are not in the research, and suggest what else to look into), and what must stay unrevealed.`,
   },
   {
     kind: "event-lift-notes",
@@ -286,6 +293,47 @@ Order forms are long. Name and sell each item on its own line rather than compre
     instructions: `Short reminders for registered people: for example "tomorrow", "in a few hours" and "we're live now". Each has a short, urgent body with the join link placeholder [LINK] and the event date and time. End with "[Sign off]".`,
   },
 ];
+
+/**
+ * Model tier, effort and research use per component: the launch copy (lift
+ * notes, order form, upsell, headlines, editorial guide) gets the strongest
+ * model and more effort; the many short ads get a faster model and less.
+ */
+const TIERS: Record<string, { tier: ModelTier; effort: Effort; research: ResearchUse }> = {
+  "alternative-headlines": { tier: "premium", effort: "high", research: null },
+  "vsl-lift-notes": { tier: "premium", effort: "high", research: "reader" },
+  "space-ads": { tier: "standard", effort: "medium", research: "reader" },
+  "short-text-ads": { tier: "standard", effort: "low", research: null },
+  "cart-abandon-emails": { tier: "standard", effort: "medium", research: null },
+  "exit-popup": { tier: "standard", effort: "low", research: null },
+  "facebook-video-ads": { tier: "standard", effort: "medium", research: null },
+  "youtube-video-ads": { tier: "standard", effort: "medium", research: null },
+  "facebook-text-ads": { tier: "standard", effort: "low", research: null },
+  "order-form": { tier: "premium", effort: "xhigh", research: null },
+  "lifetime-upsell": { tier: "premium", effort: "high", research: null },
+  "editorial-guide": { tier: "premium", effort: "high", research: "internal" },
+  "event-lift-notes": { tier: "premium", effort: "high", research: "reader" },
+  "event-space-ads": { tier: "standard", effort: "medium", research: "reader" },
+  "event-warmup-emails": { tier: "premium", effort: "high", research: "reader" },
+  "event-text-ads": { tier: "standard", effort: "low", research: null },
+  "event-reminder-emails": { tier: "standard", effort: "low", research: null },
+};
+
+export const PACKAGE_COMPONENTS: readonly ComponentSpec[] = BASE_COMPONENTS.map((spec) => ({
+  ...spec,
+  ...(TIERS[spec.kind] ?? { tier: spec.heavy ? "premium" : "standard", effort: spec.heavy ? "high" : "medium", research: null }),
+}));
+
+/** The standard tier's model. Set PACKAGER_STANDARD_MODEL to the default model to write everything with it. */
+export const STANDARD_MODEL = "claude-sonnet-5-5";
+
+/** The model for a tier; undefined means the platform default (the strongest model). */
+export function modelFor(tier: ModelTier, env: Record<string, string | undefined> = {}): string | undefined {
+  if (tier === "standard") return env.PACKAGER_STANDARD_MODEL?.trim() || STANDARD_MODEL;
+  return env.PACKAGER_PREMIUM_MODEL?.trim() || undefined;
+}
+
+export const TIER_LABEL: Record<ModelTier, string> = { premium: "Premium model", standard: "Fast model" };
 
 export const COMPONENT_GROUPS: readonly ComponentGroup[] = ["Page", "Email", "Ad", "Editorial"];
 
@@ -450,6 +498,10 @@ export function componentPrompt(input: {
   bestPerformers: readonly BestPerformer[];
   brainNotes: readonly BrainNote[];
   previous?: { content: string; feedback: string } | null;
+  /** examplesBlock(...) from the training library. */
+  examples?: string;
+  /** findingsBlock(...) from the package's web research. */
+  research?: string;
 }): string {
   const { promo, direction, spec } = input;
   const a = promo.analysis;
@@ -511,6 +563,9 @@ export function componentPrompt(input: {
         .join("\n\n")}\n</brain_notes>`,
     );
   }
+
+  if (input.examples) parts.push(input.examples);
+  if (input.research) parts.push(input.research);
 
   if (promo.sourceText.trim()) {
     const text = promo.sourceText.length > SOURCE_LIMIT ? `${promo.sourceText.slice(0, SOURCE_LIMIT)}\n[…the rest of the promo is cut for length]` : promo.sourceText;
@@ -805,4 +860,20 @@ export function packageBrainNote(input: {
   }
   lines.push("", "Use this as a reference for what this brand approves at launch; the full copy is in Promo Analyzer.");
   return { title: `Copy package: ${input.promoTitle}`, body: lines.join("\n") };
+}
+
+// ── Files ────────────────────────────────────────────────────────────────────
+
+const safeName = (name: string) => name.replace(/[^\w\- ]+/g, "").replace(/\s+/g, " ").trim().slice(0, 80) || "component";
+
+/** One Word file per component inside the zip, numbered in package order and never colliding. */
+export function componentFileNames(components: readonly { label: string }[], ext = "docx"): string[] {
+  const width = String(components.length).length < 2 ? 2 : String(components.length).length;
+  const used = new Set<string>();
+  return components.map((component, index) => {
+    let name = `${String(index + 1).padStart(width, "0")} ${safeName(component.label)}.${ext}`;
+    for (let n = 2; used.has(name.toLowerCase()); n += 1) name = `${String(index + 1).padStart(width, "0")} ${safeName(component.label)} (${n}).${ext}`;
+    used.add(name.toLowerCase());
+    return name;
+  });
 }

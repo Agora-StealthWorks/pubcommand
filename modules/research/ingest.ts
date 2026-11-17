@@ -9,7 +9,7 @@ export const MAX_SOURCE_CHARS = 300_000;
 /** Pasted text shorter than this is too thin to extract cards from. */
 export const MIN_SOURCE_CHARS = 80;
 
-export type SourceKind = "text" | "url" | "file" | "youtube";
+export type SourceKind = "text" | "url" | "file" | "youtube" | "x";
 
 // ---------------------------------------------------------------------------
 // SSRF guard

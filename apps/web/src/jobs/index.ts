@@ -12,6 +12,8 @@ import { performanceImportSync } from "./performance-import-sync";
 import { performancePriceRefresh } from "./performance-price-refresh";
 import { performanceWeeklyReport } from "./performance-weekly-report";
 import { performanceWeeklySummary } from "./performance-weekly-summary";
+import { promoBulkReanalyze } from "./promo-bulk-reanalyze";
+import { promoSheetsSync } from "./promo-sheets-sync";
 
 /**
  * Every scheduled job. Apps add theirs here (one import + one entry each).
@@ -31,4 +33,6 @@ export const JOBS: JobDefinition[] = [
   performancePriceRefresh,
   performanceWeeklyReport,
   performanceWeeklySummary,
+  promoBulkReanalyze,
+  promoSheetsSync,
 ];

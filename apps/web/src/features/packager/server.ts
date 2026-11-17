@@ -18,8 +18,12 @@ import {
   type BestPerformer,
   type BrainNote,
   type GeneratedComponent,
+  modelFor,
   type PromoContext,
 } from "../../../../../modules/promo-studio/packager";
+import { RESEARCH_SCHEMA, findingsBlock, normalizeFindings, parseFindings, researchPrompt, researchSystem, withSources, type Finding, type ResearchAnswer } from "../../../../../modules/promo-studio/timely";
+import { examplesBlock, excludeRefsFor, rankExamples } from "../../../../../modules/promo-studio/training";
+import { libraryFor } from "./training";
 
 /** A generation stuck this long (server restarted mid-run) is shown as interrupted. */
 export const STALE_GEN_MS = 15 * 60 * 1000;
@@ -82,6 +86,59 @@ const running = new Set<string>();
 export type GenerationRequest = { componentId: string; feedback?: string | null };
 
 /**
+ * Live web research for a package's timely hooks. The model searches the web
+ * and must give a source link for every finding; findings without one are
+ * dropped. Nothing found is a fact until an editor ticks it as checked.
+ */
+export async function runPackageResearch(input: { organizationId: string; packageId: string; brand: BrandFields; actorId: string | null }): Promise<void> {
+  const db = tenantDb(input.organizationId);
+  const pkg = await db.promoPackage.findFirst({ where: { id: input.packageId, deletedAt: null } });
+  if (!pkg) return;
+  const fail = (reason: string) => db.promoPackage.updateMany({ where: { id: pkg.id }, data: { researchStatus: "FAILED", researchError: reason.slice(0, 1000) } }).catch(() => undefined);
+  try {
+    const promo = await db.promo.findFirst({ where: { id: pkg.promoId, deletedAt: null }, select: { id: true, title: true, product: true } });
+    if (!promo) return;
+    await db.promoPackage.updateMany({ where: { id: pkg.id }, data: { researchStatus: "RUNNING", researchError: null } });
+    const profile = brandProfile(input.brand);
+    const analysis = await latestAnalysis(db, promo.id);
+    const direction = parseDirection(pkg.direction);
+    const answer = await runStructured<ResearchAnswer>({
+      system: researchSystem(profile.niche),
+      input: [
+        {
+          type: "text",
+          text: researchPrompt({
+            brandContext: brandPromptContext(profile),
+            today: new Date().toISOString().slice(0, 10),
+            title: promo.title,
+            product: promo.product,
+            bigIdea: analysis?.sixteenWord.bigIdea ?? "",
+            summary: analysis?.summary ?? "",
+            angle: direction.angle,
+            eventName: direction.event?.name ?? null,
+          }),
+        },
+      ],
+      schema: RESEARCH_SCHEMA,
+      effort: "medium",
+      maxTokens: 16000,
+      webSearch: { maxUses: 5 },
+    });
+    if ("usage" in answer && answer.usage) {
+      await logAiUsage({ organizationId: input.organizationId, moduleId: "promo-studio", feature: "packager.research", actorId: input.actorId, usage: answer.usage });
+    }
+    if (answer.status !== "ok") return void (await fail(answer.reason));
+    const findings = normalizeFindings(answer.data, parseFindings(pkg.research));
+    await db.promoPackage.updateMany({
+      where: { id: pkg.id },
+      data: { research: findings as unknown as Prisma.InputJsonValue, researchStatus: "DONE", researchError: null, researchedAt: new Date() },
+    });
+  } catch (error) {
+    await fail(error instanceof Error ? error.message : "The web research failed.");
+  }
+}
+
+/**
  * Write (or rewrite) components of one package. Runs after the response; each
  * component has its own status that the package page polls.
  */
@@ -133,6 +190,15 @@ export async function runPackageGeneration(input: {
     const allowed = allowedText(promo, analysis, direction.offerDetails);
     const system = packagerSystem(profile.niche);
 
+    // Components that use timely hooks need the package's web research first (once).
+    const kinds = await db.promoPackageComponent.findMany({ where: { packageId: pkg.id }, select: { id: true, kind: true } });
+    const wantsResearch = kinds.some((c) => ids.includes(c.id) && componentSpec(c.kind)?.research);
+    if (wantsResearch && pkg.researchStatus === "NONE") await runPackageResearch({ organizationId: input.organizationId, packageId: pkg.id, brand: input.brand, actorId: input.actorId });
+    const fresh = wantsResearch ? await db.promoPackage.findFirst({ where: { id: pkg.id }, select: { research: true } }) : null;
+    const findings: Finding[] = parseFindings(fresh?.research ?? pkg.research);
+    const library = await libraryFor(input.organizationId, promo.brandId);
+    const excludeRefs = excludeRefsFor(kinds.map((c) => c.id), promo.id);
+
     const one = async (request: GenerationRequest) => {
       const key = `${input.organizationId}:${request.componentId}`;
       if (running.has(key)) return;
@@ -144,6 +210,8 @@ export async function runPackageGeneration(input: {
         await db.promoPackageComponent.updateMany({ where: { id: component.id }, data: { genStatus: "RUNNING", genError: null } });
         const query = `${spec.label} ${spec.itemName} ${promo.title} ${promo.product ?? ""} ${context.analysis?.bigIdea ?? ""} ${direction.angle}`;
         const previous = request.feedback != null && component.content.trim() ? { content: component.content, feedback: request.feedback } : null;
+        const picked = rankExamples(library, { kind: spec.kind, publication: promo.publisher, niche: profile.niche, excludeRefs });
+        await db.promoPackageComponent.updateMany({ where: { id: component.id }, data: { examplesUsed: picked.map((e) => ({ id: e.id, title: e.title })) as unknown as Prisma.InputJsonValue } });
         const text = componentPrompt({
           brandContext,
           promo: context,
@@ -153,12 +221,16 @@ export async function runPackageGeneration(input: {
           bestPerformers: performers,
           brainNotes: rankNotes(notes, query, 4).map((note) => ({ title: note.title, body: note.body.slice(0, 1500) })),
           previous,
+          examples: examplesBlock(picked),
+          research: spec.research ? findingsBlock(findings, spec.research) : "",
         });
         const answer = await runStructured<GeneratedComponent>({
           system,
           input: [...pdf, { type: "text", text }],
           schema: COMPONENT_SCHEMA,
-          effort: spec.heavy ? "high" : "medium",
+          // Launch copy gets the premium model and more effort; short ads a faster model.
+          model: modelFor(spec.tier, process.env),
+          effort: spec.effort,
           maxTokens: 48000,
         });
         if (answer.status !== "ok") {
@@ -169,7 +241,8 @@ export async function runPackageGeneration(input: {
           return;
         }
         await logAiUsage({ organizationId: input.organizationId, moduleId: "promo-studio", feature: "packager.generate", actorId: input.actorId, usage: answer.usage });
-        const content = componentMarkdown(spec, answer.data);
+        // Research-backed internal pieces carry the source links from the research itself.
+        const content = spec.research === "internal" ? withSources(componentMarkdown(spec, answer.data), findings) : componentMarkdown(spec, answer.data);
         await saveVersion(db, {
           organizationId: input.organizationId,
           componentId: component.id,

@@ -7,7 +7,7 @@ import { regenerateComponent, removeComponent, restoreVersion, saveComponent } f
 import { loadPackage, loadVersions } from "@/features/packager/data";
 import { CopyPreview, FlagList, GenBadge, StatusBadge } from "@/features/packager/views";
 import { AutoRefresh } from "@/features/promos/auto-refresh";
-import { componentSpec } from "../../../../../../../../../../../../modules/promo-studio/packager";
+import { TIER_LABEL, componentSpec } from "../../../../../../../../../../../../modules/promo-studio/packager";
 
 const SOURCE_LABEL: Record<string, string> = { ai: "Written by AI", regenerate: "Rewritten by AI", edit: "Edited", restore: "Restored" };
 
@@ -61,9 +61,21 @@ export default async function ComponentPage({
                 {component.quantity} {component.quantity === 1 ? "item" : "items"}
                 {component.currentVersion ? ` · version ${component.currentVersion}` : ""}
               </span>
+              {spec ? <span title={`Effort: ${spec.effort}`}>· {TIER_LABEL[spec.tier]}, {spec.effort} effort</span> : null}
             </p>
+            {component.examplesUsed.length ? (
+              <p className="[overflow-wrap:anywhere] mt-1 text-xs text-muted">
+                Learned from {component.examplesUsed.length} training example{component.examplesUsed.length === 1 ? "" : "s"}: {component.examplesUsed.map((e) => e.title).join(" · ")}{" "}
+                <Link href="/promo-studio/training" className="text-accent hover:underline">Training library</Link>
+              </p>
+            ) : null}
           </div>
-          <nav className="flex gap-2 text-sm" aria-label="Other components">
+          <nav className="flex flex-wrap gap-2 text-sm" aria-label="Other components">
+            {component.content.trim() ? (
+              <a href={`${here}/export`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 font-semibold hover:bg-canvas">
+                Word file
+              </a>
+            ) : null}
             {prev ? (
               <Link href={`${base}/${prev.id}`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 hover:bg-canvas">
                 ← Prev

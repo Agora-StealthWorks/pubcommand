@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CopyLink } from "@/features/research/copy-link";
 import { Flash } from "@/components/ui";
-import { addShare, addSource, deleteProject, deleteSource, removeShare, renameGroup, rerunSource, setBrainSharing, setPublicLink, suggestGroups, updateProject } from "@/features/research/actions";
+import { addShare, addSource, condenseCards, deleteProject, deleteSource, removeShare, renameGroup, rerunSource, setBrainSharing, setPublicLink, suggestGroups, updateProject } from "@/features/research/actions";
 import { AutoRefresh } from "@/features/research/auto-refresh";
 import { CardItem, NewCardForm } from "@/features/research/cards";
 import { canEdit, canManage, projectFor, researchContext } from "@/features/research/context";
@@ -13,7 +13,8 @@ import { IngestForm } from "@/features/research/ingest-form";
 import { OutlineBoard } from "@/features/research/outline-board";
 
 const ACCESS_LABEL = { owner: "Owner", admin: "Admin", edit: "Can edit", view: "View only", none: "" } as const;
-const KIND_LABEL: Record<string, string> = { text: "Pasted", url: "Web", file: "File", youtube: "YouTube" };
+const KIND_LABEL: Record<string, string> = { text: "Pasted", url: "Web", file: "File", youtube: "YouTube", x: "X" };
+const VIA_LABEL: Record<string, string> = { jina: "read via reader service", wayback: "read from the Wayback archive", capture: "captured in your browser" };
 
 function StatusBadge({ status, stale }: { status: string; stale: boolean }) {
   if (stale) return <Badge tone="danger">Interrupted</Badge>;
@@ -45,6 +46,7 @@ export default async function ResearchProjectPage({
 
   const sourceBusy = sources.some((source) => isBusy(source.status) && !isStale(source.status, source.updatedAt));
   const groupBusy = isBusy(project.groupStatus) && !isStale(project.groupStatus, project.updatedAt);
+  const condenseBusy = isBusy(project.condenseStatus) && !isStale(project.condenseStatus, project.updatedAt);
   const groups = [...new Set(cards.map((card) => card.groupName).filter((name): name is string => Boolean(name)))].sort();
   const tags = [...new Set(cards.flatMap((card) => card.tags))].sort();
   const sourceTitles = new Map(sources.map((source) => [source.id, source.title]));
@@ -113,11 +115,14 @@ export default async function ResearchProjectPage({
           ) : (
             <SourceList sources={sources} projectId={project.id} editable={false} />
           )}
-          {sourceBusy || groupBusy ? (
+          {sourceBusy || groupBusy || condenseBusy ? (
             <div className="flex items-center gap-3 rounded-xl border border-[#c7d7fe] bg-[#eef4ff] px-4 py-3 text-sm text-[#1e3a8a]">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#1e3a8a] border-t-transparent" aria-hidden />
-              {groupBusy ? "Sorting cards into topic groups…" : "Reading sources and writing cards… usually under a minute."} This page updates by itself. <AutoRefresh />
+              {condenseBusy ? "Condensing cards…" : groupBusy ? "Sorting cards into topic groups…" : "Reading sources and writing cards… usually under a minute."} This page updates by itself. <AutoRefresh />
             </div>
+          ) : null}
+          {project.condenseStatus === "FAILED" && project.condenseError ? (
+            <p className="rounded-md border border-[#fecdca] bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">Condense failed: {project.condenseError}</p>
           ) : null}
           {project.groupStatus === "FAILED" && project.groupError ? (
             <p className="rounded-md border border-[#fecdca] bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">Grouping failed: {project.groupError}</p>
@@ -127,12 +132,42 @@ export default async function ResearchProjectPage({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">Index cards</h2>
               {editable && cards.length > 1 ? (
-                <form action={suggestGroups}>
-                  <input type="hidden" name="projectId" value={project.id} />
-                  <Button type="submit" variant="secondary" disabled={groupBusy}>
-                    {groups.length ? "Re-suggest topic groups" : "Suggest topic groups"}
-                  </Button>
-                </form>
+                <div className="flex flex-wrap items-start gap-2">
+                  <form action={suggestGroups}>
+                    <input type="hidden" name="projectId" value={project.id} />
+                    <Button type="submit" variant="secondary" disabled={groupBusy}>
+                      {groups.length ? "Re-suggest topic groups" : "Suggest topic groups"}
+                    </Button>
+                  </form>
+                  {cards.length >= 3 ? (
+                    <details className="rounded-md border border-line bg-white px-3 py-2 text-sm">
+                      <summary className="min-h-7 cursor-pointer font-semibold text-accent">Condense</summary>
+                      <form action={condenseCards} className="mt-2 w-64 space-y-2 sm:w-72">
+                        <input type="hidden" name="projectId" value={project.id} />
+                        <p className="text-xs text-muted">Merge overlapping cards into fewer, denser ones. Facts and quotes are only kept when copied from the cards being merged.</p>
+                        <label className="block text-xs font-medium">
+                          Cards
+                          <select name="scope" defaultValue={query.group ?? ""} className="pc-control mt-1 w-full text-sm">
+                            <option value="">All {cards.length} cards</option>
+                            {groups.map((group) => (
+                              <option key={group} value={group}>{group}</option>
+                            ))}
+                            {groups.length && cards.some((card) => !card.groupName) ? <option value="__none">Ungrouped</option> : null}
+                          </select>
+                        </label>
+                        <label className="block text-xs font-medium">
+                          About how many cards (optional)
+                          <input name="target" type="number" min={1} max={60} className="pc-control mt-1 w-full text-sm" placeholder="Half" />
+                        </label>
+                        <label className="flex items-start gap-2 text-xs">
+                          <input type="checkbox" name="replace" defaultChecked className="mt-0.5 h-4 w-4" />
+                          Replace the originals (outline links move to the new cards)
+                        </label>
+                        <Button type="submit" size="sm" disabled={condenseBusy || !aiConfigured()}>Condense</Button>
+                      </form>
+                    </details>
+                  ) : null}
+                </div>
               ) : null}
             </div>
             <p className="mt-1 text-xs text-muted">Facts and quotes are copied from the source by the AI. Check each one against the source before you use it.</p>
@@ -230,7 +265,8 @@ function SourceList({ sources, projectId, editable }: { sources: SourceRow[]; pr
                   </p>
                   <p className="mt-0.5 text-xs text-muted">
                     {KIND_LABEL[source.kind] ?? source.kind}
-                    {source.inputType === "scanned-pdf" ? " · scanned PDF" : ""} · {source.createdAt.toISOString().slice(0, 10)}
+                    {source.inputType === "scanned-pdf" ? " · scanned PDF" : ""}
+                    {source.readVia && VIA_LABEL[source.readVia] ? ` · ${VIA_LABEL[source.readVia]}` : ""} · {source.createdAt.toISOString().slice(0, 10)}
                     {source.status === "DONE" ? ` · ${source.cardCount} cards` : ""}
                   </p>
                 </div>

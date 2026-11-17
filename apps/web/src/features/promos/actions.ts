@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { PROMO_STATUSES, PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
+import { syncBestPerformers } from "../packager/training";
 import { retier } from "./insights";
 import { extractSource, runPromoAnalysis } from "./server";
 
@@ -140,6 +141,10 @@ export async function updatePromoTraining(formData: FormData) {
     },
   });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.training.updated", targetType: "promo", targetId: promo.id });
+  // Starring or un-starring a best performer updates the Packager's headline examples.
+  if ((formData.get("isBestPerformer") === "on") !== promo.isBestPerformer) {
+    await syncBestPerformers({ organizationId: ctx.resolved.id, brand: ctx.brand, actorId: ctx.auth.user.id }).catch(() => undefined);
+  }
   redirect(`/promo-studio/${promo.id}?tab=training&notice=Training saved. Future analyses for this brand use it.`);
 }
 

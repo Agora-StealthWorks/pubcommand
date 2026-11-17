@@ -1,6 +1,6 @@
 "use server";
 
-import { appendOrgAudit, tenantDb } from "@pubcommand/db";
+import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { teachBrain } from "../brain/teach";
@@ -9,7 +9,11 @@ import { LESSON_CATEGORIES } from "../../../../../modules/promo-studio/lessons";
 import { PERFORMANCE_FIELDS, parseSheet, type ColumnMapping } from "../../../../../modules/promo-studio/performance";
 import { BULK_MAX } from "../../../../../modules/promo-studio/queue";
 import { promoAction } from "./guard";
-import { enqueueBulk, loadOverrides, retier, runLessonClustering, runPerformanceImport, teachLessons, teachPerformance } from "./insights";
+import { overrideProblem, mappingToHeaders, parseTierOverride } from "../../../../../modules/promo-studio/imports";
+import { SYNC_INTERVALS, cleanRange, encryptSecret, parseServiceAccount, parseSpreadsheetId } from "../../../../../modules/promo-studio/sheets";
+import { cancelQueued, drainBulkQueue, enqueueBulk } from "./bulk-queue";
+import { linkPerformanceRow, loadOverrides, retier, runBulkJob, runLessonClustering, runPerformanceImport, setTierOverride, teachLessons, teachPerformance, undoImport } from "./insights";
+import { loadSheetSync, previewSheetHeaders, runSheetSync } from "./sheets";
 
 const MAX_SHEET_BYTES = 10 * 1024 * 1024;
 const PERF = "/promo-studio/performance";
@@ -18,7 +22,7 @@ const DIRECTORY = "/promo-studio/directory";
 
 const field = (formData: FormData, key: string, max = 300) => String(formData.get(key) ?? "").trim().slice(0, max);
 function go(path: string, kind: "notice" | "error", message: string, extra = ""): never {
-  redirect(`${path}?${kind}=${encodeURIComponent(message)}${extra}`);
+  redirect(`${path}${path.includes("?") ? "&" : "?"}${kind}=${encodeURIComponent(message)}${extra}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -240,10 +244,150 @@ export async function bulkReanalyze(formData: FormData) {
   const db = tenantDb(ctx.resolved.id);
   const promos = await db.promo.findMany({ where: { id: { in: ids }, brandId: ctx.brand.id, deletedAt: null, analysisStatus: { notIn: ["QUEUED", "RUNNING"] } }, select: { id: true } });
   if (!promos.length) go("/promo-studio/bulk", "error", "Those promos are already queued.");
-  await db.promo.updateMany({ where: { id: { in: promos.map((p) => p.id) } }, data: { analysisStatus: "QUEUED", analysisError: null } });
-  for (const promo of promos) {
-    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.reanalyzed", targetType: "promo", targetId: promo.id });
+  const added = await enqueueBulk({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, promoIds: promos.map((p) => p.id), actorId: ctx.auth.user.id });
+  for (const promoId of added) {
+    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.reanalyzed", targetType: "promo", targetId: promoId, metadata: { via: "bulk" } });
   }
-  after(() => enqueueBulk(promos.map((p) => ({ organizationId: ctx.resolved.id, promoId: p.id, brand: ctx.brand, actorId: ctx.auth.user.id }))));
-  go("/promo-studio/bulk", "notice", `Queued ${promos.length} promo${promos.length === 1 ? "" : "s"}. Two run at a time.`);
+  // Start now; the every-minute job picks up anything left (and anything a restart interrupted).
+  after(() => drainBulkQueue({ run: runBulkJob, budgetMs: 10 * 60_000 }).then(() => undefined));
+  go("/promo-studio/bulk", "notice", `Queued ${added.length} promo${added.length === 1 ? "" : "s"}. Two run at a time; the queue keeps going if the server restarts.`);
+}
+
+export async function cancelBulkQueue() {
+  const ctx = await promoAction("promo.write", "/promo-studio/bulk");
+  const count = await cancelQueued(ctx.resolved.id, ctx.brand.id);
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.bulk.cancelled", targetType: "brand", targetId: ctx.brand.id, metadata: { count } });
+  go("/promo-studio/bulk", "notice", count ? `Took ${count} waiting promo${count === 1 ? "" : "s"} out of the queue. Running ones finish.` : "Nothing was waiting.");
+}
+
+// ---------------------------------------------------------------------------
+// Undo an import, tier overrides, hand links
+
+export async function undoPerformanceImport(formData: FormData) {
+  const ctx = await promoAction("promo.write", PERF);
+  const importId = field(formData, "importId", 40);
+  const result = await undoImport({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, importId, actorId: ctx.auth.user.id });
+  if ("error" in result) go(PERF, "error", result.error);
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.performance.import_undone", targetType: "promo_performance_import", targetId: importId, metadata: result });
+  const kept = result.kept ? ` ${result.kept} code${result.kept === 1 ? " was" : "s were"} changed by a later import and kept.` : "";
+  go(PERF, "notice", `Import undone: ${result.removed} code${result.removed === 1 ? "" : "s"} removed, ${result.restored} put back to their earlier numbers. Tiers recomputed.${kept}`);
+}
+
+export async function overrideTier(formData: FormData) {
+  const ctx = await promoAction("promo.write", PERF);
+  const performanceId = field(formData, "performanceId", 40);
+  const clear = formData.get("clear") === "1";
+  const tier = field(formData, "tier", 20);
+  const reason = field(formData, "reason", 500);
+  const back = `#row-${performanceId}`;
+  if (!clear) {
+    const problem = overrideProblem({ tier, reason });
+    if (problem || !tier) go(PERF, "error", problem ?? "Pick a tier.", back);
+  }
+  const result = await setTierOverride({
+    organizationId: ctx.resolved.id,
+    brandId: ctx.brand.id,
+    performanceId,
+    tier: clear ? null : parseTierOverride(tier),
+    reason: clear ? null : reason,
+    actorId: ctx.auth.user.id,
+  });
+  if (!result) go(PERF, "error", "That results row no longer exists.");
+  await appendOrgAudit(ctx.resolved.id, {
+    actorId: ctx.auth.user.id,
+    action: clear ? "promo.performance.tier_override_cleared" : "promo.performance.tier_overridden",
+    targetType: "promo_performance",
+    targetId: performanceId,
+    metadata: { code: result.codeKey, from: result.from, to: result.to, computed: result.computed, reason: clear ? null : reason },
+  });
+  go(PERF, "notice", clear ? `${result.codeKey}: back to the tier the data gives.` : `${result.codeKey}: tier overridden. The reason is saved with it.`, back);
+}
+
+export async function linkPerformance(formData: FormData) {
+  const ctx = await promoAction("promo.write", PERF);
+  const performanceId = field(formData, "performanceId", 40);
+  const target = field(formData, "target", 40);
+  if (target !== "auto" && target !== "none" && !/^[0-9a-f-]{36}$/i.test(target)) go(PERF, "error", "Pick a promo.", `#row-${performanceId}`);
+  const result = await linkPerformanceRow({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, performanceId, target });
+  if ("error" in result) go(PERF, "error", result.error ?? "That did not work.");
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.performance.linked", targetType: "promo_performance", targetId: performanceId, metadata: { code: result.codeKey, from: result.from, to: result.to, mode: target === "auto" || target === "none" ? target : "promo" } });
+  const message = target === "auto" ? "Matched by promo code again." : target === "none" ? "Kept unlinked; re-matching will leave it alone." : "Linked. Re-matching by code will keep this link.";
+  go(PERF, "notice", `${result.codeKey}: ${message}`, `#row-${performanceId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Google Sheets sync
+
+const SHEET = `${PERF}?sheet=1`;
+
+export async function saveSheetSync(formData: FormData) {
+  const ctx = await promoAction("promo.write", PERF);
+  const spreadsheetId = parseSpreadsheetId(field(formData, "sheet", 500));
+  if (!spreadsheetId) go(SHEET, "error", "Paste the Google Sheet's link (or its id).");
+  const range = cleanRange(field(formData, "range", 120));
+  const everyRaw = Number(field(formData, "everyHours", 4));
+  const everyHours = (SYNC_INTERVALS as readonly number[]).includes(everyRaw) ? everyRaw : 6;
+  const keyText = String(formData.get("credentials") ?? "").trim();
+  const db = tenantDb(ctx.resolved.id);
+  const existing = await loadSheetSync(ctx.resolved.id, ctx.brand.id);
+  let secret: { credentials: string; clientEmail: string } | null = null;
+  if (keyText) {
+    const account = parseServiceAccount(keyText.slice(0, 20000));
+    if ("error" in account) go(SHEET, "error", account.error);
+    const authSecret = process.env.AUTH_SECRET ?? "";
+    if (authSecret.length < 16) go(SHEET, "error", "AUTH_SECRET is not set on the server, so the key cannot be stored safely.");
+    secret = { credentials: encryptSecret(keyText, authSecret), clientEmail: account.clientEmail };
+  } else if (!existing?.credentials) {
+    go(SHEET, "error", "Paste the service-account key (JSON) once. It is stored encrypted and never shown again.");
+  }
+  const changedSheet = !existing || existing.spreadsheetId !== spreadsheetId || existing.range !== range;
+  const data = { spreadsheetId, range, everyHours, ...(secret ?? {}), ...(changedSheet ? { lastHash: null, headers: [] } : {}) };
+  if (existing) await db.promoSheetSync.updateMany({ where: { id: existing.id }, data });
+  else await db.promoSheetSync.create({ data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, createdById: ctx.auth.user.id, ...data, spreadsheetId: spreadsheetId! } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.sheet_sync.saved", targetType: "brand", targetId: ctx.brand.id, metadata: { keyReplaced: Boolean(secret) } });
+  const preview = await previewSheetHeaders({ organizationId: ctx.resolved.id, brandId: ctx.brand.id });
+  if ("error" in preview) go(SHEET, "error", `Saved, but the sheet could not be read yet: ${preview.error}`);
+  go(SHEET, "notice", "Connected. Map the columns, then turn on the sync.");
+}
+
+export async function saveSheetMapping(formData: FormData) {
+  const ctx = await promoAction("promo.write", PERF);
+  const config = await loadSheetSync(ctx.resolved.id, ctx.brand.id);
+  if (!config) go(SHEET, "error", "Connect a sheet first.");
+  const mapping = {} as ColumnMapping;
+  for (const item of PERFORMANCE_FIELDS) {
+    const value = Number(field(formData, `map_${item.key}`, 6));
+    mapping[item.key] = Number.isInteger(value) && value >= 0 && value < config!.headers.length ? value : -1;
+  }
+  if (mapping.code < 0) go(SHEET, "error", "Choose the column that holds the promo code.");
+  if (mapping.orders < 0 && mapping.revenue < 0) go(SHEET, "error", "Map orders or revenue; tiers rank on one of them.");
+  const enabled = formData.get("enabled") === "on";
+  await tenantDb(ctx.resolved.id).promoSheetSync.updateMany({
+    where: { id: config!.id },
+    data: { mapping: mappingToHeaders(mapping, config!.headers) as unknown as Prisma.InputJsonValue, enabled, lastHash: null },
+  });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.sheet_sync.mapped", targetType: "brand", targetId: ctx.brand.id, metadata: { enabled } });
+  if (formData.get("syncNow") === "1") {
+    await tenantDb(ctx.resolved.id).promoSheetSync.updateMany({ where: { id: config!.id }, data: { status: "RUNNING" } });
+    after(() => runSheetSync({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.auth.user.id, force: true }).then(() => undefined));
+    go(SHEET, "notice", "Saved. Syncing now…");
+  }
+  go(SHEET, "notice", enabled ? "Saved. The sheet syncs on its schedule." : "Saved. The scheduled sync is off.");
+}
+
+export async function syncSheetNow() {
+  const ctx = await promoAction("promo.write", PERF);
+  const config = await loadSheetSync(ctx.resolved.id, ctx.brand.id);
+  if (!config?.mapping) go(SHEET, "error", "Map the sheet's columns first.");
+  await tenantDb(ctx.resolved.id).promoSheetSync.updateMany({ where: { id: config!.id }, data: { status: "RUNNING", lastError: null } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.sheet_sync.run", targetType: "brand", targetId: ctx.brand.id });
+  after(() => runSheetSync({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.auth.user.id, force: true }).then(() => undefined));
+  go(SHEET, "notice", "Syncing now…");
+}
+
+export async function disconnectSheet() {
+  const ctx = await promoAction("promo.write", PERF);
+  await tenantDb(ctx.resolved.id).promoSheetSync.deleteMany({ where: { brandId: ctx.brand.id } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.sheet_sync.removed", targetType: "brand", targetId: ctx.brand.id });
+  go(PERF, "notice", "Sheet disconnected and its key deleted. Results already imported stay.");
 }

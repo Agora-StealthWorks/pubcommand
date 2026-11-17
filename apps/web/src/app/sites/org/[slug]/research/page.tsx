@@ -92,6 +92,11 @@ export default async function ResearchHome({
           ) : (
             <p className="rounded-xl border border-line bg-white p-4 text-sm text-muted">You can open projects shared with you. Ask an admin for research.write to start your own.</p>
           )}
+          <div className="mt-4 rounded-xl border border-line bg-white p-4 text-sm">
+            <h2 className="font-semibold">Send pages from your browser</h2>
+            <p className="mt-1 text-muted">For sites that block readers or need your login: one click sends the page you are reading to a project.</p>
+            <Link href="/research/bookmarklet" className="mt-2 inline-flex min-h-11 items-center font-semibold text-accent hover:underline">Get the bookmarklet →</Link>
+          </div>
         </aside>
       </div>
     </div>
