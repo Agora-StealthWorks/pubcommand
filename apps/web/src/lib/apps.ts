@@ -66,6 +66,13 @@ const CARDS: AppCard[] = [
     niches: ["finance"],
   },
   {
+    moduleId: "funnels",
+    name: "Funnels",
+    description: "Launch video funnels and text-letter sites with opt-ins.",
+    icon: "🚀",
+    category: "Media & Audience",
+  },
+  {
     moduleId: "forms",
     name: "Forms",
     description: "Surveys and forms with branching and results.",

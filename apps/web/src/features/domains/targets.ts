@@ -6,8 +6,8 @@
  *
  * Providers:
  *   forms     /f/<slug>      published (OPEN) forms — implemented
- *   funnels   /l/<slug>      launch funnels        — SLOT, filled at merge
- *   textsites /t/<slug>      text-letter sites     — SLOT, filled at merge
+ *   funnels   /l/<slug>      published launch funnels
+ *   textsites /t/<slug>      live text-letter sites
  *
  * To add a provider: implement `TargetProvider.list` with `tenantDb(orgId)`
  * (only published/public rows, not soft-deleted), give each target the exact
@@ -44,24 +44,37 @@ export const formsTargets: TargetProvider = {
   },
 };
 
-/*
- * SLOT: Funnels (/l/<funnel-slug>). At merge, replace with e.g.
- *
- *   export const funnelTargets: TargetProvider = {
- *     id: "funnels", label: "Launch funnels", prefix: "/l/",
- *     async list(orgId) {
- *       const rows = await tenantDb(orgId).<funnelModel>.findMany({ where: { <published>, deletedAt: null }, select: { id: true, name: true, slug: true } });
- *       return rows.map((row) => ({ id: `funnel:${row.id}`, label: row.name, path: `/l/${row.slug}` }));
- *     },
- *   };
- */
+export const funnelTargets: TargetProvider = {
+  id: "funnels",
+  label: "Launch funnels",
+  prefix: "/l/",
+  async list(organizationId) {
+    const rows = await tenantDb(organizationId).funnel.findMany({
+      where: { status: "published", deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, slug: true },
+      take: 200,
+    });
+    return rows.map((row) => ({ id: `funnel:${row.id}`, label: row.name, path: `/l/${row.slug}`, detail: `/l/${row.slug}` }));
+  },
+};
 
-/*
- * SLOT: Text-letter sites (/t/<site-slug>). Same shape, prefix "/t/",
- * ids "textsite:<id>", path `/t/${row.slug}`.
- */
+export const textSiteTargets: TargetProvider = {
+  id: "textsites",
+  label: "Text-letter sites",
+  prefix: "/t/",
+  async list(organizationId) {
+    const rows = await tenantDb(organizationId).textSite.findMany({
+      where: { status: "live", deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, slug: true },
+      take: 200,
+    });
+    return rows.map((row) => ({ id: `textsite:${row.id}`, label: row.name, path: `/t/${row.slug}`, detail: `/t/${row.slug}` }));
+  },
+};
 
-export const TARGET_PROVIDERS: TargetProvider[] = [formsTargets /* , funnelTargets, textSiteTargets */];
+export const TARGET_PROVIDERS: TargetProvider[] = [formsTargets, funnelTargets, textSiteTargets];
 
 export type TargetGroup = { id: string; label: string; targets: DomainTarget[]; error?: string };
 
