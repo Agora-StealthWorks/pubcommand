@@ -1,6 +1,7 @@
 import { tenantDb, type Prisma } from "@pubcommand/db";
 import { fromDay, todayIn, toDay } from "../../../../../modules/editorial/dates";
 import {
+  extensionPlan,
   isFrequency,
   planFollowingEdit,
   planOccurrences,
@@ -287,4 +288,46 @@ export async function deleteEvent(input: { organizationId: string; event: NonNul
 
 export function parseRepeat(value: string): Frequency | null {
   return isFrequency(value) ? value : null;
+}
+
+/**
+ * Keep every open-ended series planned `months` ahead (the extension job).
+ * Idempotent: new days only come after the latest occurrence ever planned, so
+ * a second run on the same day adds nothing and deleted occurrences stay deleted.
+ */
+export async function extendOpenSeries(organizationId: string, today: string, months?: number): Promise<{ series: number; created: number }> {
+  const db = tenantDb(organizationId);
+  const all = await db.calendarSeries.findMany({ where: { until: null, active: true, deletedAt: null }, take: 1000 });
+  let created = 0;
+  let touched = 0;
+  for (const series of all) {
+    const occurrences = await db.calendarEvent.findMany({
+      where: { seriesId: series.id },
+      select: { marketingStart: true, eventDate: true, eventEnd: true, marketingEnd: true, deletedAt: true },
+    });
+    const plan = extensionPlan({
+      series: { frequency: series.frequency, startsOn: toDay(series.startsOn)!, until: null, active: series.active, deletedAt: series.deletedAt },
+      occurrences: occurrences.map((o) => ({ ...eventDates(o), deletedAt: o.deletedAt })),
+      today,
+      months,
+    });
+    const profile = (series.profile ?? {}) as SeriesProfile;
+    for (const dates of plan) {
+      await db.calendarEvent.create({
+        data: {
+          organizationId,
+          brandId: series.brandId,
+          ...(profile as Record<string, never>),
+          name: profile.name ?? series.name,
+          stage: profile.stage ?? "Recurring",
+          ...datesData(dates),
+          seriesId: series.id,
+        },
+      });
+      created += 1;
+    }
+    if (plan.length) touched += 1;
+    await db.calendarSeries.updateMany({ where: { id: series.id }, data: { extendedAt: new Date() } });
+  }
+  return { series: touched, created };
 }

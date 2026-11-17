@@ -8,7 +8,11 @@ import { calendarPage, UUID } from "@/features/calendar/context";
 import { StatsImportForm } from "@/features/calendar/stats-import-form";
 import { Section } from "@/features/calendar/ui";
 import { fmtDayFull } from "../../../../../../../../../modules/editorial/dates";
-import type { UnmatchedRow } from "../../../../../../../../../modules/editorial/stats";
+import { unmatchedLabels, type UnmatchedRow } from "../../../../../../../../../modules/editorial/stats";
+import { Button, Input } from "@pubcommand/ui";
+import { listPublications } from "@/features/calendar/data";
+import { deleteListMappingAction, saveListMappingAction } from "@/features/calendar/settings-actions";
+import { loadListMappings } from "@/features/calendar/stats";
 
 export default async function StatsPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ import?: string; error?: string; notice?: string }> }) {
   const { slug } = await params;
@@ -16,7 +20,7 @@ export default async function StatsPage({ params, searchParams }: { params: Prom
   const ctx = await calendarPage(slug);
   if (!ctx) notFound();
   const db = tenantDb(ctx.resolved.id);
-  const [imports, matchedCount] = await Promise.all([
+  const [imports, matchedCount, mappingRows, mappings, publications] = await Promise.all([
     db.calendarStatImport.findMany({
       where: { brandId: ctx.brand.id },
       orderBy: { createdAt: "desc" },
@@ -24,10 +28,25 @@ export default async function StatsPage({ params, searchParams }: { params: Prom
       select: { id: true, filename: true, rowsParsed: true, matched: true, unmatched: true, createdAt: true },
     }),
     db.calendarSendStat.count({ where: { issue: { brandId: ctx.brand.id, deletedAt: null } } }),
+    db.calendarListMapping.findMany({ where: { brandId: ctx.brand.id }, orderBy: { label: "asc" }, take: 500 }),
+    loadListMappings(ctx.resolved.id, ctx.brand.id),
+    listPublications(ctx.resolved.id, ctx.brand.id),
   ]);
   const selectedId = query.import && UUID.test(query.import) ? query.import : imports[0]?.id;
   const selected = selectedId ? await db.calendarStatImport.findFirst({ where: { id: selectedId, brandId: ctx.brand.id } }) : null;
   const unmatched = (selected?.unmatchedRows as UnmatchedRow[] | null) ?? [];
+  const labels = unmatchedLabels(unmatched, mappings).filter((l) => !l.mapped).slice(0, 20);
+  const back = selected ? `/editorial/stats?import=${selected.id}` : "/editorial/stats";
+  const pubOptions = (
+    <>
+      <option value="">Ignore this list</option>
+      {publications.map((p) => (
+        <option key={p.id} value={p.code}>
+          {p.code} · {p.name}
+        </option>
+      ))}
+    </>
+  );
 
   return (
     <div className="max-w-4xl space-y-5">
@@ -52,6 +71,33 @@ export default async function StatsPage({ params, searchParams }: { params: Prom
                     {imp.createdAt.toISOString().slice(0, 10)} · {imp.matched}/{imp.rowsParsed} matched
                   </span>
                 </Link>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+
+      {selected && labels.length && ctx.canWrite ? (
+        <Section title="Remember these lists">
+          <p className="mb-3 text-sm text-muted">
+            These list labels did not match a publication. Say which publication each one is (or ignore it, e.g. a dedicated send), and every future import uses it.
+          </p>
+          <ul className="space-y-2">
+            {labels.map((l) => (
+              <li key={l.label}>
+                <form action={saveListMappingAction} className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-2">
+                  <input type="hidden" name="back" value={back} />
+                  <input type="hidden" name="label" value={l.label} />
+                  <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-sm font-medium">
+                    {l.label} <span className="text-muted">· {l.count} row{l.count === 1 ? "" : "s"}</span>
+                  </span>
+                  <select name="pubCode" className="pc-control max-w-full" aria-label={`Publication for ${l.label}`} defaultValue={publications[0]?.code ?? ""}>
+                    {pubOptions}
+                  </select>
+                  <Button type="submit" variant="secondary">
+                    Remember
+                  </Button>
+                </form>
               </li>
             ))}
           </ul>
@@ -89,6 +135,45 @@ export default async function StatsPage({ params, searchParams }: { params: Prom
           </TableScroll>
         </Section>
       ) : null}
+      <Section title={`Saved list mappings · ${mappingRows.length}`}>
+        <div id="mappings" />
+        <p className="mb-3 text-sm text-muted">How a list label in your export maps to a publication. A saved mapping wins over reading the code from the label.</p>
+        {mappingRows.length ? (
+          <ul className="mb-3 divide-y divide-line rounded-lg border border-line">
+            {mappingRows.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] font-medium">{m.label}</span>
+                <span className="text-muted">→ {m.pubCode || "ignored"}</span>
+                {ctx.canWrite ? (
+                  <form action={deleteListMappingAction}>
+                    <input type="hidden" name="mappingId" value={m.id} />
+                    <button type="submit" className="inline-flex h-11 w-11 items-center justify-center rounded text-muted hover:bg-canvas" aria-label={`Remove mapping for ${m.label}`}>
+                      ×
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {ctx.canWrite ? (
+          <form action={saveListMappingAction} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="back" value="/editorial/stats#mappings" />
+            <div className="min-w-0 flex-1">
+              <label className="text-sm font-medium" htmlFor="map-label">
+                List label
+              </label>
+              <Input id="map-label" name="label" required maxLength={200} placeholder="Exactly as it appears in the export" className="mt-1" />
+            </div>
+            <select name="pubCode" className="pc-control max-w-full" aria-label="Publication" defaultValue={publications[0]?.code ?? ""}>
+              {pubOptions}
+            </select>
+            <Button type="submit" variant="secondary">
+              Save mapping
+            </Button>
+          </form>
+        ) : null}
+      </Section>
     </div>
   );
 }

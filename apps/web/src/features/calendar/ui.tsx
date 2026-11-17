@@ -103,3 +103,47 @@ export function count(n: number | null | undefined): string {
 export function pct(ratio: number | null | undefined): string {
   return ratio == null ? "—" : `${(ratio * 100).toFixed(2)}%`;
 }
+
+export function PromoSelect({ promos, value, name = "promoId", label = "Promo (Promo Analyzer)", hint }: { promos: { id: string; title: string; promoStatus: string | null; stage: string | null }[]; value?: string | null; name?: string; label?: string; hint?: string }) {
+  return (
+    <Field label={label} hint={hint ?? (promos.length ? undefined : "No promos yet. Add them in Promo Analyzer.")}>
+      <select name={name} className="pc-control w-full" defaultValue={value ?? ""}>
+        <option value="">No promo</option>
+        {promos.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.title}
+            {p.stage ? ` · ${p.stage}` : ""}
+            {p.promoStatus ? ` (${p.promoStatus})` : ""}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+export function OptionSelect({ name, options, value, label }: { name: string; options: string[]; value?: string | null; label: string }) {
+  const list = value && !options.includes(value) ? [...options, value] : options;
+  return (
+    <Field label={label}>
+      <select name={name} className="pc-control w-full" defaultValue={value ?? list[0] ?? ""}>
+        {list.map((o) => (
+          <option key={o}>{o}</option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+/** A linked Promo Analyzer promo with its pipeline stage and Promo Analyzer status. */
+export function PromoLine({ promo }: { promo: { id: string; title: string; promoStatus: string | null; stage: string | null } | null }) {
+  if (!promo) return <span>—</span>;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <Link href={`/promo-studio/${promo.id}`} className="break-words [overflow-wrap:anywhere] font-medium text-accent hover:underline">
+        {promo.title}
+      </Link>
+      {promo.stage ? <span className="rounded-full bg-[#fde8f2] px-2 py-0.5 text-xs font-semibold text-[#8a1155]">{promo.stage}</span> : null}
+      {promo.promoStatus ? <span className="rounded-full bg-canvas px-2 py-0.5 text-xs text-muted">{promo.promoStatus}</span> : null}
+    </span>
+  );
+}

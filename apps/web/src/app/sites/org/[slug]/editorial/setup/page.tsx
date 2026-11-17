@@ -7,21 +7,61 @@ import { calendarPage } from "@/features/calendar/context";
 import { listChannels, listPublications } from "@/features/calendar/data";
 import { canManagePublications } from "@/features/pubsetup/module";
 import { Field, PubChip, Section } from "@/features/calendar/ui";
+import { tenantDb } from "@pubcommand/db";
+import { loadOptions } from "@/features/calendar/options";
+import { AirtablePanel, EmailsPanel, OptionsPanel, TrashPanel } from "@/features/calendar/setup-panels";
 
-export default async function SetupPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
+const SETUP_TABS = [
+  ["general", "Publications and channels"],
+  ["options", "Field options"],
+  ["emails", "Emails"],
+  ["trash", "Trash"],
+  ["airtable", "Airtable"],
+] as const;
+type SetupTab = (typeof SETUP_TABS)[number][0];
+
+export default async function SetupPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string; tab?: string }> }) {
   const { slug } = await params;
   const query = await searchParams;
   const ctx = await calendarPage(slug);
   if (!ctx) notFound();
   const [publications, channels] = await Promise.all([listPublications(ctx.resolved.id, ctx.brand.id, true), listChannels(ctx.resolved.id, ctx.brand.id)]);
   const canManage = canManagePublications(ctx.subject, ctx.scope);
+  const tab: SetupTab = SETUP_TABS.some(([key]) => key === query.tab) ? (query.tab as SetupTab) : "general";
+  const tabs = (
+    <nav className="flex flex-wrap gap-1" aria-label="Setup sections">
+      {SETUP_TABS.map(([key, label]) => (
+        <Link
+          key={key}
+          href={key === "general" ? "/editorial/setup" : `/editorial/setup?tab=${key}`}
+          className={`inline-flex min-h-11 items-center rounded-md px-3 text-sm font-medium ${tab === key ? "bg-accent text-white" : "border border-line bg-white hover:bg-canvas"}`}
+        >
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+  if (tab !== "general") {
+    const [options, saved] = tab === "options" ? await Promise.all([loadOptions(ctx.resolved.id, ctx.brand.id), tenantDb(ctx.resolved.id).calendarFieldOption.findMany({ where: { brandId: ctx.brand.id }, select: { field: true }, distinct: ["field"] })]) : [null, []];
+    return (
+      <div className="max-w-4xl space-y-5">
+        <Flash error={query.error} notice={query.notice} />
+        {tabs}
+        {tab === "options" && options ? <OptionsPanel options={options} canWrite={ctx.canWrite} customized={new Set(saved.map((r) => r.field))} /> : null}
+        {tab === "emails" ? <EmailsPanel organizationId={ctx.resolved.id} brandId={ctx.brand.id} canWrite={ctx.canWrite} /> : null}
+        {tab === "trash" ? <TrashPanel organizationId={ctx.resolved.id} brandId={ctx.brand.id} canWrite={ctx.canWrite} /> : null}
+        {tab === "airtable" ? <AirtablePanel organizationId={ctx.resolved.id} brandId={ctx.brand.id} canWrite={ctx.canWrite} /> : null}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl space-y-5">
       <Flash error={query.error} notice={query.notice} />
+      {tabs}
       <Section title={`Publications · ${publications.length}`}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <p className="min-w-0 flex-1 text-sm text-muted">
+          <p className="min-w-0 flex-1 basis-64 text-sm text-muted">
             Each newsletter or list {ctx.brand.name} mails. The code is how send stats find the right issues. Publications, their editors and branding are managed in Publication Setup.
           </p>
           {canManage ? (

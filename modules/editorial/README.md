@@ -22,3 +22,15 @@ Module id and route stay `editorial` / `/editorial`. One calendar per brand: liv
 ## Public CUB links
 
 `/p/cub/r/<token>` (reviewer) and `/p/cub/o/<token>` (owner) on the organization host. Middleware rewrites `/p/*` to `/sites/public/<slug>/*`, outside the signed-in org layout. The organization comes from the host; the 128-bit token is the credential.
+
+## Added in calendar2
+
+- `emails.ts`: CUB email kinds (`cub-request`, `cub-reminder`, `cub-owner-confirm`, `cub-complete`), merge fields, defaults, and `planCubTick`: the reminder goes at 9:05 am ET on the business day before the deadline (skipped when the round started after that moment), "revisions ready" after the deadline. Stamp columns make the `editorial.cub-emails` job (every 15 min) idempotent. Templates and the reviewer group are edited under Setup → Emails; without `RESEND_API_KEY` emails are logged and the UI says email is not set up.
+- `options.ts`: per-brand option lists (event stage/type/format, issue status/type, promo stage); defaults until a brand saves its own. Promo pipeline columns.
+- `stats.ts`: saved list mappings (label → publication code, empty = ignore) win over guessing.
+- `trash.ts`: restore rules. A series is trashed with its live occurrences at one instant and restored with exactly those.
+- `recurrence.ts` → `extensionPlan`: the `editorial.series-extend` job keeps open-ended series planned six months ahead, never re-creating deleted occurrences.
+- `airtable.ts`: optional two-way sync with a brand's own base (token sealed with `AUTH_SECRET`), field mapping by name, editable-fields-only write-back, pull upsert by record id; conflict rule in `pullDecision` (Postgres wins unless the Airtable record is newer). Job `editorial.airtable-sync` (hourly).
+- `tickers.ts`: ticker mentions and price moves from market data (finance brands only; job `editorial.ticker-prices`).
+- `editorial.brain-catchup` teaches the brand Brain about issues/events saved outside the calendar forms (Mini-Blog posts, jobs, Airtable pulls), using `brainTaughtAt`.
+- Promos: events, issues and CUB rounds link to Promo Analyzer promos (`promo_id`); a CUB round moves the promo to the CUB stage (`calendar_promo_tracks`) and stores the draft as a `cub-draft` PromoFile.

@@ -9,7 +9,12 @@ import { writingAssist } from "../../../../../modules/editorial/assist";
 import { isDay } from "../../../../../modules/editorial/dates";
 import { normalizeScope } from "../../../../../modules/editorial/recurrence";
 import { missingRequired, parseCsv } from "../../../../../modules/editorial/stats";
-import { EVENT_STAGES, ISSUE_STATUSES, isHexColor, validateEventDates } from "../../../../../modules/editorial/stages";
+import { acceptOption, type OptionLists } from "../../../../../modules/editorial/options";
+import { isHexColor, validateEventDates } from "../../../../../modules/editorial/stages";
+import { parseTickers } from "../../../../../modules/editorial/tickers";
+import { pushRecord } from "./airtable-sync";
+import { loadOptions } from "./options";
+import { findPromo } from "./promos";
 import { calendarAction, field, int, list, money, optional, time, url, UUID, withMessage, type CalendarCtx } from "./context";
 import { createEvent, deleteEvent, parseRepeat, updateEvent, type EventInput } from "./events";
 import { logAiUsage } from "../ai/usage";
@@ -22,13 +27,13 @@ function day(formData: FormData, key: string): string | null {
   return isDay(value) ? value : null;
 }
 
-function eventInput(formData: FormData): EventInput {
-  const stage = field(formData, "stage", 40);
+function eventInput(formData: FormData, options: OptionLists | null, current: string | null = null): EventInput {
+  const stage = field(formData, "stage", 60);
   return {
     name: field(formData, "name", 200),
     eventType: optional(formData, "eventType", 80),
     format: optional(formData, "format", 80),
-    stage: (EVENT_STAGES as readonly string[]).includes(stage) ? stage : "Idea",
+    stage: options ? acceptOption("event.stage", stage, options, current, options["event.stage"][0] ?? "Idea") : stage || "Idea",
     marketingStart: day(formData, "marketingStart"),
     eventDate: day(formData, "eventDate"),
     eventEnd: day(formData, "eventEnd"),
@@ -57,18 +62,35 @@ function eventInput(formData: FormData): EventInput {
 function teachEventsLater(ctx: CalendarCtx, ids: string[]) {
   after(async () => {
     for (const id of ids.slice(0, 30)) await teachEvent({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, eventId: id, actorId: ctx.actorId });
+    // Airtable write-back (soft-fail, logged); the sync job retries anything left over.
+    for (const id of ids.slice(0, 100)) await pushRecord({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, entity: "event", id });
   });
+}
+
+function issueSavedLater(ctx: CalendarCtx, issueId: string) {
+  after(async () => {
+    await teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId, actorId: ctx.actorId });
+    await pushRecord({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, entity: "issue", id: issueId });
+  });
+}
+
+/** The picked Promo Analyzer promo, if it belongs to this brand. "" clears the link. */
+async function promoIdFrom(ctx: CalendarCtx, formData: FormData): Promise<string | null> {
+  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, field(formData, "promoId", 40));
+  return promo?.id ?? null;
 }
 
 export async function createEventAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/events/new");
-  const data = eventInput(formData);
+  const data = eventInput(formData, await loadOptions(ctx.resolved.id, ctx.brand.id));
   if (!data.name) redirect(withMessage("/editorial/events/new", "error", "Give the event a name."));
   const errors = validateEventDates(data);
   if (errors.length) redirect(withMessage("/editorial/events/new", "error", errors.join(" ")));
   const repeat = parseRepeat(field(formData, "repeat", 20));
   if (repeat && !data.eventDate) redirect(withMessage("/editorial/events/new", "error", "A repeating event needs an event date."));
   const { id, generated } = await createEvent({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.actorId, data, repeat, until: day(formData, "repeatUntil") });
+  const promoId = await promoIdFrom(ctx, formData);
+  if (promoId) await tenantDb(ctx.resolved.id).calendarEvent.updateMany({ where: { id }, data: { promoId } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.event.created", targetType: "calendar_event", targetId: id });
   teachEventsLater(ctx, [id]);
   redirect(withMessage(`/editorial/events/${id}`, "notice", generated ? `Event saved with ${generated} more occurrences.` : "Event saved."));
@@ -90,14 +112,14 @@ export async function quickAddAction(formData: FormData) {
       select: { id: true },
     });
     await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.issue.created", targetType: "calendar_issue", targetId: issue.id });
-    after(() => teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId: issue.id, actorId: ctx.actorId }));
+    issueSavedLater(ctx, issue.id);
     redirect(withMessage(`/editorial/issues/${issue.id}`, "notice", "Issue added. Fill in the rest when you are ready."));
   }
   const { id } = await createEvent({
     organizationId: ctx.resolved.id,
     brandId: ctx.brand.id,
     actorId: ctx.actorId,
-    data: { ...eventInput(new FormData()), name: title, eventDate: date, stage: "Idea" },
+    data: { ...eventInput(new FormData(), null), name: title, eventDate: date, stage: (await loadOptions(ctx.resolved.id, ctx.brand.id))["event.stage"][0] ?? "Idea" },
     repeat: null,
     until: null,
   });
@@ -117,7 +139,7 @@ export async function updateEventAction(formData: FormData) {
   const before = await ownEvent(ctx, field(formData, "eventId", 40));
   const scope = normalizeScope(field(formData, "scope", 20));
   const back = `/editorial/events/${before.id}/edit?scope=${scope}`;
-  const data = eventInput(formData);
+  const data = eventInput(formData, await loadOptions(ctx.resolved.id, ctx.brand.id), before.stage);
   if (!data.name) redirect(withMessage(back, "error", "Give the event a name."));
   const errors = validateEventDates(data);
   if (errors.length) redirect(withMessage(back, "error", errors.join(" ")));
@@ -133,6 +155,9 @@ export async function updateEventAction(formData: FormData) {
     repeat,
     until: day(formData, "repeatUntil"),
   });
+  // The promo link belongs to this occurrence only.
+  const promoId = await promoIdFrom(ctx, formData);
+  if (promoId !== before.promoId) await tenantDb(ctx.resolved.id).calendarEvent.updateMany({ where: { id: before.id }, data: { promoId } });
   await appendOrgAudit(ctx.resolved.id, {
     actorId: ctx.actorId,
     action: "calendar.event.updated",
@@ -151,11 +176,11 @@ export async function deleteEventAction(formData: FormData) {
   const scope = normalizeScope(field(formData, "scope", 20));
   const count = await deleteEvent({ organizationId: ctx.resolved.id, event, scope });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.event.deleted", targetType: "calendar_event", targetId: event.id, metadata: { scope, count } });
-  redirect(withMessage("/editorial", "notice", count > 1 ? `Deleted ${count} occurrences.` : "Event deleted."));
+  redirect(withMessage("/editorial", "notice", `${count > 1 ? `${count} occurrences` : "Event"} moved to the trash. Restore from Setup → Trash.`));
 }
 
-function issueData(formData: FormData) {
-  const status = field(formData, "status", 40);
+function issueData(formData: FormData, options: OptionLists, current: string | null = null) {
+  const status = field(formData, "status", 60);
   return {
     title: field(formData, "title", 200),
     publicationCode: field(formData, "publicationCode", 40),
@@ -165,7 +190,7 @@ function issueData(formData: FormData) {
       .map((line) => line.trim().slice(0, 300))
       .filter(Boolean)
       .slice(0, 10),
-    status: (ISSUE_STATUSES as readonly string[]).includes(status) ? status : "Planned",
+    status: acceptOption("issue.status", status, options, current, options["issue.status"].includes("Planned") ? "Planned" : (options["issue.status"][0] ?? "Planned")),
     issueType: optional(formData, "issueType", 80),
     writer: optional(formData, "writer", 120),
     body: optional(formData, "body", 100_000),
@@ -173,6 +198,7 @@ function issueData(formData: FormData) {
     websiteLink: url(formData, "websiteLink"),
     ctaLink: url(formData, "ctaLink"),
     offer: optional(formData, "offer", 300),
+    tickers: parseTickers(field(formData, "tickers", 400)),
   };
 }
 
@@ -183,7 +209,7 @@ async function checkPublication(ctx: CalendarCtx, code: string, back: string) {
 
 export async function createIssueAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/issues/new");
-  const data = issueData(formData);
+  const data = { ...issueData(formData, await loadOptions(ctx.resolved.id, ctx.brand.id)), promoId: await promoIdFrom(ctx, formData) };
   if (!data.title) redirect(withMessage("/editorial/issues/new", "error", "Give the issue a title."));
   await checkPublication(ctx, data.publicationCode, "/editorial/issues/new");
   const issue = await tenantDb(ctx.resolved.id).calendarIssue.create({
@@ -198,7 +224,7 @@ export async function createIssueAction(formData: FormData) {
     select: { id: true },
   });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.issue.created", targetType: "calendar_issue", targetId: issue.id });
-  after(() => teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId: issue.id, actorId: ctx.actorId }));
+  issueSavedLater(ctx, issue.id);
   redirect(withMessage(`/editorial/issues/${issue.id}`, "notice", "Issue saved."));
 }
 
@@ -212,7 +238,7 @@ export async function updateIssueAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write");
   const issue = await ownIssue(ctx, field(formData, "issueId", 40));
   const back = `/editorial/issues/${issue.id}/edit`;
-  const data = issueData(formData);
+  const data = { ...issueData(formData, await loadOptions(ctx.resolved.id, ctx.brand.id), issue.status), promoId: await promoIdFrom(ctx, formData) };
   if (!data.title) redirect(withMessage(back, "error", "Give the issue a title."));
   await checkPublication(ctx, data.publicationCode, back);
   await tenantDb(ctx.resolved.id).calendarIssue.updateMany({
@@ -220,7 +246,7 @@ export async function updateIssueAction(formData: FormData) {
     data: { ...data, mailDate: data.mailDate ? new Date(`${data.mailDate}T00:00:00Z`) : null, updatedById: ctx.actorId },
   });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.issue.updated", targetType: "calendar_issue", targetId: issue.id });
-  after(() => teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId: issue.id, actorId: ctx.actorId }));
+  issueSavedLater(ctx, issue.id);
   redirect(withMessage(`/editorial/issues/${issue.id}`, "notice", "Saved."));
 }
 
@@ -229,7 +255,7 @@ export async function deleteIssueAction(formData: FormData) {
   const issue = await ownIssue(ctx, field(formData, "issueId", 40));
   await tenantDb(ctx.resolved.id).calendarIssue.updateMany({ where: { id: issue.id }, data: { deletedAt: new Date() } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.issue.deleted", targetType: "calendar_issue", targetId: issue.id });
-  redirect(withMessage("/editorial", "notice", "Issue deleted."));
+  redirect(withMessage("/editorial", "notice", "Issue moved to the trash. Restore it from Setup → Trash."));
 }
 
 // Publications are owned by Publication Setup now (features/pubsetup/actions.ts):

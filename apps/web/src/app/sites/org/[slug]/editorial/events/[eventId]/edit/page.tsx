@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { updateEventAction } from "@/features/calendar/actions";
 import { calendarPage } from "@/features/calendar/context";
+import { loadFormExtras } from "@/features/calendar/options";
 import { listChannels, loadEvent } from "@/features/calendar/data";
 import { EventForm } from "@/features/calendar/event-form";
 import { normalizeScope } from "../../../../../../../../../../../modules/editorial/recurrence";
@@ -18,6 +19,7 @@ export default async function EditEventPage({
   const query = await searchParams;
   const ctx = await calendarPage(slug);
   if (!ctx) notFound();
+  const extras = await loadFormExtras(ctx.resolved.id, ctx.brand);
   if (!ctx.canWrite) return <Denied title="You can view the calendar but not edit events" />;
   const [loaded, channels] = await Promise.all([loadEvent(ctx.resolved.id, ctx.brand.id, eventId), listChannels(ctx.resolved.id, ctx.brand.id)]);
   if (!loaded) notFound();
@@ -56,7 +58,7 @@ export default async function EditEventPage({
           </p>
         </div>
       ) : null}
-      <EventForm action={updateEventAction} channels={channels} loaded={loaded} scope={scope} />
+      <EventForm extras={extras} action={updateEventAction} channels={channels} loaded={loaded} scope={scope} />
     </div>
   );
 }

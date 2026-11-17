@@ -210,3 +210,61 @@ export function seriesAction(input: {
   if (!input.repeat) return input.series.active ? "stop" : "none";
   return cadenceChanged(input.series, input.repeat, input.until) ? "reschedule" : "propagate";
 }
+
+/** How far ahead the extension job keeps an open-ended series planned. */
+export const EXTEND_MONTHS = 6;
+
+/**
+ * Occurrence days of a cadence strictly after `after`, up to `horizonEnd` and
+ * the series' own end. Unlike occurrenceDays it does not stop after
+ * MAX_OCCURRENCES counted from the start, so a series that began years ago
+ * still extends.
+ */
+export function daysAfter(series: { frequency: Frequency; startsOn: string; until: string | null }, after: string, horizonEnd: string, cap = MAX_OCCURRENCES): string[] {
+  const end = series.until && series.until < horizonEnd ? series.until : horizonEnd;
+  const dayOfMonth = Number(series.startsOn.slice(8, 10));
+  const step = series.frequency === "weekly" ? 7 : series.frequency === "biweekly" ? 14 : 0;
+  const days: string[] = [];
+  if (step) {
+    const gap = Math.max(0, diffDays(series.startsOn, after));
+    for (let n = Math.floor(gap / step); days.length < cap; n += 1) {
+      const day = addDays(series.startsOn, step * n);
+      if (day > end) break;
+      if (day > after) days.push(day);
+    }
+    return days;
+  }
+  const months = series.frequency === "monthly" ? 1 : 3;
+  const monthsGap = Math.max(0, (Number(after.slice(0, 4)) - Number(series.startsOn.slice(0, 4))) * 12 + Number(after.slice(5, 7)) - Number(series.startsOn.slice(5, 7)));
+  for (let n = Math.max(0, Math.floor(monthsGap / months) - 1); days.length < cap; n += 1) {
+    const day = addMonths(series.startsOn, months * n, dayOfMonth);
+    if (day > end) break;
+    if (day > after) days.push(day);
+  }
+  return days;
+}
+
+/**
+ * The occurrences the extension job adds to one series. Only open-ended,
+ * active, untrashed series extend. New days come strictly after the latest
+ * occurrence ever planned (trashed ones included), so an occurrence someone
+ * deleted is never brought back. Dates follow the latest live occurrence's window.
+ */
+export function extensionPlan(input: {
+  series: { frequency: string; startsOn: string; until: string | null; active: boolean; deletedAt: Date | string | null };
+  /** Every occurrence of the series, trashed ones included. */
+  occurrences: (EventDates & { deletedAt: Date | string | null })[];
+  today: string;
+  months?: number;
+}): EventDates[] {
+  const s = input.series;
+  if (!s.active || s.deletedAt || s.until || !isFrequency(s.frequency)) return [];
+  const horizon = addMonths(input.today, input.months ?? EXTEND_MONTHS);
+  const planned = input.occurrences.map((o) => o.eventDate).filter((d): d is string => isDay(d)).sort();
+  const latest = planned[planned.length - 1] ?? addDays(s.startsOn, -1);
+  if (latest >= horizon) return [];
+  const live = input.occurrences.filter((o) => !o.deletedAt && isDay(o.eventDate)).sort((a, b) => a.eventDate!.localeCompare(b.eventDate!));
+  const template = live[live.length - 1] ?? null;
+  const offsets = template ? windowOffsets(template) : null;
+  return daysAfter({ frequency: s.frequency, startsOn: s.startsOn, until: null }, latest, horizon).map((day) => datesForOccurrence(day, offsets));
+}

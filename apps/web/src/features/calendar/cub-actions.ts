@@ -3,40 +3,98 @@
 import { appendOrgAudit, tenantDb } from "@pubcommand/db";
 import { redirect } from "next/navigation";
 import { CUB_SCORES, parseScore, safeFilename, zonedToUtc } from "../../../../../modules/editorial/cub";
+import { parseEmails, TEMPLATES } from "../../../../../modules/editorial/emails";
 import { currentRequest } from "@/lib/request";
 import { calendarAction, field, UUID, withMessage } from "./context";
 import { MAX_CUB_FILE_BYTES, newToken, roundByToken } from "./cub";
+import { sendRoundStart, type SendStatus } from "./cub-emails";
+import { findPromo, setPromoStage } from "./promos";
 
 const TEAM_TZ = "America/New_York";
 
+function emailNotice(result: { request: SendStatus; confirm: SendStatus; reasons: string[] }, reviewers: number, lead = "Round created."): string {
+  if (result.request === "logged") return `${lead} Email is not set up yet, so nothing was sent: copy the reviewer link below into your own message.`;
+  if (result.request === "sent") return `${lead} The request went to ${reviewers} reviewer${reviewers === 1 ? "" : "s"}.`;
+  if (result.request === "failed") return `${lead} The request email failed (${result.reasons.join(" ")}). Copy the reviewer link below instead.`;
+  return `${lead} ${result.reasons.join(" ") || "No reviewers were emailed."} Copy the reviewer link below.`;
+}
+
 export async function createCubRoundAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/cub");
-  const promoName = field(formData, "promoName", 200);
+  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, field(formData, "promoId", 40));
+  const promoName = field(formData, "promoName", 200) || promo?.title || "";
   const file = formData.get("draft");
-  if (!promoName) redirect(withMessage("/editorial/cub", "error", "Name the promo."));
+  if (!promoName) redirect(withMessage("/editorial/cub", "error", "Pick a promo or type its name."));
   if (!(file instanceof File) || file.size === 0) redirect(withMessage("/editorial/cub", "error", "Upload the draft."));
   if (file.size > MAX_CUB_FILE_BYTES) redirect(withMessage("/editorial/cub", "error", "The draft is over 50 MB."));
   const due = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(field(formData, "dueAt", 16));
   if (!due) redirect(withMessage("/editorial/cub", "error", "Set a deadline."));
-  const round = await tenantDb(ctx.resolved.id).calendarCubRound.create({
+  const reviewers = parseEmails(field(formData, "reviewers", 5000));
+  if (reviewers.invalid.length) redirect(withMessage("/editorial/cub", "error", `These do not look like email addresses: ${reviewers.invalid.slice(0, 5).join(", ")}.`));
+  const db = tenantDb(ctx.resolved.id);
+  const request = await currentRequest();
+  const draftData = new Uint8Array(await file.arrayBuffer());
+  const draftFilename = safeFilename(file.name, "draft");
+  const round = await db.calendarCubRound.create({
     data: {
       organizationId: ctx.resolved.id,
       brandId: ctx.brand.id,
+      promoId: promo?.id ?? null,
       promoName,
       instructions: field(formData, "instructions", 4000) || null,
-      draftFilename: safeFilename(file.name, "draft"),
+      draftFilename,
       draftMime: file.type || "application/octet-stream",
       draftSize: file.size,
-      draftData: new Uint8Array(await file.arrayBuffer()),
+      draftData,
       dueAt: zonedToUtc(due[1]!, due[2]!, TEAM_TZ),
       reviewToken: newToken(),
       ownerToken: newToken(),
+      initiatorEmail: ctx.auth.user.email,
+      initiatorName: ctx.auth.user.name,
+      reviewerEmails: reviewers.valid,
+      publicBase: request.origin,
       createdById: ctx.actorId,
     },
     select: { id: true },
   });
-  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.cub.created", targetType: "calendar_cub_round", targetId: round.id });
-  redirect(withMessage(`/editorial/cub/${round.id}`, "notice", "Round created. Send the reviewer link to your reviewers."));
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.cub.created", targetType: "calendar_cub_round", targetId: round.id, metadata: { reviewers: reviewers.valid.length, promoId: promo?.id ?? null } });
+
+  if (formData.get("saveGroup") === "1") {
+    const existing = await db.calendarEmailTemplate.findFirst({ where: { brandId: ctx.brand.id, kind: "cub-request" } });
+    if (existing) await db.calendarEmailTemplate.updateMany({ where: { id: existing.id }, data: { recipients: reviewers.valid, updatedById: ctx.actorId } });
+    else {
+      const spec = TEMPLATES["cub-request"];
+      await db.calendarEmailTemplate.create({ data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, kind: "cub-request", subject: spec.subject, body: spec.body, recipients: reviewers.valid, updatedById: ctx.actorId } });
+    }
+  }
+
+  if (promo) {
+    // The promo moves to the CUB stage and keeps the draft as its "Cub draft" file.
+    const from = await setPromoStage({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, promoId: promo.id, stage: "CUB", actorId: ctx.actorId });
+    await db.promoFile.create({
+      data: { organizationId: ctx.resolved.id, promoId: promo.id, kind: "cub-draft", category: "Cub draft", filename: draftFilename, mimeType: file.type || "application/octet-stream", size: file.size, data: draftData },
+    });
+    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.promo.stage", targetType: "promo", targetId: promo.id, metadata: { from, to: "CUB", via: "cub-round", roundId: round.id } });
+  }
+
+  const result = await sendRoundStart({ organizationId: ctx.resolved.id, roundId: round.id, subject: field(formData, "emailSubject", 250), body: field(formData, "emailBody", 10000) });
+  redirect(withMessage(`/editorial/cub/${round.id}`, result.request === "failed" ? "error" : "notice", emailNotice(result, reviewers.valid.length)));
+}
+
+/** Re-send the start emails for a round (for example after setting up email or fixing the reviewer list). */
+export async function resendCubRequestAction(formData: FormData) {
+  const ctx = await calendarAction("editorial.write", "/editorial/cub");
+  const id = field(formData, "roundId", 40);
+  if (!UUID.test(id)) redirect("/editorial/cub");
+  const db = tenantDb(ctx.resolved.id);
+  const round = await db.calendarCubRound.findFirst({ where: { id, brandId: ctx.brand.id }, select: { id: true, closedAt: true } });
+  if (!round) redirect(withMessage("/editorial/cub", "error", "That round no longer exists."));
+  const reviewers = parseEmails(field(formData, "reviewers", 5000));
+  if (reviewers.invalid.length) redirect(withMessage(`/editorial/cub/${id}`, "error", `These do not look like email addresses: ${reviewers.invalid.slice(0, 5).join(", ")}.`));
+  await db.calendarCubRound.updateMany({ where: { id }, data: { reviewerEmails: reviewers.valid } });
+  const result = await sendRoundStart({ organizationId: ctx.resolved.id, roundId: id });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.cub.resent", targetType: "calendar_cub_round", targetId: id, metadata: { reviewers: reviewers.valid.length, status: result.request } });
+  redirect(withMessage(`/editorial/cub/${id}`, result.request === "failed" ? "error" : "notice", emailNotice(result, reviewers.valid.length, "Sent again.")));
 }
 
 export async function closeCubRoundAction(formData: FormData) {

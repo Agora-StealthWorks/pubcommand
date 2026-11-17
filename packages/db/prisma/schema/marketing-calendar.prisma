@@ -30,6 +30,9 @@ model CalendarSeries {
   until          DateTime?       @db.Date
   active         Boolean         @default(true)
   profile        Json?
+  /// When the extension job last planned this series ahead.
+  extendedAt     DateTime?       @map("extended_at")
+  deletedAt      DateTime?       @map("deleted_at")
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
   occurrences    CalendarEvent[]
@@ -71,6 +74,12 @@ model CalendarEvent {
   messages       Int?
   seriesId       String?         @map("series_id") @db.Uuid
   series         CalendarSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  /// Promo Analyzer promo this event is built around (promos.id).
+  promoId        String?         @map("promo_id") @db.Uuid
+  airtableId     String?         @map("airtable_id")
+  /// Last successful write-back or pull for this row.
+  airtableSyncedAt DateTime?     @map("airtable_synced_at")
+  brainTaughtAt  DateTime?       @map("brain_taught_at")
   createdById    String?         @map("created_by_id") @db.Uuid
   updatedById    String?         @map("updated_by_id") @db.Uuid
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -79,6 +88,8 @@ model CalendarEvent {
 
   @@index([organizationId, brandId, eventDate])
   @@index([seriesId])
+  @@index([brandId, airtableId])
+  @@index([promoId])
   @@map("calendar_events")
 }
 
@@ -99,6 +110,11 @@ model CalendarIssue {
   websiteLink     String?            @map("website_link")
   ctaLink         String?            @map("cta_link")
   offer           String?
+  tickers         String[]           @default([])
+  promoId         String?            @map("promo_id") @db.Uuid
+  airtableId      String?            @map("airtable_id")
+  airtableSyncedAt DateTime?         @map("airtable_synced_at")
+  brainTaughtAt   DateTime?          @map("brain_taught_at")
   createdById     String?            @map("created_by_id") @db.Uuid
   updatedById     String?            @map("updated_by_id") @db.Uuid
   createdAt       DateTime           @default(now()) @map("created_at")
@@ -108,6 +124,8 @@ model CalendarIssue {
 
   @@index([organizationId, brandId, mailDate])
   @@index([brandId, publicationCode])
+  @@index([brandId, airtableId])
+  @@index([promoId])
   @@map("calendar_issues")
 }
 
@@ -193,6 +211,16 @@ model CalendarCubRound {
   reviewToken    String              @unique @map("review_token")
   ownerToken     String              @unique @map("owner_token")
   closedAt       DateTime?           @map("closed_at")
+  promoId        String?             @map("promo_id") @db.Uuid
+  initiatorEmail String?             @map("initiator_email")
+  initiatorName  String?             @map("initiator_name")
+  reviewerEmails String[]            @default([]) @map("reviewer_emails")
+  /// Origin the public links were made on ("https://acme.example.com"), for emails sent by the job.
+  publicBase     String?             @map("public_base")
+  requestSentAt  DateTime?           @map("request_sent_at")
+  /// Idempotency stamps for the job: the 9:05 am ET reminder and the post-deadline email.
+  reminderSentAt DateTime?           @map("reminder_sent_at")
+  deadlineNotifiedAt DateTime?       @map("deadline_notified_at")
   createdById    String?             @map("created_by_id") @db.Uuid
   createdAt      DateTime            @default(now()) @map("created_at")
   updatedAt      DateTime            @updatedAt @map("updated_at")
@@ -222,4 +250,165 @@ model CalendarCubReview {
 
   @@index([organizationId, roundId])
   @@map("calendar_cub_reviews")
+}
+
+/// An editable email template per kind (cub-request, cub-reminder, cub-owner-confirm, cub-complete).
+/// No row means the built-in default. `recipients` is the saved reviewer group (cub-request only).
+model CalendarEmailTemplate {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  kind           String
+  subject        String
+  body           String
+  recipients     String[] @default([])
+  enabled        Boolean  @default(true)
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([brandId, kind])
+  @@index([organizationId, brandId])
+  @@map("calendar_email_templates")
+}
+
+/// One email the calendar tried to send (recipient count only, never the body).
+model CalendarEmailLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  kind           String
+  roundId        String?  @map("round_id") @db.Uuid
+  recipients     Int      @default(0)
+  /// sent | logged (no RESEND_API_KEY) | failed | skipped
+  status         String
+  error          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, brandId, createdAt])
+  @@index([roundId])
+  @@map("calendar_email_logs")
+}
+
+/// A remembered send-stat list label → publication code. An empty pubCode means "ignore this list".
+model CalendarListMapping {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  /// Normalized label (trimmed, lower case, single spaces); the lookup key.
+  labelKey       String   @map("label_key")
+  label          String
+  pubCode        String   @default("") @map("pub_code")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([brandId, labelKey])
+  @@index([organizationId, brandId])
+  @@map("calendar_list_mappings")
+}
+
+/// An admin-editable dropdown value for one field (event.stage, event.type, event.format,
+/// issue.status, issue.type, promo.stage). No rows for a field means the built-in defaults.
+model CalendarFieldOption {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  field          String
+  value          String
+  color          String?
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([brandId, field, value])
+  @@index([organizationId, brandId, field])
+  @@map("calendar_field_options")
+}
+
+/// A Promo Analyzer promo on the calendar's promo pipeline: its workflow stage and launch date.
+model CalendarPromoTrack {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  promoId        String    @unique @map("promo_id") @db.Uuid
+  stage          String    @default("Idea")
+  launchDate     DateTime? @map("launch_date") @db.Date
+  launchEstimated Boolean  @default(false) @map("launch_estimated")
+  writers        String[]  @default([])
+  notes          String?
+  updatedById    String?   @map("updated_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId, brandId, stage])
+  @@map("calendar_promo_tracks")
+}
+
+/// Prices for a ticker mentioned in an issue, as of the issue's mail date (finance brands).
+model CalendarTickerPrice {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  ticker         String
+  issueDate      DateTime  @map("issue_date") @db.Date
+  issueClose     Float?    @map("issue_close")
+  peak           Float?
+  peakPct        Float?    @map("peak_pct")
+  current        Float?
+  currentPct     Float?    @map("current_pct")
+  source         String?
+  error          String?
+  fetchedAt      DateTime? @map("fetched_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([brandId, ticker, issueDate])
+  @@index([organizationId, brandId])
+  @@map("calendar_ticker_prices")
+}
+
+/// The brand's own Airtable base for optional two-way sync. The token is encrypted with AUTH_SECRET.
+model CalendarAirtableConnection {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @unique @map("brand_id") @db.Uuid
+  baseId         String    @map("base_id")
+  tokenEnc       String    @map("token_enc")
+  eventsTable    String?   @map("events_table")
+  issuesTable    String?   @map("issues_table")
+  /// { calendarField: "Airtable field name" } per table.
+  eventFields    Json?     @map("event_fields")
+  issueFields    Json?     @map("issue_fields")
+  /// Airtable field names that are computed (formula, rollup...) and never written.
+  readOnlyFields String[]  @default([]) @map("read_only_fields")
+  enabled        Boolean   @default(true)
+  lastPullAt     DateTime? @map("last_pull_at")
+  lastStatus     String?   @map("last_status")
+  lastError      String?   @map("last_error")
+  updatedById    String?   @map("updated_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@map("calendar_airtable_connections")
+}
+
+/// Airtable sync observability: one row per push or pull outcome.
+model CalendarSyncLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  /// push | pull
+  direction      String
+  /// event | issue
+  entity         String
+  recordId       String?  @map("record_id") @db.Uuid
+  airtableId     String?  @map("airtable_id")
+  /// ok | error | skipped
+  status         String
+  message        String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, brandId, createdAt])
+  @@map("calendar_sync_logs")
 }

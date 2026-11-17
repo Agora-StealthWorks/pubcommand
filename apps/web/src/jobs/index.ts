@@ -1,4 +1,9 @@
 import type { JobDefinition } from "@/lib/jobs/types";
+import { editorialAirtableSync } from "./editorial-airtable-sync";
+import { editorialBrainCatchup } from "./editorial-brain-catchup";
+import { editorialCubEmails } from "./editorial-cub-emails";
+import { editorialSeriesExtend } from "./editorial-series-extend";
+import { editorialTickerPrices } from "./editorial-ticker-prices";
 import { formsMirrorRetry } from "./forms-mirror-retry";
 import { formsNotifications } from "./forms-notifications";
 import { formsOrphanCleanup } from "./forms-orphan-cleanup";
@@ -24,6 +29,11 @@ import { promoSheetsSync } from "./promo-sheets-sync";
  * Keep the list sorted by name.
  */
 export const JOBS: JobDefinition[] = [
+  editorialAirtableSync,
+  editorialBrainCatchup,
+  editorialCubEmails,
+  editorialSeriesExtend,
+  editorialTickerPrices,
   formsMirrorRetry,
   formsNotifications,
   formsOrphanCleanup,

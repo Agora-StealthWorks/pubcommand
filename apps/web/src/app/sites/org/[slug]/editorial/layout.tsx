@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Denied } from "@/components/ui";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
+import { showsTickers } from "@/features/calendar/tickers";
 
 const TABS = [
   ["/editorial", "List"],
@@ -12,7 +13,9 @@ const TABS = [
   ["/editorial/analytics", "Analytics"],
   ["/editorial/whats-working", "What's Working"],
   ["/editorial/stats", "Send stats"],
+  ["/editorial/promos", "Promos"],
   ["/editorial/cub", "CUB Collector"],
+  ["/editorial/tickers", "Tickers"],
   ["/editorial/setup", "Setup"],
 ] as const;
 
@@ -32,6 +35,9 @@ export default async function MarketingCalendarLayout({ children, params }: { ch
   const request = await currentRequest();
   const active = activeTab(request.pathname);
   const writable = can(ctx.subject, "editorial.write", ctx.scope);
+  // Tickers is a finance-brand view.
+  const brand = ctx.brand;
+  const tabs = TABS.filter(([href]) => href !== "/editorial/tickers" || showsTickers(brand));
 
   return (
     <div className="min-w-0">
@@ -52,7 +58,7 @@ export default async function MarketingCalendarLayout({ children, params }: { ch
         ) : null}
       </div>
       <nav className="-mx-1 mb-5 flex gap-1 overflow-x-auto border-b border-line" aria-label="Marketing Calendar sections">
-        {TABS.map(([href, label]) => (
+        {tabs.map(([href, label]) => (
           <Link
             key={href}
             href={href}
