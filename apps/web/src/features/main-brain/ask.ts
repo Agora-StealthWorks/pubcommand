@@ -1,6 +1,7 @@
 import { runStructured } from "@pubcommand/ai";
 import type { Prisma } from "@pubcommand/db";
 import { ASK_NOTE_LIMIT, ASK_SCHEMA, ASK_SYSTEM, askPrompt, normalizeAskAnswer, type AskAnswer, type AskAnswerRaw, type AskSource } from "../../../../../modules/knowledge/ask";
+import { supersededNoteIds } from "../brain-conflicts/flags";
 import { mainBrain } from "./db";
 import { provenanceNames, searchMainNotes } from "./notes";
 
@@ -16,7 +17,10 @@ export async function runMainAsk(input: { questionId: string; actorId: string | 
     const row = await mainBrain((tx) => tx.mainBrainQuestion.findUnique({ where: { id: input.questionId } }));
     if (!row) return;
     await mainBrain((tx) => tx.mainBrainQuestion.update({ where: { id: row.id }, data: { status: "RUNNING", error: null } }));
-    const hits = await searchMainNotes({ query: row.question, mode: "any", limit: ASK_NOTE_LIMIT });
+    // Notes marked outdated in the conflict review stay in the Brain but never feed an answer.
+    const found = await searchMainNotes({ query: row.question, mode: "any", limit: ASK_NOTE_LIMIT * 2 });
+    const outdated = await supersededNoteIds(found.map((hit) => hit.id));
+    const hits = found.filter((hit) => !outdated.has(hit.id)).slice(0, ASK_NOTE_LIMIT);
     if (hits.length === 0) {
       const empty: AskAnswer = { answer: "No main-Brain notes match that question yet.", answered: false, citations: [], consideredIds: [] };
       await mainBrain((tx) => tx.mainBrainQuestion.update({ where: { id: row.id }, data: { status: "DONE", answer: empty as unknown as Prisma.InputJsonValue } }));

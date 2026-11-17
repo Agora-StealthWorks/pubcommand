@@ -63,6 +63,7 @@ export function BrainSubnav({ path }: { path: string }) {
     <nav className="mb-5 flex flex-wrap gap-1 border-b border-line pb-2" aria-label="Main Brain">
       {item("/brain", "Notes", path === "/brain" || (/^\/brain\/[0-9a-f-]{36}/i.test(path) && !path.includes("/ask")))}
       {item("/brain/ask", "Ask the main Brain", path.startsWith("/brain/ask"))}
+      {item("/brain/conflicts", "Conflicts", path.startsWith("/brain/conflicts"))}
       {item("/brain/graph", "Graph", path.startsWith("/brain/graph"))}
       {item("/brain/import", "Import", path.startsWith("/brain/import"))}
       {item("/brain/new", "+ New note", path === "/brain/new")}

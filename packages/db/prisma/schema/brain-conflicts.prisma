@@ -1,0 +1,104 @@
+// Main-Brain conflict review (console only, platform staff with platform.brain.manage).
+// Compares each publication's and editor's Publication Setup facts (the source of
+// truth) with what main-Brain notes say. Platform tables like main_brain_*: no
+// organization_id column (the entity's organization is entity_organization_id, so
+// tenantDb() never picks these models up) and RLS allows only app.bypass_rls.
+// Note ids are plain columns with a hand-written FK to main_brain_notes (no relation
+// field, so brain.prisma is not touched).
+
+enum MainBrainConflictStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+/// The last check of one Publication Setup entity against the main Brain.
+model MainBrainConflictCheck {
+  id                   String              @id @default(uuid()) @db.Uuid
+  /// "publication" | "editor"
+  entityKind           String              @map("entity_kind")
+  /// calendar_publications.id or pubsetup_editors.id
+  entityId             String              @map("entity_id") @db.Uuid
+  entityOrganizationId String              @map("entity_organization_id") @db.Uuid
+  entityBrandId        String              @map("entity_brand_id") @db.Uuid
+  entityName           String              @map("entity_name")
+  entityCode           String?             @map("entity_code")
+  /// Facts snapshot (fields) the check compared.
+  facts                Json
+  factsHash            String              @map("facts_hash")
+  notesHash            String              @map("notes_hash")
+  noteIds              String[]            @default([]) @map("note_ids") @db.Uuid
+  /// "queued" | "running" | "done" | "failed"
+  status               String              @default("queued")
+  /// Why this check ran: never-checked | facts-changed | notes-changed | failed-before | forced
+  reason               String?
+  /// "ok" | "unavailable" | "failed" | "skipped"
+  aiStatus             String?             @map("ai_status")
+  aiReason             String?             @map("ai_reason")
+  /// Token usage of the AI check (platform usage: no organization's AI log).
+  aiUsage              Json?               @map("ai_usage")
+  error                String?
+  checkedAt            DateTime?           @map("checked_at")
+  checkedById          String?             @map("checked_by_id") @db.Uuid
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+  conflicts            MainBrainConflict[]
+
+  @@unique([entityKind, entityId])
+  @@index([entityOrganizationId, entityBrandId])
+  @@map("main_brain_conflict_checks")
+}
+
+/// One fact of one entity contradicted by one main-Brain note.
+model MainBrainConflict {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  checkId              String                  @map("check_id") @db.Uuid
+  check                MainBrainConflictCheck  @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  entityKind           String                  @map("entity_kind")
+  entityId             String                  @map("entity_id") @db.Uuid
+  entityOrganizationId String                  @map("entity_organization_id") @db.Uuid
+  entityBrandId        String                  @map("entity_brand_id") @db.Uuid
+  factKey              String                  @map("fact_key")
+  factValue            String                  @map("fact_value")
+  factHash             String                  @map("fact_hash")
+  noteId               String                  @map("note_id") @db.Uuid
+  noteTitle            String                  @map("note_title")
+  noteHash             String                  @map("note_hash")
+  noteSays             String                  @map("note_says")
+  quote                String
+  noteValue            String?                 @map("note_value")
+  suggestedValue       String?                 @map("suggested_value")
+  /// "rule" | "ai"
+  layer                String
+  rule                 String?
+  confidence           Float
+  status               MainBrainConflictStatus @default(OPEN)
+  /// note-edited | note-rewritten | note-superseded | dismissed | setup-to-fix | cleared
+  resolution           String?
+  reason               String?
+  resolvedById         String?                 @map("resolved_by_id") @db.Uuid
+  resolvedAt           DateTime?               @map("resolved_at")
+  /// AI "rewrite this note" suggestion: { status, body?, summary?, reason?, at }
+  suggestion           Json?
+  firstSeenAt          DateTime                @default(now()) @map("first_seen_at")
+  lastSeenAt           DateTime                @default(now()) @map("last_seen_at")
+  createdAt            DateTime                @default(now()) @map("created_at")
+  updatedAt            DateTime                @updatedAt @map("updated_at")
+
+  @@unique([entityKind, entityId, factKey, noteId])
+  @@index([status])
+  @@index([entityOrganizationId, entityBrandId])
+  @@index([noteId])
+  @@map("main_brain_conflicts")
+}
+
+/// A main-Brain note marked outdated: kept and flagged, excluded from Ask and from conflict checks.
+model MainBrainNoteFlag {
+  noteId         String   @id @map("note_id") @db.Uuid
+  supersededAt   DateTime @default(now()) @map("superseded_at")
+  supersededById String?  @map("superseded_by_id") @db.Uuid
+  reason         String?
+  conflictId     String?  @map("conflict_id") @db.Uuid
+
+  @@map("main_brain_note_flags")
+}

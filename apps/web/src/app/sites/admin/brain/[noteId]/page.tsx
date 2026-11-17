@@ -4,6 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { renderNote } from "@/features/brain/markdown";
+import { restoreNote } from "@/features/brain-conflicts/actions";
+import { noteFlag } from "@/features/brain-conflicts/flags";
 import { deleteMainAttachment, deleteMainNote, setPushDown, uploadMainAttachment } from "@/features/main-brain/actions";
 import { getMainNote, mainBacklinks, mainResolver, provenanceNames } from "@/features/main-brain/notes";
 import { OriginBadge, provenanceOf } from "@/features/main-brain/parts";
@@ -33,12 +35,13 @@ export default async function MainNotePage({ params, searchParams }: { params: P
   if (!(await brainStaff())) return <Denied />;
   const note = await getMainNote(noteId);
   if (!note) notFound();
-  const [resolve, names, linksIn, copies, orgs] = await Promise.all([
+  const [resolve, names, linksIn, copies, orgs, outdated] = await Promise.all([
     mainResolver(),
     provenanceNames(),
     mainBacklinks(note),
     pushedCopies(note.id),
     rawPrisma().organization.findMany({ select: { id: true, name: true, suspendedAt: true, brands: { select: { id: true, name: true }, orderBy: { name: "asc" } } }, orderBy: { name: "asc" } }),
+    noteFlag(note.id),
   ]);
   const { html, properties } = renderNote(
     note.body,
@@ -84,6 +87,28 @@ export default async function MainNotePage({ params, searchParams }: { params: P
           <p className="mt-3 rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">
             Edited here on {note.editedAt.toISOString().slice(0, 10)}. Later writes from {sourceLabel(note.source)} no longer change this note.
           </p>
+        ) : null}
+        {outdated ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#fecdca] bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">
+            <span className="min-w-0 break-words">
+              Marked outdated on {outdated.supersededAt.toISOString().slice(0, 10)}
+              {outdated.reason ? `: ${outdated.reason}` : "."} Ask does not use it.
+              {outdated.conflictId ? (
+                <>
+                  {" "}
+                  <Link href={`/brain/conflicts/${outdated.conflictId}`} className="font-semibold underline">
+                    See the conflict
+                  </Link>
+                </>
+              ) : null}
+            </span>
+            <form action={restoreNote}>
+              <input type="hidden" name="noteId" value={note.id} />
+              <button type="submit" className="min-h-9 font-semibold underline">
+                Restore
+              </button>
+            </form>
+          </div>
         ) : null}
         {properties.length > 0 ? (
           <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 rounded-lg border border-line bg-white px-4 py-3 text-sm">

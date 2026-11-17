@@ -30,6 +30,15 @@ On a main-Brain note page staff choose Not pushed / All brands / chosen brands. 
 ## Conflict-review hook (for the next agent)
 `listMainBrainNotesByEntity(name, { aliases?, limit? })` in `apps/web/src/features/main-brain/notes.ts` returns live main-Brain notes about one publication or editor name, strongest first (`strength` 3 = title is the name, 2 = title starts with it, e.g. "Name — Facts", 1 = whole-phrase mention in title or body), with provenance columns. Pass a publication code as an alias. Platform staff only; never call it from org code. A conflict-review page can compare each Publication Setup fact with these notes.
 
+## Conflicts (Publication Setup vs the main Brain)
+Console page `/brain/conflicts` (`platform.brain.manage`). Publication Setup facts are the source of truth; the page lists every main-Brain statement that contradicts them.
+- **Detection** (`conflicts.ts`, pure): facts are rebuilt from the rows with `publicationFacts()`/`editorFacts()` (`features/brain-conflicts/entities.ts`); notes come from `listMainBrainNotesByEntity(name, { aliases: [code] })`, minus notes marked outdated and notes learned from another organization or brand. Rule layer: extractors for name/code, editor ↔ publication, prices (with term), frequency, launch date, editor title, status. AI layer (`runStructured`, `CONFLICT_SCHEMA`): facts + top 6 notes; a returned quote must really be in the note or it is dropped. Without a key only the rules run and the page says so.
+- **Storage** (`brain-conflicts.prisma`, migration `20261117130100_brain_conflicts`): `main_brain_conflict_checks` (one per entity: facts/notes hashes, AI status and usage), `main_brain_conflicts` (one per entity × fact × note; status OPEN/RESOLVED/DISMISSED, resolution, who, when), `main_brain_note_flags` (outdated notes). No `organization_id` (provenance is `entity_organization_id`), RLS `bypass_rls()` only.
+- **When**: job `knowledge.conflict-check` (hourly) re-checks entities whose facts hash or matching-notes hash changed; "Re-check now" per entity, "Re-check what changed" / "Re-check everything" on the page.
+- **Decisions are sticky**: a dismissed or resolved conflict returns only when the fact or the note text changed (`reconcileConflicts`). One the re-check cleared itself returns as soon as it is found again.
+- **Rectify**: correct the passage inline, or an AI rewrite of the note a person reviews and saves (both set `editedAt`, re-sync push-down, re-check); mark the note outdated (kept, flagged on its page, skipped by Ask and checks; restorable); dismiss with a reason; or "Setup is wrong": a link to the entity in the org's Publication Setup plus the existing impersonation form. The console never edits org data.
+- **AI usage**: console checks belong to no organization, so like main-Brain Ask they are not written to an org's usage log; usage is stored on `main_brain_conflict_checks.ai_usage` and logged to the server log.
+
 ## Pure code here (unit tested)
 - `visibility.ts`: the brand rule, best-practice marker, labels.
 - `main-brain.ts`: keys, learn-up decision, push targets and plan, provenance text, entity matching.
