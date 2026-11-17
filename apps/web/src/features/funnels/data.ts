@@ -4,6 +4,7 @@ import type { DayRules, FunnelRules } from "../../../../../modules/funnels/state
 import { CLOSE_MODES, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, SITE_TYPES, TIMING_MODES } from "../../../../../modules/funnels/state";
 import { normalizeDesign, type Design } from "../../../../../modules/funnels/design";
 import { aggregateFunnel, type FunnelStats } from "../../../../../modules/funnels/stats";
+import { filterTraffic } from "../../../../../modules/funnels/traffic";
 import { safeZone } from "../../../../../modules/funnels/time";
 import { fallbackThumbnail, parseVideo, type VideoRef } from "../../../../../modules/funnels/video";
 import { sanitizeRich } from "./sanitize";
@@ -163,14 +164,22 @@ export async function listFunnels(organizationId: string, brandId: string) {
   return funnels.map((funnel) => ({ ...funnel, dayCount: byId.get(funnel.id)?.days ?? 0, optinCount: byId.get(funnel.id)?.optins ?? 0 }));
 }
 
-export async function funnelStats(organizationId: string, funnel: FunnelRow, dayIds: string[]): Promise<FunnelStats> {
+export type TrafficSummary = Omit<ReturnType<typeof filterTraffic>, "kept">;
+
+/**
+ * Funnel stats. People only by default: views and clicks flagged as bots,
+ * link scanners, cloud servers or automated browsers are left out
+ * (`includeBots` puts them back). `traffic` says how much was filtered.
+ */
+export async function funnelStats(organizationId: string, funnel: FunnelRow, dayIds: string[], options: { includeBots?: boolean } = {}): Promise<FunnelStats & { traffic: TrafficSummary }> {
   const db = tenantDb(organizationId);
   const [events, watches, optins] = await Promise.all([
-    db.funnelEvent.findMany({ where: { funnelId: funnel.id }, select: { dayId: true, kind: true, visitorId: true }, take: 200_000 }),
+    db.funnelEvent.findMany({ where: { funnelId: funnel.id }, select: { dayId: true, kind: true, visitorId: true, botReason: true }, take: 200_000 }),
     db.funnelWatch.findMany({ where: { funnelId: funnel.id }, select: { dayId: true, percent: true }, take: 200_000 }),
     db.funnelOptin.count({ where: { funnelId: funnel.id } }),
   ]);
-  return aggregateFunnel({ dayIds, events, watches, optins, completeAt: funnel.watchPercent });
+  const { kept, ...traffic } = filterTraffic(events, options.includeBots === true);
+  return { ...aggregateFunnel({ dayIds, events: kept, watches, optins, completeAt: funnel.watchPercent }), traffic };
 }
 
 /** The consent sentence under the waitlist email box. Stored with each email opt-in. */

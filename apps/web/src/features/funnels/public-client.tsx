@@ -6,7 +6,9 @@ type SyncBody = { kind: "view" | "watch" | "cta"; dayId?: string | null; percent
 
 function send(url: string, body: SyncBody) {
   try {
-    return fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), keepalive: true, credentials: "same-origin" });
+    // wd: the browser says it is automated (navigator.webdriver); the server flags it in stats.
+    const wd = typeof navigator !== "undefined" && navigator.webdriver === true;
+    return fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, wd }), keepalive: true, credentials: "same-origin" });
   } catch {
     return null;
   }

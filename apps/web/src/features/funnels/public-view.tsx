@@ -63,7 +63,7 @@ export function PreviewBar({ asOf, label, timeZone, editHref }: { asOf: Date; la
 export function Rich({ html, className = "" }: { html: string; className?: string }) {
   const clean = sanitizeRich(html);
   if (!clean) return null;
-  return <div className={`${RICH} [overflow-wrap:anywhere] ${className}`} dangerouslySetInnerHTML={{ __html: clean }} />;
+  return <div className={`${RICH} rte-content [overflow-wrap:anywhere] ${className}`} dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
 export function Button({ href, branding, children, syncUrl, dayId }: { href: string; branding: Branding; children: ReactNode; syncUrl?: string | null; dayId?: string | null }) {
@@ -311,6 +311,7 @@ export function DayView({
   preview,
   nav,
   calendar,
+  sms,
 }: {
   funnel: FunnelRow;
   days: DayRow[];
@@ -320,6 +321,8 @@ export function DayView({
   nav?: ReactNode;
   /** Add-to-calendar for an upcoming live session. */
   calendar?: ReactNode;
+  /** An SMS opt-in form under the video (open days only). */
+  sms?: ReactNode;
   branding: Branding;
   timeZone: string;
   base: string;
@@ -413,6 +416,7 @@ export function DayView({
         <p className="text-xs font-bold uppercase tracking-wider opacity-70">{label}</p>
         <h1 className="mb-4 mt-1 text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">{title}</h1>
         {box}
+        {open && sms ? <div className="mt-6">{sms}</div> : null}
         {open ? (
           <div className="mt-6 space-y-6">
             <Rich html={day.bodyHtml} className="pcf-content text-base" />

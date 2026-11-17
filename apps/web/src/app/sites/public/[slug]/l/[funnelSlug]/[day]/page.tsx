@@ -3,12 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { dayLabel, funnelRules } from "@/features/funnels/data";
 import { loadPublicFunnel, publicSiteMatches, type PreviewOptions } from "@/features/funnels/public";
 import { pageContext } from "@/features/funnels/public-context";
-import { AddToCalendar, FunnelShell, NavStrip } from "@/features/funnels/public-shell";
+import { AddToCalendar, FunnelShell, NavStrip, funnelIcons } from "@/features/funnels/public-shell";
+import { SmsSlot, smsFormFor, type SmsQuery } from "@/features/funnels/sms-slot";
 import { ClosedView, DayView, PreviewBar } from "@/features/funnels/public-view";
 import { liveSessionEvent } from "../../../../../../../../../../modules/funnels/calendar";
 
 type Params = Promise<{ slug: string; funnelSlug: string; day: string }>;
-type Search = Promise<PreviewOptions & { k?: string }>;
+type Search = Promise<PreviewOptions & SmsQuery & { k?: string }>;
 
 function position(segment: string): number | null {
   const match = /^day-(\d{1,3})$/.exec(segment);
@@ -20,7 +21,7 @@ export async function generateMetadata({ params, searchParams }: { params: Param
   const loaded = (await publicSiteMatches(slug)) ? await loadPublicFunnel(slug, funnelSlug, await searchParams) : null;
   const row = loaded?.days.find((item) => item.position === position(day));
   if (!loaded || !row) return { title: { absolute: "Not found" } };
-  return { title: { absolute: `${dayLabel(row)}${row.title ? `: ${row.title}` : ""} · ${loaded.funnel.name}` }, robots: loaded.preview ? { index: false, follow: false } : undefined };
+  return { title: { absolute: `${dayLabel(row)}${row.title ? `: ${row.title}` : ""} · ${loaded.funnel.name}` }, icons: funnelIcons(loaded.funnel), robots: loaded.preview ? { index: false, follow: false } : undefined };
 }
 
 /** One day of the funnel: /l/<funnel>/day-<n>. The state engine decides what it shows. */
@@ -49,7 +50,7 @@ export default async function FunnelDayPage({ params, searchParams }: { params: 
     : null;
   const nav = <NavStrip funnel={funnel} days={safeDays} states={states} navItems={loaded.navItems} base={base} carry={carry} currentDayId={day.id} />;
   return (
-    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={!closed}>
+    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={!closed} page={closed ? "close" : "day"} base={base}>
       {closed ? (
         <ClosedView funnel={funnel} branding={theme.branding} />
       ) : (
@@ -67,6 +68,7 @@ export default async function FunnelDayPage({ params, searchParams }: { params: 
           now={now}
           preview={preview}
           nav={nav}
+          sms={smsFormFor(loaded, day.smsFormId) ? <SmsSlot loaded={loaded} form={smsFormFor(loaded, day.smsFormId)!} base={base} back={`${base}/day-${day.position}`} query={query} /> : null}
           calendar={event ? <AddToCalendar event={event} icsHref={`${base || `/l/${funnel.slug}`}/ics?day=${day.id}`} timeZone={timeZone} tone="dark" /> : null}
         />
       )}

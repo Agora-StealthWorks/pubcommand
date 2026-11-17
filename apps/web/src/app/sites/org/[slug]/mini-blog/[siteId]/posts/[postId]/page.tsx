@@ -1,4 +1,6 @@
-import { richToInput } from "@/features/miniblog/sanitize";
+import { postLinkStats } from "@/features/miniblog/links";
+import { MiniBlogRichText } from "@/features/miniblog/rich-text";
+import { TableScroll } from "@/components/table-scroll";
 import { tenantDb } from "@pubcommand/db";
 import { Badge, Button, Input, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
@@ -27,6 +29,8 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
   const state = postState(post, new Date());
   const badge = statusBadge(state);
   const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug, post.slug));
+  const links = await postLinkStats(ctx.resolved.id, post.id);
+  const flagged = links.reduce((sum, link) => sum + link.flagged, 0);
 
   return (
     <div>
@@ -55,8 +59,8 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
                 <Input id="publishAt" name="publishAt" type="datetime-local" defaultValue={utcToZonedLocal(post.publishAt, timeZone)} required />
               </Field>
             </div>
-            <Field label="Body" htmlFor="bodyHtml" hint="Plain text (blank lines make paragraphs, links are linked) or simple HTML. Sanitized on save.">
-              <Textarea id="bodyHtml" name="bodyHtml" defaultValue={richToInput(post.bodyHtml)} className="min-h-64" />
+            <Field label="Body" htmlFor="bodyHtml" hint="Links are tracked: each one counts clicks for this post (see Link clicks below). Sanitized on save.">
+              <MiniBlogRichText siteId={site.id} id="bodyHtml" name="bodyHtml" defaultValue={post.bodyHtml} disabled={!canWrite} />
             </Field>
             <Field label="Action to take" htmlFor="actionToTake" hint="Optional highlighted box under the post.">
               <Textarea id="actionToTake" name="actionToTake" defaultValue={post.actionToTake ?? ""} className="min-h-16" />
@@ -89,7 +93,37 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
           </div>
         </fieldset>
       </form>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="mt-6">
+        <Section title="Link clicks" description="Every link in the post (and its button) goes through a counting redirect. Clicks from bots, link scanners and cloud servers are left out.">
+          {links.length ? (
+            <TableScroll>
+              <table className="w-full table-fixed text-sm">
+                <thead className="border-b border-line text-left text-xs uppercase tracking-wider text-muted">
+                  <tr>
+                    <th className="py-2 pr-3">Link</th>
+                    <th className="w-20 py-2 text-right">Clicks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {links.map((link) => (
+                    <tr key={link.id} className="border-b border-line last:border-0">
+                      <td className="py-2 pr-3">
+                        <span className="block truncate font-semibold">{link.label || link.url}</span>
+                        <span className="block truncate font-mono text-xs text-muted">{link.url}</span>
+                      </td>
+                      <td className="py-2 text-right tabular-nums">{link.clicks}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
+          ) : (
+            <p className="text-sm text-muted">No links yet. Links are picked up when you save the post.</p>
+          )}
+          {flagged ? <p className="text-xs text-muted">{flagged} automated click{flagged === 1 ? "" : "s"} (bots, link scanners, cloud servers) not counted.</p> : null}
+        </Section>
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Section title="Links">
           <LinkBox label={state === "published" ? "Public link" : "Public link (after publishing)"} value={publicUrl} />
           <a href={`${publicUrl}?preview=1`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">

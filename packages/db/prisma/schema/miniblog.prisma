@@ -45,6 +45,7 @@ model TextSite {
   posts            TextPost[]
   optins           TextOptin[]
   views            TextView[]
+  links            TextLink[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, brandId, updatedAt])
@@ -74,6 +75,7 @@ model TextPost {
   deletedAt       DateTime?  @map("deleted_at")
   site            TextSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
   views           TextView[]
+  links           TextLink[]
 
   @@unique([siteId, slug])
   @@index([organizationId, siteId, publishAt])
@@ -114,4 +116,41 @@ model TextView {
   @@index([organizationId, siteId, createdAt])
   @@index([postId])
   @@map("text_views")
+}
+
+/// A link in a post, counted through /b/<site>/go/<id>. The redirect only ever
+/// goes to the URL stored here, never to one taken from the request.
+model TextLink {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  siteId         String          @map("site_id") @db.Uuid
+  postId         String          @map("post_id") @db.Uuid
+  url            String
+  /// The link text (or "Button") the first time it was seen.
+  label          String          @default("")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  site           TextSite        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  post           TextPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  clicks         TextLinkClick[]
+
+  @@unique([postId, url])
+  @@index([organizationId, siteId])
+  @@map("text_links")
+}
+
+/// One click on a tracked link. No visitor id or IP is kept.
+model TextLinkClick {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  postId         String   @map("post_id") @db.Uuid
+  linkId         String   @map("link_id") @db.Uuid
+  /// user_agent | datacenter when it looks automated; null = a person.
+  botReason      String?  @map("bot_reason")
+  createdAt      DateTime @default(now()) @map("created_at")
+  link           TextLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, postId, createdAt])
+  @@index([linkId])
+  @@map("text_link_clicks")
 }

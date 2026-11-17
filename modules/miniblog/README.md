@@ -32,3 +32,9 @@ Tables `text_sites`, `text_posts`, `text_optins`, `text_views` (models in `packa
 - Phone numbers are PII: only the `miniblog.publish` CSV export carries them, and each export is audited. Elsewhere they are masked.
 - The Brain gets post text and aggregates under `sourceRef` `tletter-post:<id>` (kept from before the rename, so existing notes update instead of duplicating).
 - A post on a Mini-Blog with a Marketing Calendar code creates one calendar issue on every publish/save, including scheduled posts, idempotent through `text_posts.calendar_issue_id`.
+
+## Link-click tracking and the calendar job
+
+- On save every http(s) link in a post (and its button) becomes a `text_links` row (`links.ts`). Public pages point links at `/b/<site>/go/<id>`, which records a `text_link_clicks` row (flagged when it looks automated) and 302s to the URL stored on that row only: no open redirect. Counts show per post in the editor and the posts table.
+- Job `miniblog.calendar-status` (every 5 min) moves a post's Marketing Calendar issue from Scheduled to Sent once the post is live.
+- Post images upload into `funnel_assets` (kind `post_image`) and are served at `/b/<site>/asset/<id>`.

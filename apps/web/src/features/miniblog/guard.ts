@@ -33,15 +33,27 @@ export async function miniblogAction(back: string, ...permissions: MiniBlogPermi
   return { ...ctx, brand: ctx.brand, actorId: ctx.auth.user.id, request };
 }
 
+/** For actions the editor calls from the browser: the same checks (miniblog.write), returning null instead of redirecting. */
+export async function miniblogWriteCtx() {
+  const request = await currentRequest();
+  if (request.site.kind !== "org") return null;
+  const ctx = await getOrgContext(request.site.slug);
+  if (ctx.kind !== "ok" || !ctx.brand) return null;
+  const allowed = ctx.subject.entitledModuleIds.includes("miniblog") && can(ctx.subject, "miniblog.read", ctx.scope) && can(ctx.subject, "miniblog.write", ctx.scope);
+  return allowed ? { ...ctx, brand: ctx.brand } : null;
+}
+
 export type MiniBlogCtx = Awaited<ReturnType<typeof miniblogAction>>;
 
 export function withMessage(path: string, kind: "error" | "notice", message: string): string {
-  const [base, query = ""] = path.split("?");
+  // Keep a #fragment at the end, where browsers read it (not inside the query).
+  const [beforeHash, hash = ""] = path.split("#");
+  const [base, query = ""] = (beforeHash ?? "").split("?");
   const params = new URLSearchParams(query);
   params.delete("error");
   params.delete("notice");
   params.set(kind, message);
-  return `${base}?${params.toString()}`;
+  return `${base}?${params.toString()}${hash ? `#${hash}` : ""}`;
 }
 
 /** Absolute public link on the org host, e.g. https://acme.pubcommand.com/b/alerts. */

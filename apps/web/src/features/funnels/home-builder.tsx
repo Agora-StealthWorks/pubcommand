@@ -37,6 +37,8 @@ export type HomeBuilderProps = {
   zone: string;
   initial: { blocks: Block[]; shell: boolean; title: string };
   forms: Option[];
+  /** The funnel's SMS opt-in forms. */
+  smsForms?: Option[];
   modules: Option[];
   pages: Option[];
   hostCount: number;
@@ -276,10 +278,13 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
             options={[
               { value: "email", label: "Simple email capture" },
               { value: "form", label: "A published form" },
+              { value: "sms", label: "An SMS opt-in form" },
             ]}
             onChange={(mode) => set({ mode })}
           />
-          {block.mode === "form" ? (
+          {block.mode === "sms" ? (
+            <SelectInput id={id("sms")} label="SMS form" hint={props.smsForms?.length ? "Phone + consent, built on the SMS forms tab." : "Add an SMS form on the SMS forms tab first."} value={block.smsFormId} options={[{ value: "", label: "Pick an SMS form" }, ...(props.smsForms ?? [])]} onChange={(smsFormId) => set({ smsFormId })} />
+          ) : block.mode === "form" ? (
             <SelectInput id={id("form")} label="Form" hint={props.forms.length ? "Responses are stored in Forms." : "No published forms for this brand yet."} value={block.formSlug} options={[{ value: "", label: "Pick a form" }, ...props.forms]} onChange={(formSlug) => set({ formSlug })} />
           ) : (
             <TextInput id={id("button")} label="Button text" value={block.buttonText} onChange={(buttonText) => set({ buttonText })} />

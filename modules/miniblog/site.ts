@@ -19,7 +19,7 @@ export function isValidSlug(slug: string): boolean {
 }
 
 /** Post slugs that would collide with a Mini-Blog's own routes. */
-export const RESERVED_POST_SLUGS = ["subscribe", "asset", "logo", "feed", "archive"] as const;
+export const RESERVED_POST_SLUGS = ["subscribe", "asset", "logo", "feed", "archive", "go"] as const;
 
 export function isHttpUrl(value: string | null | undefined): boolean {
   if (!value) return false;
@@ -140,4 +140,18 @@ export function postBrainNote(input: {
       .filter((line, index, all) => line !== "" || all[index - 1] !== "")
       .join("\n"),
   };
+}
+
+/**
+ * The Marketing Calendar status for a published post's issue: "Scheduled"
+ * until it goes live, then "Sent". The calendar job flips issues the moment a
+ * scheduled post's time passes. Other statuses a person set by hand (anything
+ * but Scheduled) are left alone.
+ */
+export function calendarStatusFor(publishAt: Date, now: Date): "Scheduled" | "Sent" {
+  return publishAt > now ? "Scheduled" : "Sent";
+}
+
+export function shouldFlipToSent(issueStatus: string, post: { status: string; publishAt: Date; deletedAt: Date | null }, now: Date): boolean {
+  return issueStatus === "Scheduled" && post.status === "published" && !post.deletedAt && post.publishAt <= now;
 }

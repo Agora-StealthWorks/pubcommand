@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { dismissKey, isDismissed, rememberDismiss } from "../../../../../modules/funnels/deadline";
+
+function sessionStore(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 function useNow(): number | null {
   const [now, setNow] = useState<number | null>(null);
@@ -34,6 +43,9 @@ export function DeadlineBarClient({
   position,
   sticky,
   nowOffset = 0,
+  funnelId = "",
+  dismissible = false,
+  button = null,
 }: {
   at: number;
   revealAt: number | null;
@@ -43,21 +55,49 @@ export function DeadlineBarClient({
   position: "top" | "bottom";
   sticky: boolean;
   nowOffset?: number;
+  funnelId?: string;
+  /** Show a × that hides the bar for the rest of the browser session (per deadline). */
+  dismissible?: boolean;
+  button?: { text: string; href: string | null } | null;
 }) {
   const clock = useNow();
+  const key = dismissKey(funnelId, at);
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    if (dismissible && isDismissed(sessionStore(), key)) setDismissed(true);
+  }, [dismissible, key]);
   const now = clock === null ? null : clock + nowOffset;
   const visible = now === null ? revealAt === null : now < at && (revealAt === null || now >= revealAt);
-  if (!visible) return null;
+  if (!visible || dismissed) return null;
   return (
     <div
       role="timer"
       aria-live="off"
-      className={`z-40 w-full px-4 py-2.5 text-center text-sm font-semibold ${sticky ? "sticky" : ""}`}
+      className={`z-40 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-center text-sm font-semibold ${sticky ? "sticky" : ""} ${dismissible ? "pr-11" : ""} relative`}
       style={{ background: bg, color, ...(sticky ? (position === "top" ? { top: 0 } : { bottom: 0 }) : {}) }}
       data-deadline-bar={position}
     >
-      <span className="[overflow-wrap:anywhere]">{text}</span>{" "}
-      <span className="ml-1 inline-block rounded-md bg-black/20 px-2 py-0.5 font-mono tabular-nums">{now === null ? "--:--:--" : parts(at - now)}</span>
+      <span className="[overflow-wrap:anywhere]">
+        {text} <span className="ml-1 inline-block rounded-md bg-black/20 px-2 py-0.5 font-mono tabular-nums">{now === null ? "--:--:--" : parts(at - now)}</span>
+      </span>
+      {button?.href ? (
+        <a href={button.href} className="inline-flex min-h-9 items-center rounded-md px-3 text-sm font-bold shadow-sm" style={{ background: color, color: bg }} {...(/^https?:/i.test(button.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+          {button.text}
+        </a>
+      ) : null}
+      {dismissible ? (
+        <button
+          type="button"
+          aria-label="Close"
+          className="absolute right-1.5 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-lg leading-none hover:bg-black/15"
+          onClick={() => {
+            rememberDismiss(sessionStore(), key);
+            setDismissed(true);
+          }}
+        >
+          ×
+        </button>
+      ) : null}
     </div>
   );
 }

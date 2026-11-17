@@ -5,13 +5,14 @@ import { isClosed } from "../../../../../../../../../../../modules/funnels/state
 import { funnelRules } from "@/features/funnels/data";
 import { loadPublicFunnel, publicSiteMatches, viewerFacts, type PreviewOptions } from "@/features/funnels/public";
 import { pageContext } from "@/features/funnels/public-context";
-import { FunnelShell, NavStrip } from "@/features/funnels/public-shell";
+import { FunnelShell, NavStrip, funnelIcons } from "@/features/funnels/public-shell";
+import { SmsSlot, smsFormFor, type SmsQuery } from "@/features/funnels/sms-slot";
 import { ClosedView, EmailOptin, FormOptin, PreviewBar, Rich } from "@/features/funnels/public-view";
 import { HtmlFrame } from "@/features/funnels/site-client";
 import { pageHref } from "@/features/funnels/site-data";
 
 type Params = Promise<{ slug: string; funnelSlug: string; pageSlug: string }>;
-type Search = Promise<PreviewOptions & { joined?: string; error?: string }>;
+type Search = Promise<PreviewOptions & SmsQuery & { joined?: string; error?: string }>;
 
 async function load(slug: string, funnelSlug: string, pageSlug: string, query: PreviewOptions) {
   if (!/^[a-z0-9-]{1,60}$/.test(pageSlug) || !(await publicSiteMatches(slug))) return null;
@@ -24,7 +25,7 @@ export async function generateMetadata({ params, searchParams }: { params: Param
   const { slug, funnelSlug, pageSlug } = await params;
   const found = await load(slug, funnelSlug, pageSlug, await searchParams);
   if (!found) return { title: { absolute: "Not found" } };
-  return { title: { absolute: `${found.item.title || found.item.label || "Page"} · ${found.loaded.funnel.name}` }, robots: found.loaded.preview ? { index: false, follow: false } : undefined };
+  return { title: { absolute: `${found.item.title || found.item.label || "Page"} · ${found.loaded.funnel.name}` }, icons: funnelIcons(found.loaded.funnel), robots: found.loaded.preview ? { index: false, follow: false } : undefined };
 }
 
 /** A custom page: /l/<funnel>/p/<page>. Rich text in the content box, or admin HTML in a sandbox; optional opt-in under it. */
@@ -42,7 +43,7 @@ export default async function FunnelCustomPage({ params, searchParams }: { param
   const previewBar = preview ? <PreviewBar asOf={now} label={[funnel.status === "published" ? "" : "draft", loaded.draftShown ? "unsaved changes" : ""].filter(Boolean).join(", ")} timeZone={timeZone} /> : null;
   if (closed) {
     return (
-      <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={false}>
+      <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={false} page="close" base={base}>
         <ClosedView funnel={funnel} branding={theme.branding} />
       </FunnelShell>
     );
@@ -52,7 +53,7 @@ export default async function FunnelCustomPage({ params, searchParams }: { param
   const back = pageHref(funnel, base, item.slug);
   const nav = <NavStrip funnel={funnel} days={ctx.safeDays} states={ctx.states} navItems={loaded.navItems} base={base} carry={carry} currentPageSlug={item.slug} />;
   return (
-    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} nav={nav}>
+    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} nav={nav} page="custom" base={base}>
       <main className="mx-auto max-w-4xl px-4 py-8">
         {item.titlePlacement === "outside" && heading ? <div className="mb-4">{heading}</div> : null}
         <article className="pcf-content">
@@ -66,6 +67,10 @@ export default async function FunnelCustomPage({ params, searchParams }: { param
         {item.optinMode === "email" ? (
           <div className="pcf-content mt-6">
             <EmailOptin funnel={funnel} branding={theme.branding} action={`${base || `/l/${funnel.slug}`}/optin`} back={back} joined={query.joined === "1"} error={query.error} />
+          </div>
+        ) : item.optinMode === "sms" && smsFormFor(loaded, item.smsFormId) ? (
+          <div className="mt-6">
+            <SmsSlot loaded={loaded} form={smsFormFor(loaded, item.smsFormId)!} base={base} back={back} query={query} />
           </div>
         ) : item.optinMode === "form" && item.optinFormSlug ? (
           <div className="mt-6">

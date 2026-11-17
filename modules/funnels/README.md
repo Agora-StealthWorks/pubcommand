@@ -35,3 +35,13 @@ Admin preview: `?preview=1` shows drafts; `&as_of=YYYY-MM-DDTHH:mm` (org time zo
 - Locked days never render their video id (`publicDays` strips ids, automatic thumbnails and unlock keys before rendering).
 - Rich text is sanitized on save and again on render (`features/funnels/sanitize.ts`).
 - Opt-in emails/phones are PII: only the `funnels.publish` CSV exports carry them, and each export is audited. The Brain gets aggregates (`funnel:<id>`), never contact details.
+
+## Added: invites, SMS forms, delegates, code, bot filtering
+
+- **Rich text** everywhere uses the shared WYSIWYG editor (`apps/web/src/components/rich-text-editor/`, TipTap). Its sanitizer (`sanitize.ts` there) is what `features/funnels/sanitize.ts` runs on save and render: alignment, colours, highlights, image wrap/width classes, and embeds from YouTube/Vimeo/Wistia/Loom only.
+- **Deadline bar** (`deadline.ts`): per page kind (home, waitlist, day, custom; never the close page), optional button (URL or `module:<n>`), visitor dismiss remembered in sessionStorage per deadline.
+- **Favicon, header/footer code** (Advanced tab, `funnels.publish` only, audited). `code.ts` moves `<meta>`/`<link>` into the head; code never runs in previews.
+- **Invites & reminders** (`emails.ts`, `features/funnels/emails.ts`, job `funnels.reminders` every 5 min): confirmation after an email opt-in, reminders N minutes before each live session (or the fixed start). Sends are claimed under a unique key (`funnel_email_sends`), unsubscribed opt-ins are skipped, every email has a signed unsubscribe link (`/l/<funnel>/unsubscribe`, GET asks, POST unsubscribes). Without `RESEND_API_KEY` sends are recorded as "logged".
+- **SMS forms** (`sms.ts`, `funnel_sms_forms`, `funnel_sms_optins`): phone + consent with the exact text stored; placed on the waitlist, an Opt-in home block, under a day's video or under a custom page. Posted to `/l/<funnel>/sms`. No SMS is sent (no provider).
+- **Delegates** (`delegates.ts`, `funnel_delegates`): a member may read and edit one funnel without `funnels.write`; never publish, export, code, delegates or delete.
+- **Bot filtering** (`traffic.ts`, `datacenter-ranges.ts`): views and clicks are stored with `bot_reason` (user_agent | datacenter | webdriver); stats leave them out unless `?bots=1`.

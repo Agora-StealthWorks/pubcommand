@@ -48,3 +48,61 @@ export function deadlineText(template: string, at: Date, timeZone: string): stri
   const short = new Intl.DateTimeFormat("en-US", { timeZone, month: "2-digit", day: "2-digit", year: "numeric" }).format(at);
   return template.replaceAll("{date}", formatZoned(at, timeZone)).replaceAll("{short_date}", short);
 }
+
+/** Page kinds the deadline bar can show on. The close page never shows it. */
+export const DEADLINE_PAGES = ["home", "waitlist", "day", "custom"] as const;
+export type DeadlinePage = (typeof DEADLINE_PAGES)[number];
+export const DEADLINE_PAGE_LABELS: Record<DeadlinePage, string> = { home: "Home page", waitlist: "Waitlist", day: "Day pages", custom: "Custom pages" };
+
+/** Only known page kinds, in order. An empty list means the bar shows nowhere. */
+export function normalizeDeadlinePages(value: unknown): DeadlinePage[] {
+  const list = Array.isArray(value) ? value : [];
+  return DEADLINE_PAGES.filter((page) => list.includes(page));
+}
+
+export function deadlineShowsOn(pages: unknown, page: DeadlinePage): boolean {
+  return normalizeDeadlinePages(pages).includes(page);
+}
+
+/**
+ * The bar button's link: "module:<n>" → that day's page, an http(s) URL as is,
+ * anything else → no button.
+ */
+export function deadlineButtonHref(target: string, base: string, carry = ""): string | null {
+  const value = target.trim();
+  const module = /^module:(\d{1,3})$/.exec(value);
+  if (module) return `${base}/day-${Number(module[1])}${carry}`;
+  return /^https?:\/\/[^\s<>"]+$/i.test(value) ? value : null;
+}
+
+/** Validate the button target on save ("" = none). */
+export function normalizeDeadlineButtonUrl(value: string): string {
+  const text = value.trim().slice(0, 500);
+  return /^module:\d{1,3}$/.test(text) || /^https?:\/\/[^\s<>"]+$/i.test(text) ? text : "";
+}
+
+/**
+ * The sessionStorage key a dismissal is remembered under. It includes the
+ * deadline, so moving the deadline shows the bar again to people who hid it.
+ */
+export function dismissKey(funnelId: string, at: number): string {
+  return `pcf-deadline-${funnelId.replace(/[^a-z0-9]/gi, "").slice(0, 32)}-${Math.floor(at / 1000)}`;
+}
+
+/** Was the bar hidden for this deadline? (Storage values other than "1" do not count.) */
+export function isDismissed(storage: { getItem(key: string): string | null } | null, key: string): boolean {
+  try {
+    return storage?.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Remember a dismissal; storage may be unavailable (private mode), which is fine. */
+export function rememberDismiss(storage: { setItem(key: string, value: string): void } | null, key: string): void {
+  try {
+    storage?.setItem(key, "1");
+  } catch {
+    // Storage is blocked: the bar stays hidden for this page view only.
+  }
+}
