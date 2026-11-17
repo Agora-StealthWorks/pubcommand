@@ -1,7 +1,10 @@
 import { tenantDb } from "@pubcommand/db";
 import { isValidEmail, captureOptin, consentText } from "../../../../../modules/funnels/sms";
 import { ensureStart, recordWatch, rememberKey } from "../../../../../modules/funnels/viewer";
-import { emailConsent, funnelBranding } from "./data";
+import { eventBoxEvent, icsFile, liveSessionEvent } from "../../../../../modules/funnels/calendar";
+import { effectiveStart } from "../../../../../modules/funnels/state";
+import { dayLabel, emailConsent, funnelBranding, funnelRules } from "./data";
+import { acceptsEmailOptin, homeBlocks } from "./site-data";
 import {
   clientIp,
   hashIp,
@@ -101,14 +104,14 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
 export async function handleFunnelOptin(request: Request, orgSlug: string, funnelSlug: string): Promise<Response> {
   if (!(await publicSiteMatches(orgSlug)) || !sameOrigin(request)) return new Response("Not found", { status: 404 });
   const loaded = await loadPublicFunnel(orgSlug, funnelSlug);
-  if (!loaded || loaded.funnel.optinMode !== "email") return new Response("Not found", { status: 404 });
+  if (!loaded || !acceptsEmailOptin(loaded.funnel, loaded.navItems)) return new Response("Not found", { status: 404 });
   let form: FormData;
   try {
     form = await request.formData();
   } catch {
     return new Response("Bad request", { status: 400 });
   }
-  const back = safeBack(form.get("back"), "/");
+  const back = safeBack(form.get("back"), "/").replace(/#.*$/, "");
   if (String(form.get("website") ?? "").trim()) return seeOther(withQuery(back, { joined: "1" }));
   const email = String(form.get("email") ?? "").trim().toLowerCase().slice(0, 254);
   if (!isValidEmail(email)) return seeOther(withQuery(back, { error: "Enter a valid email address." }));
@@ -172,6 +175,64 @@ export async function funnelImage(orgSlug: string, funnelSlug: string, dayId: st
   const day = loaded.days.find((item) => item.id === dayId);
   const asset = day?.thumbAssetId ? await db.funnelAsset.findFirst({ where: { id: day.thumbAssetId, ownerId: funnel.id } }) : null;
   return asset ? imageResponse(asset) : new Response("Not found", { status: 404 });
+}
+
+/**
+ * GET /l/<funnel>/asset/<id>: an image the funnel owns (header or page image,
+ * footer logo, host photo, block or page image, nav thumbnail). These are public
+ * by nature. Drafts are served only to previewers.
+ */
+export async function funnelAsset(orgSlug: string, funnelSlug: string, assetId: string): Promise<Response> {
+  if (!(await publicSiteMatches(orgSlug)) || !UUID.test(assetId)) return new Response("Not found", { status: 404 });
+  const loaded = await loadPublicFunnel(orgSlug, funnelSlug, { preview: "1" });
+  if (!loaded) return new Response("Not found", { status: 404 });
+  const asset = await tenantDb(loaded.organizationId).funnelAsset.findFirst({ where: { id: assetId, ownerId: loaded.funnel.id } });
+  return asset ? imageResponse(asset) : new Response("Not found", { status: 404 });
+}
+
+function icsResponse(body: string, filename: string): Response {
+  return new Response(body, {
+    headers: {
+      "content-type": "text/calendar; charset=utf-8",
+      "content-disposition": `attachment; filename="${filename.replace(/[^a-z0-9-]/gi, "-").slice(0, 60) || "event"}.ics"`,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+/** GET /l/<funnel>/ics?day=<id> (a live session) or ?block=<id> (a home page event box): the .ics invite. */
+export async function funnelIcs(request: Request, orgSlug: string, funnelSlug: string): Promise<Response> {
+  if (!(await publicSiteMatches(orgSlug))) return new Response("Not found", { status: 404 });
+  const url = new URL(request.url);
+  const loaded = await loadPublicFunnel(orgSlug, funnelSlug, { preview: url.searchParams.get("preview") ?? undefined });
+  if (!loaded) return new Response("Not found", { status: 404 });
+  const { funnel, timeZone } = loaded;
+  const host = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || request.headers.get("host") || "localhost";
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(":", "");
+  const origin = `${proto}://${host}`;
+  const rules = funnelRules(funnel);
+  const dayId = url.searchParams.get("day") ?? "";
+  const blockId = url.searchParams.get("block") ?? "";
+  if (dayId) {
+    const day = UUID.test(dayId) ? loaded.days.find((item) => item.id === dayId) : undefined;
+    if (!day || rules.mode !== "live" || !day.isLive) return new Response("Not found", { status: 404 });
+    const event = liveSessionEvent({
+      funnelId: funnel.id,
+      funnelName: funnel.name,
+      day: { ...day, label: dayLabel(day) },
+      roomUrl: rules.livestreamUrl,
+      pageUrl: `${origin}/l/${funnel.slug}/day-${day.position}`,
+      timeZone,
+    });
+    return event ? icsResponse(icsFile([event], { timeZone, calendarName: funnel.name, domain: host }), `${funnel.slug}-day-${day.position}`) : new Response("Not found", { status: 404 });
+  }
+  const block = homeBlocks(funnel).find((item) => item.id === blockId);
+  if (!block || block.type !== "event") return new Response("Not found", { status: 404 });
+  const viewer = await readViewer(funnel.id, false);
+  const start = block.at ? new Date(block.at) : effectiveStart(rules, { watched: {}, keys: [], ...(viewer?.start ? { start: viewer.start } : {}) }, loaded.now);
+  const event = eventBoxEvent({ funnelId: funnel.id, blockId: block.id, title: block.title || funnel.name, start, minutes: block.minutes, pageUrl: `${origin}/l/${funnel.slug}`, timeZone });
+  return event ? icsResponse(icsFile([event], { timeZone, calendarName: funnel.name, domain: host }), funnel.slug) : new Response("Not found", { status: 404 });
 }
 
 /** POST /t/<site>/subscribe/submit: phone + consent checkbox, with the exact consent text stored. */

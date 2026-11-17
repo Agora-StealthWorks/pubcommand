@@ -3,12 +3,15 @@
 import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
+import { starterBlocks } from "../../../../../modules/funnels/blocks";
 import { checkFunnel, isValidSlug, newUnlockKey, normalizeSlug, parseResources } from "../../../../../modules/funnels/checks";
-import { CLOSE_MODES, CTA_REVEALS, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, TIMING_MODES } from "../../../../../modules/funnels/state";
+import { DEADLINE_TARGETS } from "../../../../../modules/funnels/deadline";
+import { CLOSE_MODES, CTA_REVEALS, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, SITE_TYPES, TIMING_MODES } from "../../../../../modules/funnels/state";
 import { parseVideo } from "../../../../../modules/funnels/video";
 import { teachFunnel } from "./brain";
 import { UUID_RE, orgTimezone } from "./data";
 import { bool, color, int, optional, optionalInt, pickOne, storeImage, text, url, zoned } from "./form-input";
+import { funnelCheckInput, homeBlocks } from "./site-data";
 import { funnelsAction, withMessage, type FunnelsCtx } from "./guard";
 import { refreshVideoMeta } from "./oembed";
 import { richFromInput } from "./sanitize";
@@ -38,9 +41,10 @@ function builder(funnelId: string, tab: string) {
 export async function createFunnel(formData: FormData) {
   const ctx = await funnelsAction("/funnels", "funnels.write");
   const db = tenantDb(ctx.resolved.id);
-  const name = text(formData, "name", 120) || "New launch";
+  const siteType = pickOne(formData, "siteType", SITE_TYPES, "launch");
+  const name = text(formData, "name", 120) || (siteType === "microsite" ? "New microsite" : "New launch");
   const mode = pickOne(formData, "mode", FUNNEL_MODES, "evergreen");
-  const dayCount = int(formData, "days", 3, 1, 10);
+  const dayCount = int(formData, "days", 3, siteType === "microsite" ? 0 : 1, 10);
   const themes = await db.formTheme.findMany({ where: { brandId: ctx.brand.id, deletedAt: null }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }], select: { id: true }, take: 1 });
   const funnel = await db.funnel.create({
     data: {
@@ -49,6 +53,8 @@ export async function createFunnel(formData: FormData) {
       name,
       slug: await uniqueSlug(ctx.resolved.id, name),
       mode,
+      siteType,
+      homeBlocks: siteType === "microsite" ? (JSON.parse(JSON.stringify(starterBlocks(name))) as Prisma.InputJsonValue) : [],
       formThemeId: themes[0]?.id ?? null,
       companyName: ctx.brand.name,
       createdById: ctx.actorId,
@@ -78,9 +84,14 @@ export async function saveFunnel(formData: FormData) {
     const wantedSlug = normalizeSlug(text(formData, "slug", 80));
     if (!isValidSlug(wantedSlug)) redirect(withMessage(back, "error", "The link name must be lowercase letters, numbers and dashes."));
     const slug = await uniqueSlug(ctx.resolved.id, wantedSlug, funnel.id);
+    const siteType = pickOne(formData, "siteType", SITE_TYPES, "launch");
+    // Switching to a microsite with an empty home page starts it from the starter layout.
+    const seedHome = siteType === "microsite" && homeBlocks(funnel).length === 0;
     data = {
       name: text(formData, "name", 120) || funnel.name,
       slug,
+      siteType,
+      ...(seedHome ? { homeBlocks: JSON.parse(JSON.stringify(starterBlocks(funnel.name))) as Prisma.InputJsonValue } : {}),
       mode: pickOne(formData, "mode", FUNNEL_MODES, "evergreen"),
       timing: pickOne(formData, "timing", TIMING_MODES, "fixed"),
       startAt: zoned(formData, "startAt", timeZone),
@@ -106,24 +117,19 @@ export async function saveFunnel(formData: FormData) {
       optinHeadline: text(formData, "optinHeadline", 160),
       optinButtonText: text(formData, "optinButtonText", 40) || "Remind me",
     };
-  } else if (section === "branding") {
-    const themeId = text(formData, "formThemeId", 40);
-    const theme = UUID_RE.test(themeId) ? await db.formTheme.findFirst({ where: { id: themeId, brandId: ctx.brand.id, deletedAt: null }, select: { id: true } }) : null;
-    const logo = await storeImage(ctx.resolved.id, funnel.id, "logo", formData.get("logo"));
-    if (logo && "error" in logo) redirect(withMessage(back, "error", logo.error));
+  } else if (section === "hosts") {
+    data = { hostsEnabled: bool(formData, "hostsEnabled"), hostsTitle: text(formData, "hostsTitle", 120) || "Meet your hosts" };
+  } else if (section === "deadline") {
     data = {
-      formThemeId: theme?.id ?? null,
-      logoUrl: url(formData, "logoUrl"),
-      logoHeight: int(formData, "logoHeight", 40, 16, 120),
-      headerBg: color(formData, "headerBg", "#111827"),
-      pageBg: color(formData, "pageBg", "#f5f6f8"),
-      textColor: color(formData, "textColor", "#1f2937"),
-      accentColor: color(formData, "accentColor", "#1d4ed8"),
-      companyName: text(formData, "companyName", 120),
-      privacyUrl: url(formData, "privacyUrl"),
-      termsUrl: url(formData, "termsUrl"),
-      footerHtml: richFromInput(text(formData, "footerHtml", 20_000)),
-      ...(logo && "id" in logo ? { logoAssetId: logo.id } : bool(formData, "removeLogo") ? { logoAssetId: null } : {}),
+      deadlineBarEnabled: bool(formData, "deadlineBarEnabled"),
+      deadlineBarTarget: pickOne(formData, "deadlineBarTarget", DEADLINE_TARGETS, "end"),
+      deadlineBarAt: zoned(formData, "deadlineBarAt", timeZone),
+      deadlineBarPosition: pickOne(formData, "deadlineBarPosition", ["top", "bottom"] as const, "bottom"),
+      deadlineBarSticky: bool(formData, "deadlineBarSticky"),
+      deadlineBarText: text(formData, "deadlineBarText", 200) || "This offer ends in",
+      deadlineBarBg: color(formData, "deadlineBarBg", "#b42318"),
+      deadlineBarColor: color(formData, "deadlineBarColor", "#ffffff"),
+      deadlineBarWithinHours: int(formData, "deadlineBarWithinHours", 0, 0, 24 * 60),
     };
   } else if (section === "close") {
     data = {
@@ -280,26 +286,12 @@ export async function publishFunnel(formData: FormData) {
     await audit(ctx, "funnels.funnel.unpublished", "funnel", funnel.id);
     redirect(withMessage(back, "notice", "Unpublished. The public link now shows “not found”."));
   }
-  const days = await db.funnelDay.findMany({ where: { funnelId: funnel.id }, orderBy: { position: "asc" } });
+  const [days, navItems] = await Promise.all([
+    db.funnelDay.findMany({ where: { funnelId: funnel.id }, orderBy: { position: "asc" } }),
+    db.funnelNavItem.findMany({ where: { funnelId: funnel.id }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] }),
+  ]);
   const branding = funnel.formThemeId ? await db.formTheme.findFirst({ where: { id: funnel.formThemeId, deletedAt: null }, select: { privacyPolicyUrl: true } }) : null;
-  const result = checkFunnel({
-    name: funnel.name,
-    slug: funnel.slug,
-    mode: funnel.mode === "live" ? "live" : "evergreen",
-    timing: funnel.timing === "per_viewer" ? "per_viewer" : "fixed",
-    startAt: funnel.startAt,
-    endAt: funnel.endAt,
-    closeAfterHours: funnel.closeAfterHours,
-    closeMode: (CLOSE_MODES as readonly string[]).includes(funnel.closeMode) ? (funnel.closeMode as (typeof CLOSE_MODES)[number]) : "page",
-    closeRedirectUrl: funnel.closeRedirectUrl,
-    progression: (PROGRESSIONS as readonly string[]).includes(funnel.progression) ? (funnel.progression as (typeof PROGRESSIONS)[number]) : "all_open",
-    buildMode: funnel.buildMode === "prebuilt" ? "prebuilt" : "as_you_go",
-    livestreamUrl: funnel.livestreamUrl,
-    privacyUrl: branding?.privacyPolicyUrl ?? funnel.privacyUrl,
-    optinMode: funnel.optinMode === "email" || funnel.optinMode === "form" ? funnel.optinMode : "none",
-    optinFormSlug: funnel.optinFormSlug,
-    days,
-  });
+  const result = checkFunnel(funnelCheckInput(funnel, days, navItems, branding?.privacyPolicyUrl ?? null));
   if (result.errors.length) redirect(withMessage(back, "error", `Fix ${result.errors.length === 1 ? "this" : "these"} first: ${result.errors.join(" ")}`));
   await db.funnel.updateMany({ where: { id: funnel.id }, data: { status: "published", publishedAt: funnel.publishedAt ?? new Date() } });
   await audit(ctx, "funnels.funnel.published", "funnel", funnel.id);

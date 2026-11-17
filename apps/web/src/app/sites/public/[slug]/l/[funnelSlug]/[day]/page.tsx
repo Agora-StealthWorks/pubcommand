@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { dayLabel, funnelBranding } from "@/features/funnels/data";
-import { loadPublicFunnel, publicBase, publicDays, publicSiteMatches, readViewer, statesFor, type PreviewOptions } from "@/features/funnels/public";
-import { ClosedView, DayView, PreviewBar, PublicShell } from "@/features/funnels/public-view";
+import { dayLabel, funnelRules } from "@/features/funnels/data";
+import { loadPublicFunnel, publicSiteMatches, type PreviewOptions } from "@/features/funnels/public";
+import { pageContext } from "@/features/funnels/public-context";
+import { AddToCalendar, FunnelShell, NavStrip } from "@/features/funnels/public-shell";
+import { ClosedView, DayView, PreviewBar } from "@/features/funnels/public-view";
+import { liveSessionEvent } from "../../../../../../../../../../modules/funnels/calendar";
 
 type Params = Promise<{ slug: string; funnelSlug: string; day: string }>;
 type Search = Promise<PreviewOptions & { k?: string }>;
@@ -29,27 +32,33 @@ export default async function FunnelDayPage({ params, searchParams }: { params: 
   const wanted = position(segment);
   const day = loaded?.days.find((item) => item.position === wanted);
   if (!loaded || !day) notFound();
-  const { funnel, days, timeZone, preview, now, carry } = loaded;
-  const base = await publicBase("l", funnelSlug);
-  const viewer = await readViewer(funnel.id, preview && query.fresh === "1");
+  const { funnel, timeZone, preview, now, carry } = loaded;
   const presentedKey = typeof query.k === "string" && /^[a-z0-9-]{1,40}$/.test(query.k) ? query.k : null;
-  const states = statesFor(loaded, viewer, presentedKey ? { [day.id]: presentedKey } : {});
+  const ctx = await pageContext(loaded, { fresh: query.fresh, presentedKeys: presentedKey ? { [day.id]: presentedKey } : {} });
+  const { base, viewer, states, safeDays, theme } = ctx;
   const closed = states[0]?.kind === "closed";
-  const safeDays = publicDays(days, states);
   if (closed && funnel.closeMode === "redirect" && funnel.closeRedirectUrl && !preview) redirect(funnel.closeRedirectUrl);
-  const branding = await funnelBranding(loaded.organizationId, funnel, base);
-  const previewBar = preview ? <PreviewBar asOf={now} label={funnel.status === "published" ? "" : "draft"} timeZone={timeZone} /> : null;
+  const previewBar = preview ? <PreviewBar asOf={now} label={[funnel.status === "published" ? "" : "draft", loaded.draftShown ? "unsaved changes" : ""].filter(Boolean).join(", ")} timeZone={timeZone} /> : null;
+  const index = loaded.days.findIndex((item) => item.id === day.id);
+  const state = states[index];
+  const rules = funnelRules(funnel);
+  // Add to calendar on a live session that has not started yet.
+  const upcomingLive = state?.kind === "locked" && rules.mode === "live" && day.isLive && day.liveStartAt && day.liveStartAt > now;
+  const event = upcomingLive
+    ? liveSessionEvent({ funnelId: funnel.id, funnelName: funnel.name, day: { ...day, label: dayLabel(day) }, roomUrl: rules.livestreamUrl, pageUrl: `${ctx.origin}/l/${funnel.slug}/day-${day.position}`, timeZone })
+    : null;
+  const nav = <NavStrip funnel={funnel} days={safeDays} states={states} navItems={loaded.navItems} base={base} carry={carry} currentDayId={day.id} />;
   return (
-    <PublicShell branding={branding} homeHref={`${base || "/"}${carry}`} preview={previewBar}>
+    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={!closed}>
       {closed ? (
-        <ClosedView funnel={funnel} branding={branding} />
+        <ClosedView funnel={funnel} branding={theme.branding} />
       ) : (
         <DayView
           funnel={funnel}
           days={safeDays}
           states={states}
           day={safeDays.find((item) => item.id === day.id)!}
-          branding={branding}
+          branding={theme.branding}
           timeZone={timeZone}
           base={base}
           carry={carry}
@@ -57,8 +66,10 @@ export default async function FunnelDayPage({ params, searchParams }: { params: 
           presentedKey={presentedKey}
           now={now}
           preview={preview}
+          nav={nav}
+          calendar={event ? <AddToCalendar event={event} icsHref={`${base || `/l/${funnel.slug}`}/ics?day=${day.id}`} timeZone={timeZone} tone="dark" /> : null}
         />
       )}
-    </PublicShell>
+    </FunnelShell>
   );
 }

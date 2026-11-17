@@ -7,6 +7,16 @@ Route `/funnels`. Two parts, per brand:
 
 Permissions: `funnels.read` (see everything and stats), `funnels.write` (build and edit), `funnels.publish` (publish/unpublish, go live, export opt-ins, delete).
 
+## Microsites and design
+
+- **Type** (`funnels.site_type`): `launch` (front door = waitlist, then day 1) or `microsite` (front door = a home page built from blocks; `entryDecision` returns `home` until the funnel closes). Switchable on Setup; switching to a microsite with an empty home page seeds `starterBlocks`.
+- `blocks.ts`: the home page block model (11 types, per-block style). `normalizeBlocks` is the only way in (builder, save action, renderer). Text blocks are sanitized on save and render; Custom HTML only ever renders in a sandboxed iframe (`HtmlFrame`).
+- `design.ts`: design tokens (header, page, content box, nav tiles, footer) and `designCss`, which writes only validated values (hex colours, clamped numbers, allow-listed choices, `cssUrl`-checked images) into the page's `<style>`. The old flat colour columns are kept in step on save.
+- `nav.ts`: custom pages (`/l/<funnel>/p/<page>`), links and "coming soon" placeholders placed among the modules (`afterModule`, `sort`).
+- `deadline.ts`: the deadline ribbon (close, which is per viewer on evergreen per-viewer funnels; start; or a set time; optional last-N-hours window).
+- `calendar.ts`: `.ics` (`/l/<funnel>/ics?day=|block=`) and Google Calendar links, in the org time zone.
+- Builder live preview: the Home page and Design tabs save an unsaved draft (`home_blocks_draft`, `design_draft`; `{}` = none) and show `/l/<funnel>?preview=1&draft=1` in an iframe. Only previewers ever see a draft.
+
 ## Public URLs (org host, no sign-in)
 
 `/l/<funnel>`, `/l/<funnel>/day-<n>` and `/t/<site>`, `/t/<site>/<post>`, `/t/<site>/subscribe`. `middleware.ts` rewrites `/l/*` and `/t/*` to `apps/web/src/app/sites/public/[slug]/{l,t}/…`. Links on those pages are built from the browser path (`publicBase`), so a custom domain that maps its root to `/l/<slug>` or `/t/<slug>` works without changes here (the host check is `publicSiteMatches`).

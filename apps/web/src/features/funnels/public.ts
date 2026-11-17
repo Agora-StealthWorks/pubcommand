@@ -7,7 +7,8 @@ import { currentRequest } from "@/lib/request";
 import { computeDayStates, type DayState, type ViewerFacts } from "../../../../../modules/funnels/state";
 import { zonedLocalToUtc } from "../../../../../modules/funnels/time";
 import { VIEWER_COOKIE_MAX_AGE, decodeViewer, emptyViewerCookie, encodeViewer, viewerCookieName, viewerSecret, type ViewerCookie } from "../../../../../modules/funnels/viewer";
-import { dayRules, funnelRules, orgTimezone, type DayRow, type FunnelRow, type SiteRow } from "./data";
+import { dayRules, funnelRules, orgTimezone, type DayRow, type FunnelRow, type HostRow, type NavItemRow, type SiteRow } from "./data";
+import { applyDesignDraft, hasDraft } from "./site-data";
 
 /** Is this request for the org the URL names? (A custom-domain host will extend this check.) */
 export async function publicSiteMatches(orgSlug: string): Promise<boolean> {
@@ -47,17 +48,22 @@ async function previewer(orgSlug: string): Promise<boolean> {
   }
 }
 
-export type PreviewOptions = { preview?: string; as_of?: string; fresh?: string };
+/** draft=1: the builder's live preview shows the unsaved design and home page. */
+export type PreviewOptions = { preview?: string; as_of?: string; fresh?: string; draft?: string };
 
 export type LoadedFunnel = {
   organizationId: string;
   orgSlug: string;
   funnel: FunnelRow;
   days: DayRow[];
+  hosts: HostRow[];
+  navItems: NavItemRow[];
   timeZone: string;
   /** Admin preview: drafts visible, no stats, no cookie writes. */
   preview: boolean;
   now: Date;
+  /** The builder's unsaved draft is shown (live preview). */
+  draftShown: boolean;
   /** Query suffix to keep preview settings on internal links ("" for visitors). */
   carry: string;
 };
@@ -67,20 +73,29 @@ export async function loadPublicFunnel(orgSlug: string, funnelSlug: string, opti
   const org = await resolveOrgBySlug(orgSlug);
   if (!org || org.suspendedAt || !(await moduleEnabled(org.id))) return null;
   const db = tenantDb(org.id);
-  const funnel = await db.funnel.findFirst({ where: { slug: funnelSlug, deletedAt: null } });
-  if (!funnel) return null;
-  const wantsPreview = options.preview === "1" || Boolean(options.as_of) || funnel.status !== "published";
+  const row = await db.funnel.findFirst({ where: { slug: funnelSlug, deletedAt: null } });
+  if (!row) return null;
+  const wantsPreview = options.preview === "1" || Boolean(options.as_of) || options.draft === "1" || row.status !== "published";
   const preview = wantsPreview ? await previewer(orgSlug) : false;
-  if (funnel.status !== "published" && !preview) return null;
-  const [days, timeZone] = await Promise.all([db.funnelDay.findMany({ where: { funnelId: funnel.id }, orderBy: { position: "asc" } }), orgTimezone(org.id)]);
+  if (row.status !== "published" && !preview) return null;
+  const draft = preview && options.draft === "1";
+  const funnel = draft ? applyDesignDraft(row) : row;
+  const [days, hosts, navItems, timeZone] = await Promise.all([
+    db.funnelDay.findMany({ where: { funnelId: funnel.id }, orderBy: { position: "asc" } }),
+    db.funnelHost.findMany({ where: { funnelId: funnel.id }, orderBy: { position: "asc" } }),
+    db.funnelNavItem.findMany({ where: { funnelId: funnel.id }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] }),
+    orgTimezone(org.id),
+  ]);
   const asOf = preview && options.as_of ? zonedLocalToUtc(options.as_of, timeZone) : null;
   const params = new URLSearchParams();
   if (preview) {
     params.set("preview", "1");
     if (options.as_of && asOf) params.set("as_of", options.as_of);
     if (options.fresh === "1") params.set("fresh", "1");
+    if (draft) params.set("draft", "1");
   }
-  return { organizationId: org.id, orgSlug, funnel, days, timeZone, preview, now: asOf ?? new Date(), carry: preview ? `?${params.toString()}` : "" };
+  const draftShown = draft && (hasDraft(row.designDraft) || hasDraft(row.homeBlocksDraft));
+  return { organizationId: org.id, orgSlug, funnel, days, hosts, navItems, timeZone, draftShown, preview, now: asOf ?? new Date(), carry: preview ? `?${params.toString()}` : "" };
 }
 
 export async function readViewer(funnelId: string, fresh: boolean): Promise<ViewerCookie | null> {

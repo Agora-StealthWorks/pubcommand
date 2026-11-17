@@ -9,79 +9,111 @@
 
 /// One launch funnel. Times are stored UTC; the builder shows the org time zone.
 model Funnel {
-  id                   String        @id @default(uuid()) @db.Uuid
-  organizationId       String        @map("organization_id") @db.Uuid
-  brandId              String        @map("brand_id") @db.Uuid
-  name                 String
+  id                     String          @id @default(uuid()) @db.Uuid
+  organizationId         String          @map("organization_id") @db.Uuid
+  brandId                String          @map("brand_id") @db.Uuid
+  name                   String
   /// Public link: https://{org}.pubcommand.com/l/<slug>. Unique per organization.
-  slug                 String
+  slug                   String
   /// draft | published | archived
-  status               String        @default("draft")
+  status                 String          @default("draft")
   /// evergreen | live
-  mode                 String        @default("evergreen")
+  mode                   String          @default("evergreen")
   /// fixed | per_viewer
-  timing               String        @default("fixed")
-  startAt              DateTime?     @map("start_at")
-  endAt                DateTime?     @map("end_at")
-  closeAfterHours      Int?          @map("close_after_hours")
-  livestreamUrl        String?       @map("livestream_url")
+  timing                 String          @default("fixed")
+  startAt                DateTime?       @map("start_at")
+  endAt                  DateTime?       @map("end_at")
+  closeAfterHours        Int?            @map("close_after_hours")
+  livestreamUrl          String?         @map("livestream_url")
   /// all_open | scheduled | watch_percent | url_key
-  progression          String        @default("all_open")
-  watchPercent         Int           @default(80) @map("watch_percent")
+  progression            String          @default("all_open")
+  watchPercent           Int             @default(80) @map("watch_percent")
   /// as_you_go | prebuilt
-  buildMode            String        @default("as_you_go") @map("build_mode")
+  buildMode              String          @default("as_you_go") @map("build_mode")
   /// page | redirect | never
-  closeMode            String        @default("page") @map("close_mode")
-  closeHeadline        String        @default("This event has closed") @map("close_headline")
-  closeMessageHtml     String        @default("<p>Thanks for your interest. This event is no longer available.</p>") @map("close_message_html")
-  closeButtonText      String?       @map("close_button_text")
-  closeButtonUrl       String?       @map("close_button_url")
-  closeRedirectUrl     String?       @map("close_redirect_url")
-  waitlistEnabled      Boolean       @default(true) @map("waitlist_enabled")
-  waitlistHeadline     String        @default("It starts in…") @map("waitlist_headline")
-  waitlistSubheadline  String        @default("Keep this page open. You will be taken in automatically the moment it begins.") @map("waitlist_subheadline")
-  agendaTitle          String        @default("Agenda") @map("agenda_title")
+  closeMode              String          @default("page") @map("close_mode")
+  closeHeadline          String          @default("This event has closed") @map("close_headline")
+  closeMessageHtml       String          @default("<p>Thanks for your interest. This event is no longer available.</p>") @map("close_message_html")
+  closeButtonText        String?         @map("close_button_text")
+  closeButtonUrl         String?         @map("close_button_url")
+  closeRedirectUrl       String?         @map("close_redirect_url")
+  waitlistEnabled        Boolean         @default(true) @map("waitlist_enabled")
+  waitlistHeadline       String          @default("It starts in…") @map("waitlist_headline")
+  waitlistSubheadline    String          @default("Keep this page open. You will be taken in automatically the moment it begins.") @map("waitlist_subheadline")
+  agendaTitle            String          @default("Agenda") @map("agenda_title")
   /// none | email | form
-  optinMode            String        @default("none") @map("optin_mode")
-  optinFormSlug        String?       @map("optin_form_slug")
-  optinHeadline        String        @default("Get a reminder before we start") @map("optin_headline")
-  optinButtonText      String        @default("Remind me") @map("optin_button_text")
+  optinMode              String          @default("none") @map("optin_mode")
+  optinFormSlug          String?         @map("optin_form_slug")
+  optinHeadline          String          @default("Get a reminder before we start") @map("optin_headline")
+  optinButtonText        String          @default("Remind me") @map("optin_button_text")
   /// Forms theme to borrow logo, colours and privacy link from. Null = the funnel's own branding.
-  formThemeId          String?       @map("form_theme_id") @db.Uuid
-  logoAssetId          String?       @map("logo_asset_id") @db.Uuid
-  logoUrl              String?       @map("logo_url")
-  logoHeight           Int           @default(40) @map("logo_height")
-  headerBg             String        @default("#111827") @map("header_bg")
-  pageBg               String        @default("#f5f6f8") @map("page_bg")
-  textColor            String        @default("#1f2937") @map("text_color")
-  accentColor          String        @default("#1d4ed8") @map("accent_color")
-  companyName          String        @default("") @map("company_name")
-  privacyUrl           String?       @map("privacy_url")
-  termsUrl             String?       @map("terms_url")
+  formThemeId            String?         @map("form_theme_id") @db.Uuid
+  logoAssetId            String?         @map("logo_asset_id") @db.Uuid
+  logoUrl                String?         @map("logo_url")
+  logoHeight             Int             @default(40) @map("logo_height")
+  headerBg               String          @default("#111827") @map("header_bg")
+  pageBg                 String          @default("#f5f6f8") @map("page_bg")
+  textColor              String          @default("#1f2937") @map("text_color")
+  accentColor            String          @default("#1d4ed8") @map("accent_color")
+  companyName            String          @default("") @map("company_name")
+  privacyUrl             String?         @map("privacy_url")
+  termsUrl               String?         @map("terms_url")
   /// Sanitized rich text.
-  footerHtml           String        @default("") @map("footer_html")
-  lockedTitle          String        @default("This video is locked") @map("locked_title")
-  lockedScheduledMsg   String        @default("{day} unlocks on {unlock_date}. Check back then!") @map("locked_scheduled_msg")
-  lockedWatchMsg       String        @default("Watch at least {percent}% of {prev_day} to unlock {day}.") @map("locked_watch_msg")
-  lockedKeyMsg         String        @default("{day} unlocks from the link in your email.") @map("locked_key_msg")
-  lockedLiveMsg        String        @default("{day} goes live on {unlock_date}.") @map("locked_live_msg")
-  comingSoonTitle      String        @default("Coming soon") @map("coming_soon_title")
-  comingSoonMessage    String        @default("This video will be available shortly. Check back soon!") @map("coming_soon_message")
-  replayPendingTitle   String        @default("The replay is on its way") @map("replay_pending_title")
-  replayPendingMessage String        @default("The live session has ended. The replay will be posted here shortly.") @map("replay_pending_message")
-  liveHeadline         String        @default("We're live!") @map("live_headline")
-  liveSubheadline      String        @default("Taking you to the livestream room…") @map("live_subheadline")
-  nextButtonText       String        @default("Watch the next day") @map("next_button_text")
-  brainSyncEnabled     Boolean       @default(true) @map("brain_sync_enabled")
-  publishedAt          DateTime?     @map("published_at")
-  createdById          String?       @map("created_by_id") @db.Uuid
-  createdAt            DateTime      @default(now()) @map("created_at")
-  updatedAt            DateTime      @updatedAt @map("updated_at")
-  deletedAt            DateTime?     @map("deleted_at")
-  days                 FunnelDay[]
-  events               FunnelEvent[]
-  watches              FunnelWatch[]
-  optins               FunnelOptin[]
+  footerHtml             String          @default("") @map("footer_html")
+  lockedTitle            String          @default("This video is locked") @map("locked_title")
+  lockedScheduledMsg     String          @default("{day} unlocks on {unlock_date}. Check back then!") @map("locked_scheduled_msg")
+  lockedWatchMsg         String          @default("Watch at least {percent}% of {prev_day} to unlock {day}.") @map("locked_watch_msg")
+  lockedKeyMsg           String          @default("{day} unlocks from the link in your email.") @map("locked_key_msg")
+  lockedLiveMsg          String          @default("{day} goes live on {unlock_date}.") @map("locked_live_msg")
+  comingSoonTitle        String          @default("Coming soon") @map("coming_soon_title")
+  comingSoonMessage      String          @default("This video will be available shortly. Check back soon!") @map("coming_soon_message")
+  replayPendingTitle     String          @default("The replay is on its way") @map("replay_pending_title")
+  replayPendingMessage   String          @default("The live session has ended. The replay will be posted here shortly.") @map("replay_pending_message")
+  liveHeadline           String          @default("We're live!") @map("live_headline")
+  liveSubheadline        String          @default("Taking you to the livestream room…") @map("live_subheadline")
+  nextButtonText         String          @default("Watch the next day") @map("next_button_text")
+  brainSyncEnabled       Boolean         @default(true) @map("brain_sync_enabled")
+  /// launch (waitlist front door) | microsite (a block-built home page is the front door)
+  siteType               String          @default("launch") @map("site_type")
+  /// Microsite: show the site header + module navigation above the home page blocks.
+  homeShell              Boolean         @default(true) @map("home_shell")
+  /// Browser title of the home page. Empty = the funnel name.
+  homeTitle              String          @default("") @map("home_title")
+  /// Ordered home page blocks, validated by modules/funnels/blocks.ts.
+  homeBlocks             Json            @default("[]") @map("home_blocks")
+  /// Unsaved builder draft, shown only in the builder's live preview.
+  homeBlocksDraft        Json?           @map("home_blocks_draft")
+  /// Design tokens (header, page, content box, nav tiles, footer), validated by modules/funnels/design.ts.
+  design                 Json            @default("{}")
+  /// Unsaved design draft, shown only in the builder's live preview.
+  designDraft            Json?           @map("design_draft")
+  /// Waitlist: show the hosts below the agenda.
+  hostsEnabled           Boolean         @default(false) @map("hosts_enabled")
+  hostsTitle             String          @default("Meet your hosts") @map("hosts_title")
+  deadlineBarEnabled     Boolean         @default(false) @map("deadline_bar_enabled")
+  /// end (funnel close; per viewer on evergreen) | start | custom
+  deadlineBarTarget      String          @default("end") @map("deadline_bar_target")
+  deadlineBarAt          DateTime?       @map("deadline_bar_at")
+  /// top | bottom
+  deadlineBarPosition    String          @default("bottom") @map("deadline_bar_position")
+  deadlineBarSticky      Boolean         @default(true) @map("deadline_bar_sticky")
+  /// Tokens: {date} {short_date}
+  deadlineBarText        String          @default("This offer ends in") @map("deadline_bar_text")
+  deadlineBarBg          String          @default("#b42318") @map("deadline_bar_bg")
+  deadlineBarColor       String          @default("#ffffff") @map("deadline_bar_color")
+  /// Only show in the last N hours before the deadline (0 = always).
+  deadlineBarWithinHours Int             @default(0) @map("deadline_bar_within_hours")
+  publishedAt            DateTime?       @map("published_at")
+  createdById            String?         @map("created_by_id") @db.Uuid
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+  deletedAt              DateTime?       @map("deleted_at")
+  days                   FunnelDay[]
+  events                 FunnelEvent[]
+  watches                FunnelWatch[]
+  optins                 FunnelOptin[]
+  hosts                  FunnelHost[]
+  navItems               FunnelNavItem[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, brandId, updatedAt])
@@ -137,13 +169,76 @@ model FunnelDay {
   @@map("funnel_days")
 }
 
+/// A host shown on the waitlist and in the home page "Meet your hosts" block.
+model FunnelHost {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  funnelId       String   @map("funnel_id") @db.Uuid
+  position       Int
+  name           String   @default("")
+  title          String   @default("")
+  /// Sanitized rich text.
+  bioHtml        String   @default("") @map("bio_html")
+  photoAssetId   String?  @map("photo_asset_id") @db.Uuid
+  photoUrl       String?  @map("photo_url")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, funnelId, position])
+  @@map("funnel_hosts")
+}
+
+/// A non-module entry in the navigation: a custom page, an external link or a
+/// "coming soon" placeholder. Never progression-locked.
+model FunnelNavItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  funnelId       String   @map("funnel_id") @db.Uuid
+  /// page | link | placeholder
+  kind           String   @default("page")
+  label          String   @default("")
+  /// Pages: /l/<funnel>/p/<slug>. Unique per funnel (empty for links and placeholders).
+  slug           String   @default("")
+  title          String   @default("")
+  /// Pages: rich (sanitized, in the content box) | html (raw, in a sandboxed iframe)
+  contentMode    String   @default("rich") @map("content_mode")
+  /// Pages: outside (above the box) | inside (top of the box) | hidden
+  titlePlacement String   @default("outside") @map("title_placement")
+  bodyHtml       String   @default("") @map("body_html")
+  /// Raw admin HTML, only ever rendered inside a sandboxed iframe.
+  html           String   @default("")
+  /// Pages: none | email | form (an opt-in under the page)
+  optinMode      String   @default("none") @map("optin_mode")
+  optinFormSlug  String?  @map("optin_form_slug")
+  url            String   @default("")
+  newTab         Boolean  @default(true) @map("new_tab")
+  showInNav      Boolean  @default(true) @map("show_in_nav")
+  showLock       Boolean  @default(true) @map("show_lock")
+  faded          Boolean  @default(true)
+  showInAgenda   Boolean  @default(false) @map("show_in_agenda")
+  agendaWhen     String   @default("") @map("agenda_when")
+  agendaDesc     String   @default("") @map("agenda_desc")
+  /// Shown after module N (0 = before the first); null = at the end.
+  afterModule    Int?     @map("after_module")
+  sort           Int      @default(0)
+  thumbAssetId   String?  @map("thumb_asset_id") @db.Uuid
+  thumbUrl       String?  @map("thumb_url")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, funnelId, sort])
+  @@map("funnel_nav_items")
+}
+
 /// Logos and thumbnails in Postgres (no volume). Public: they render on public pages.
 model FunnelAsset {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   /// The funnel or text-letter site that owns it.
   ownerId        String   @map("owner_id") @db.Uuid
-  /// logo | thumb
+  /// logo | thumb | header_bg | page_bg | footer_logo | host | block | nav_thumb
   kind           String
   filename       String
   mimeType       String   @map("mime_type")
@@ -209,36 +304,36 @@ model FunnelOptin {
 
 /// A text-letter (SMS newsletter) site: subscribe page, archive and posts.
 model TextSite {
-  id               String       @id @default(uuid()) @db.Uuid
-  organizationId   String       @map("organization_id") @db.Uuid
-  brandId          String       @map("brand_id") @db.Uuid
+  id               String      @id @default(uuid()) @db.Uuid
+  organizationId   String      @map("organization_id") @db.Uuid
+  brandId          String      @map("brand_id") @db.Uuid
   name             String
   /// Public link: https://{org}.pubcommand.com/t/<slug>. Unique per organization.
   slug             String
   /// draft | live
-  status           String       @default("draft")
-  tagline          String       @default("")
+  status           String      @default("draft")
+  tagline          String      @default("")
   /// Shown on the subscribe page. Sanitized rich text.
-  introHtml        String       @default("") @map("intro_html")
-  programName      String       @default("") @map("program_name")
-  companyName      String       @default("") @map("company_name")
-  messageFrequency String       @default("Message frequency varies") @map("message_frequency")
-  helpContact      String       @default("") @map("help_contact")
-  privacyUrl       String?      @map("privacy_url")
-  termsUrl         String?      @map("terms_url")
-  logoAssetId      String?      @map("logo_asset_id") @db.Uuid
-  logoUrl          String?      @map("logo_url")
-  logoHeight       Int          @default(36) @map("logo_height")
-  headerBg         String       @default("#111827") @map("header_bg")
-  accentColor      String       @default("#1d4ed8") @map("accent_color")
-  archivesEnabled  Boolean      @default(true) @map("archives_enabled")
+  introHtml        String      @default("") @map("intro_html")
+  programName      String      @default("") @map("program_name")
+  companyName      String      @default("") @map("company_name")
+  messageFrequency String      @default("Message frequency varies") @map("message_frequency")
+  helpContact      String      @default("") @map("help_contact")
+  privacyUrl       String?     @map("privacy_url")
+  termsUrl         String?     @map("terms_url")
+  logoAssetId      String?     @map("logo_asset_id") @db.Uuid
+  logoUrl          String?     @map("logo_url")
+  logoHeight       Int         @default(36) @map("logo_height")
+  headerBg         String      @default("#111827") @map("header_bg")
+  accentColor      String      @default("#1d4ed8") @map("accent_color")
+  archivesEnabled  Boolean     @default(true) @map("archives_enabled")
   /// Marketing Calendar publication code; when set, each published post adds a calendar issue.
-  calendarCode     String?      @map("calendar_code")
-  brainSyncEnabled Boolean      @default(true) @map("brain_sync_enabled")
-  createdById      String?      @map("created_by_id") @db.Uuid
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
-  deletedAt        DateTime?    @map("deleted_at")
+  calendarCode     String?     @map("calendar_code")
+  brainSyncEnabled Boolean     @default(true) @map("brain_sync_enabled")
+  createdById      String?     @map("created_by_id") @db.Uuid
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  deletedAt        DateTime?   @map("deleted_at")
   posts            TextPost[]
   optins           TextOptin[]
   views            TextView[]
