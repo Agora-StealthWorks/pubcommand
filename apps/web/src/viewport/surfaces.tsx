@@ -1,8 +1,8 @@
 import { Button, Card, Input, Label, Textarea } from "@pubcommand/ui";
 import { performanceHome } from "@pubcommand/modules";
-import { BRAND_ACCENT, EXAMPLE_CSV } from "@pubcommand/modules/charts";
-import { ChartsStudio } from "@pubcommand/modules/charts/studio";
-import type { ShareResult } from "@pubcommand/modules/charts";
+import { defaultSpec } from "@pubcommand/modules/charts";
+import { createProjectAction, fetchSeriesAction, saveChartAction, saveTemplateAction, uploadImageAction } from "@/features/charts/actions";
+import { ChartEditor } from "@/features/charts/editor";
 import {
   buildPlansSettingsScreen,
   createModuleAddOn,
@@ -122,9 +122,22 @@ function billingScreen() {
   });
 }
 
+type ShareResult = { url: string } | { error: string };
+
+/** Fixed example bars so the viewport check never needs market data. */
+function viewportBars() {
+  const bars = [];
+  let value = 50;
+  for (let index = 0; index < 250; index += 1) {
+    value *= 1 + 0.003 + 0.012 * Math.sin(index / 11);
+    bars.push({ t: Date.UTC(2025, 0, 2) + index * 86_400_000, o: value, h: value * 1.01, l: value * 0.99, c: value });
+  }
+  return bars;
+}
+
 export async function ViewportSurface({
   route,
-  publishShare,
+  publishShare: _publishShare,
 }: {
   route: string;
   publishShare: (draft: { csv: string; annotation: string; accent: string }) => Promise<ShareResult>;
@@ -671,14 +684,17 @@ export async function ViewportSurface({
       <div data-surface="charts">
         {orgFrame(
           "/charts",
-          <ChartsStudio
-            initialCsv={EXAMPLE_CSV}
-            initialAnnotation="Readers are up this spring"
-            initialAccent={BRAND_ACCENT}
-            canEdit
-            shareNotice={null}
-            publishShare={publishShare}
-            initialShareUrl={SHARE_URL}
+          <ChartEditor
+            initialSpec={defaultSpec("2026-01-01")}
+            initialSeries={{ symbol: "EXMPL", name: "Example Corporation With A Very Long Name", source: "example data", unit: "$", warnings: [], bars: viewportBars() }}
+            initialError={null}
+            chartId={null}
+            chartName=""
+            projectId={null}
+            templates={[]}
+            projects={[{ id: "viewport-project", name: "A project with a long name for the viewport check" }]}
+            marketNote="Market data is not connected yet: MASSIVE_API_KEY and TIINGO_API_KEY are not set."
+            actions={{ fetchSeries: fetchSeriesAction, save: saveChartAction, createProject: createProjectAction, saveTemplate: saveTemplateAction, uploadImage: uploadImageAction }}
           />,
         )}
       </div>

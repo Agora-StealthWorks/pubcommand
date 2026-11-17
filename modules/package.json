@@ -5,8 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./charts": "./charts/index.ts",
-    "./charts/studio": "./charts/studio.tsx"
+    "./charts": "./charts/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

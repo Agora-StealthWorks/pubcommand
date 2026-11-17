@@ -1,68 +1,60 @@
-import { buildSiteUrl, can } from "@pubcommand/core";
-import { moduleRegistry } from "@pubcommand/modules";
-import { BRAND_ACCENT, EXAMPLE_CSV, chartShareSearch, createChartShareToken, readChartShare, type ChartDraft } from "@pubcommand/modules/charts";
-import { ChartsStudio } from "@pubcommand/modules/charts/studio";
 import { notFound } from "next/navigation";
-import { Denied, PageHeader } from "@/components/ui";
+import { Denied } from "@/components/ui";
+import { createProjectAction, fetchSeriesAction, saveChartAction, saveTemplateAction, uploadImageAction } from "@/features/charts/actions";
+import { chartsAccess } from "@/features/charts/context";
+import { listProjects } from "@/features/charts/data";
+import { ChartEditor } from "@/features/charts/editor";
+import { loadSeries, marketStatus, todayIso } from "@/features/charts/market";
+import { SAMPLE_CSV } from "@/features/charts/sample";
+import { listTemplates, loadChart } from "@/features/charts/server";
 import { getOrgContext } from "@/lib/org";
+import { applyStyle } from "../../../../../../../../modules/charts/spec";
+import { defaultSpec } from "../../../../../../../../modules/charts/templates";
 
-export default async function ChartsPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ slug: string }>;
-  searchParams: Promise<{ share?: string | string[] }>;
-}) {
+export default async function ChartsEditorPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ chart?: string; template?: string }> }) {
   const { slug } = await params;
+  const query = await searchParams;
   const ctx = await getOrgContext(slug);
   if (ctx.kind !== "ok") notFound();
-  const manifest = moduleRegistry.getBySlug("charts");
-  if (!manifest) notFound();
-  if (!ctx.subject.entitledModuleIds.includes(manifest.planEntitlement)) {
-    return (
-      <div>
-        <PageHeader title={manifest.name} description="This module is not included for the organization." />
-        <p className="rounded-lg border border-line bg-white p-6 text-sm text-muted">
-          Ask an admin to enable it if the plan allows it.
-        </p>
-      </div>
-    );
-  }
-  const canEdit = can(ctx.subject, "charts.write", ctx.scope) || can(ctx.subject, "charts.read", ctx.scope);
-  if (!canEdit) return <Denied />;
+  const access = await chartsAccess(slug);
+  if (!access.ok) return <Denied title={access.error} />;
+  const { organizationId, brandId } = access.scope;
+  const [templates, projects] = await Promise.all([listTemplates(organizationId), listProjects(organizationId, brandId)]);
+  const status = marketStatus();
+  const connected = status.massive || status.tiingo;
 
-  const query = await searchParams;
-  const token = Array.isArray(query.share) ? (query.share[0] ?? "") : (query.share ?? "");
-  const shared = token ? readChartShare(token, process.env.AUTH_SECRET ?? "", ctx.resolved.id) : null;
-
-  async function publishShare(draft: ChartDraft) {
-    "use server";
-    const current = await getOrgContext(slug);
-    if (current.kind !== "ok") return { error: "You are not signed in to this organization." };
-    const allowed =
-      can(current.subject, "charts.write", current.scope) || can(current.subject, "charts.read", current.scope);
-    if (!allowed) return { error: "You cannot share charts for this organization." };
-    const signed = createChartShareToken(draft, current.resolved.id, process.env.AUTH_SECRET ?? "");
-    if (!signed.ok) return { error: signed.error };
-    return {
-      url: buildSiteUrl({
-        rootDomain: process.env.ROOT_DOMAIN ?? "localhost",
-        requestHost: current.request.host,
-        site: { kind: "org", slug: current.resolved.slug },
-        pathname: "/charts",
-        search: chartShareSearch(signed.token),
-      }),
-    };
+  const stored = query.chart ? await loadChart(organizationId, brandId, query.chart) : null;
+  let spec;
+  if (stored) {
+    spec = stored.spec;
+  } else {
+    const template = templates.find((item) => item.id === query.template) ?? templates[0];
+    spec = defaultSpec(todayIso(), template?.style, template?.id ?? null);
+    if (template) spec = applyStyle(spec, template.style, template.id);
+    if (!connected) spec.data = { ...spec.data, symbol: "CSV", csv: SAMPLE_CSV, period: "MAX" };
   }
+  // Reopened charts show the exact bars that were saved; new charts load fresh data.
+  const loaded = stored
+    ? { ok: true as const, series: { symbol: stored.symbol, name: stored.seriesName, source: stored.source, unit: (stored.unit === "" ? "" : "$") as "" | "$", warnings: stored.warningsList, bars: stored.barsList } }
+    : await loadSeries(spec.data);
 
   return (
-    <ChartsStudio
-      initialCsv={shared?.csv ?? EXAMPLE_CSV}
-      initialAnnotation={shared ? shared.annotation : "Readers are up this spring"}
-      initialAccent={shared?.accent ?? BRAND_ACCENT}
-      canEdit={canEdit}
-      shareNotice={token && !shared ? "This share link is not valid for this organization." : null}
-      publishShare={publishShare}
+    <ChartEditor
+      key={stored?.id ?? "new"}
+      initialSpec={spec}
+      initialSeries={loaded.ok ? loaded.series : null}
+      initialError={loaded.ok ? null : loaded.error}
+      chartId={stored?.id ?? null}
+      chartName={stored?.name ?? ""}
+      projectId={stored?.projectId ?? null}
+      templates={templates.map((t) => ({ id: t.id, name: t.name, category: t.category, style: t.style }))}
+      projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+      marketNote={
+        connected
+          ? null
+          : "Market data is not connected yet: MASSIVE_API_KEY and TIINGO_API_KEY are not set, so tickers cannot load. FRED series (FRED:DGS10) and pasted CSV work now. The chart below uses example CSV data."
+      }
+      actions={{ fetchSeries: fetchSeriesAction, save: saveChartAction, createProject: createProjectAction, saveTemplate: saveTemplateAction, uploadImage: uploadImageAction }}
     />
   );
 }

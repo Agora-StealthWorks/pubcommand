@@ -1,0 +1,4 @@
+{"ticker":"AAPL","queryCount":3,"resultsCount":2,"adjusted":true,"status":"OK","request_id":"fixture-1",
+ "results":[{"v":70790813,"vw":131.6,"o":130.465,"c":131.88,"h":133.01,"l":130.2,"t":1700000000000,"n":1},
+            {"v":63814900,"vw":132.1,"o":131.88,"c":132.75,"h":133.5,"l":131.0,"t":1700086400000,"n":1}],
+ "next_url":"https://api.massive.com/v2/aggs/ticker/AAPL/range/1/day/1700179200000/2023-11-20?cursor=abc"}
