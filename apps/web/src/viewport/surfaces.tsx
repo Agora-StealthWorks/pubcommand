@@ -11,7 +11,6 @@ import {
   stripeEnvStatus,
 } from "../../../../modules/billing/index";
 import { renderEditorialPage } from "../../../../modules/editorial/render";
-import { loadKnowledge } from "../../../../modules/knowledge/index";
 import { loadIntelScreen } from "../../../../modules/intel/index";
 import { AdminShell } from "@/components/admin-shell";
 import { OrgShell } from "@/components/org-shell";
@@ -529,7 +528,9 @@ export async function ViewportSurface({
   }
 
   if (route === "org/knowledge") {
-    const view = loadKnowledge(VIEWPORT_ORG_ID, { q: "example" });
+    // Static sample: the real Brain reads Postgres (features/brain).
+    const sample = { id: "example-note", title: "EXAMPLE: Headline checklist", body: "Use one big idea. Name the reader's problem. Promise a specific result." };
+    const view = { query: "example", pages: [sample], selected: sample };
     return (
       <div data-surface="knowledge">
         {orgFrame(

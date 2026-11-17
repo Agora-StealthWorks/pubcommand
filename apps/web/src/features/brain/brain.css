@@ -1,0 +1,29 @@
+/* Brain note typography (no Tailwind typography plugin in this app). */
+.brain-prose { color: var(--ink); font-size: 0.9375rem; line-height: 1.65; overflow-wrap: anywhere; }
+.brain-prose > :first-child { margin-top: 0; }
+.brain-prose h1, .brain-prose h2, .brain-prose h3, .brain-prose h4 { font-weight: 600; line-height: 1.3; margin: 1.4em 0 0.5em; }
+.brain-prose h1 { font-size: 1.5rem; }
+.brain-prose h2 { font-size: 1.25rem; }
+.brain-prose h3 { font-size: 1.075rem; }
+.brain-prose h4, .brain-prose h5, .brain-prose h6 { font-size: 1rem; }
+.brain-prose p, .brain-prose ul, .brain-prose ol, .brain-prose blockquote, .brain-prose pre, .brain-prose table { margin: 0.75em 0; }
+.brain-prose ul { list-style: disc; padding-left: 1.4em; }
+.brain-prose ol { list-style: decimal; padding-left: 1.4em; }
+.brain-prose li { margin: 0.2em 0; }
+.brain-prose li > input[type="checkbox"] { margin-right: 0.4em; }
+.brain-prose a { color: var(--accent, #1d4ed8); text-decoration: underline; text-underline-offset: 2px; }
+.brain-prose a.brain-link { text-decoration-style: dotted; }
+.brain-prose .brain-link-missing { color: #b54708; border-bottom: 1px dashed #fdb022; }
+.brain-prose .brain-link-local, .brain-prose .brain-embed { color: var(--muted, #667085); }
+.brain-prose .brain-embed::before { content: "[attachment] "; font-size: 0.75em; }
+.brain-prose blockquote { border-left: 3px solid var(--line); padding-left: 0.9em; color: var(--muted, #667085); }
+.brain-prose code { background: #f2f4f7; border-radius: 4px; padding: 0.1em 0.3em; font-size: 0.875em; }
+.brain-prose pre { background: #f8f9fb; border: 1px solid var(--line); border-radius: 8px; padding: 0.75em 1em; overflow-x: auto; }
+.brain-prose pre code { background: none; padding: 0; }
+.brain-prose table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.875rem; }
+.brain-prose th, .brain-prose td { border: 1px solid var(--line); padding: 0.35em 0.6em; text-align: left; vertical-align: top; }
+.brain-prose th { background: #f8f9fb; font-weight: 600; }
+.brain-prose img { max-width: 100%; height: auto; border-radius: 6px; }
+.brain-prose hr { border: 0; border-top: 1px solid var(--line); margin: 1.5em 0; }
+.brain-prose mark, .brain-prose .mark { background: #fef0c7; padding: 0 0.15em; border-radius: 2px; }
+.brain-snippet mark { background: #fef0c7; color: inherit; border-radius: 2px; padding: 0 0.1em; }

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "typecheck": "tsc --noEmit",
-    "viewport": "playwright install chromium && playwright test -c playwright.viewport.config.ts"
+    "viewport": "playwright install chromium && playwright test -c playwright.viewport.config.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@pubcommand/ai": "workspace:*",
@@ -17,19 +18,24 @@
     "@pubcommand/modules": "workspace:*",
     "@pubcommand/ui": "workspace:*",
     "docx": "^9.15.4",
+    "fflate": "^0.8.3",
     "mammoth": "^1.13.0",
+    "marked": "^18.2.1",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sanitize-html": "^2.18.2",
     "unpdf": "^2.2.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@types/sanitize-html": "^2.16.2",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
   }
 }

@@ -1,134 +1,168 @@
 import type { AccessSubject } from "@pubcommand/core";
-import { beforeEach, describe, expect, it } from "vitest";
-import { canReadKnowledge, canWriteKnowledge } from "./access";
+import { describe, expect, it } from "vitest";
+import { canReadKnowledge, canShareKnowledge, canUseMainBrain, canWriteKnowledge } from "./access";
+import { anyWordsQuery, askPrompt, normalizeAskAnswer, parseStoredAnswer, promptExcerpt } from "./ask";
+import { buildFolderTree, folderAncestors, normalizeFolder } from "./folders";
 import { manifest } from "./manifest";
 import {
-  KNOWLEDGE_SAVED_EVENT,
-  createKnowledgePage,
-  listKnowledgeEvents,
-  listKnowledgePages,
-  resetKnowledgeStore,
-  searchKnowledge,
-} from "./store";
+  MAIN_SCOPE,
+  brandScope,
+  canEditNoteInScope,
+  canSeeNote,
+  originLabel,
+  resolveScope,
+  scopeWhere,
+  sourceLabel,
+} from "./visibility";
 
-function subject(grants: AccessSubject["grants"], overrides: Partial<AccessSubject> = {}): AccessSubject {
+function subject(grants: string[], overrides: Partial<AccessSubject> = {}): AccessSubject {
   return {
     userId: "user-a",
     organizationId: "org-a",
-    roleId: "role-reader",
+    roleId: "role",
     membershipBrandId: null,
     membershipWorkspaceId: null,
-    grants,
+    grants: grants.map((permission) => ({ permission, effect: "allow", brandId: null, workspaceId: null, roleId: "role" })),
     exclusions: [],
     entitledModuleIds: ["knowledge"],
-    permissionModules: {
-      "knowledge.read": "knowledge",
-      "knowledge.write": "knowledge",
-    },
+    permissionModules: { "knowledge.read": "knowledge", "knowledge.write": "knowledge", "knowledge.share": "knowledge" },
     ...overrides,
   };
 }
 
-const scope = { organizationId: "org-a" };
-const allow = (permission: string): AccessSubject["grants"][number] => ({
-  permission,
-  effect: "allow",
-  brandId: null,
-  workspaceId: null,
-  roleId: "role-reader",
-});
-
-describe("knowledge module", () => {
-  beforeEach(() => {
-    resetKnowledgeStore();
-  });
-
-  it("keeps the manifest contract", () => {
+describe("manifest and permissions", () => {
+  it("keeps the module contract and adds knowledge.share", () => {
     expect(manifest.id).toBe("knowledge");
     expect(manifest.slug).toBe("knowledge");
     expect(manifest.planEntitlement).toBe("knowledge");
     expect(manifest.nav.map((item) => item.href)).toEqual(["/knowledge"]);
-    expect(manifest.permissions.map((item) => item.key)).toEqual(["knowledge.read", "knowledge.write"]);
-    expect(manifest.events.map((item) => item.name)).toContain(KNOWLEDGE_SAVED_EVENT);
+    expect(manifest.permissions.map((item) => item.key)).toEqual(["knowledge.read", "knowledge.write", "knowledge.share"]);
   });
 
-  it("lists EXAMPLE pages scoped to the organization", () => {
-    const alpha = listKnowledgePages("org-a");
-    const beta = listKnowledgePages("org-b");
-    expect(alpha.length).toBeGreaterThan(0);
-    expect(alpha.every((page) => page.organizationId === "org-a" && page.title.startsWith("EXAMPLE:"))).toBe(true);
-    expect(beta.every((page) => page.organizationId === "org-b")).toBe(true);
-    expect(alpha.map((page) => page.id).some((id) => beta.some((page) => page.id === id))).toBe(false);
+  it("needs write and share to share", () => {
+    const scope = { organizationId: "org-a" };
+    expect(canReadKnowledge(subject(["knowledge.read"]), scope)).toBe(true);
+    expect(canWriteKnowledge(subject(["knowledge.read"]), scope)).toBe(false);
+    expect(canShareKnowledge(subject(["knowledge.share"]), scope)).toBe(false);
+    expect(canShareKnowledge(subject(["knowledge.write"]), scope)).toBe(false);
+    expect(canShareKnowledge(subject(["knowledge.write", "knowledge.share"]), scope)).toBe(true);
   });
 
-  it("creates a markdown page for one organization and records a saved event", () => {
-    const created = createKnowledgePage({
-      organizationId: "org-a",
-      title: "Field notes",
-      body: "A short markdown note about the sample desk.",
-      actorId: "user-a",
-    });
-    expect(created.ok).toBe(true);
-    if (!created.ok) return;
-    expect(created.page.organizationId).toBe("org-a");
-    expect(created.page.slug).toBe("field-notes");
-    expect(created.page.source).toBe("member");
-    const visible = listKnowledgePages("org-a").map((page) => page.slug);
-    expect(visible).toContain("field-notes");
-    expect(listKnowledgePages("org-b").map((page) => page.slug)).not.toContain("field-notes");
-    const events = listKnowledgeEvents("org-a");
-    expect(events).toHaveLength(1);
-    expect(events[0]?.name).toBe(KNOWLEDGE_SAVED_EVENT);
-    expect(events[0]?.actorId).toBe("user-a");
-    expect(events[0]?.payload.pageId).toBe(created.page.id);
-    expect(listKnowledgeEvents("org-b")).toHaveLength(0);
+  it("keeps brand-bound members out of the main Brain", () => {
+    expect(canUseMainBrain(subject([]))).toBe(true);
+    expect(canUseMainBrain(subject([], { membershipBrandId: "b1" }))).toBe(false);
+    expect(canUseMainBrain(subject([], { membershipWorkspaceId: "w1" }))).toBe(false);
+  });
+});
+
+describe("visibility rule", () => {
+  const a = brandScope("brand-a");
+  const notes = {
+    aPrivate: { brandId: "brand-a", visibility: "PRIVATE" as const },
+    bPrivate: { brandId: "brand-b", visibility: "PRIVATE" as const },
+    bShared: { brandId: "brand-b", visibility: "SHARED" as const },
+    mainPrivate: { brandId: null, visibility: "PRIVATE" as const },
+    mainShared: { brandId: null, visibility: "SHARED" as const },
+  };
+
+  it("lets a brand see its own notes and Shared notes only", () => {
+    expect(canSeeNote(a, notes.aPrivate)).toBe(true);
+    expect(canSeeNote(a, notes.bShared)).toBe(true);
+    expect(canSeeNote(a, notes.mainShared)).toBe(true);
+    expect(canSeeNote(a, notes.bPrivate)).toBe(false);
+    expect(canSeeNote(a, notes.mainPrivate)).toBe(false);
   });
 
-  it("returns citation-shaped keyword hits and hides other organizations", () => {
-    createKnowledgePage({
-      organizationId: "org-a",
-      title: "Harbor log",
-      body: "The lighthouse lamp is checked at dusk.",
-    });
-    createKnowledgePage({
-      organizationId: "org-b",
-      title: "Other harbor",
-      body: "The lighthouse lamp belongs to another organization.",
-    });
-    const hits = searchKnowledge("org-a", "lighthouse lamp");
-    expect(hits).toHaveLength(1);
-    expect(hits[0]).toMatchObject({
-      organizationId: "org-a",
-      title: "Harbor log",
-      slug: "harbor-log",
-      href: "/knowledge?page=harbor-log",
-    });
-    expect(hits[0]?.excerpt.toLowerCase()).toContain("lighthouse");
-    expect(searchKnowledge("org-b", "Harbor log")).toHaveLength(0);
-    expect(searchKnowledge("org-a", "   ")).toEqual([]);
+  it("lets the main Brain see everything, but never deleted notes", () => {
+    for (const note of Object.values(notes)) expect(canSeeNote(MAIN_SCOPE, note)).toBe(true);
+    expect(canSeeNote(MAIN_SCOPE, { ...notes.aPrivate, deletedAt: new Date() })).toBe(false);
+    expect(canSeeNote(a, { ...notes.aPrivate, deletedAt: new Date() })).toBe(false);
   });
 
-  it("rejects a blank title and keeps slugs unique in the organization", () => {
-    expect(createKnowledgePage({ organizationId: "org-a", title: "  ", body: "Notes" })).toEqual({
-      ok: false,
-      error: "Title is required.",
-    });
-    const first = createKnowledgePage({ organizationId: "org-a", title: "Field notes", body: "One" });
-    const second = createKnowledgePage({ organizationId: "org-a", title: "Field notes", body: "Two" });
-    expect(first.ok && second.ok).toBe(true);
-    if (!first.ok || !second.ok) return;
-    expect(first.page.slug).toBe("field-notes");
-    expect(second.page.slug).toBe("field-notes-2");
-    expect(listKnowledgePages("org-b").some((page) => page.slug.startsWith("field-notes"))).toBe(false);
+  it("builds the matching Prisma where", () => {
+    expect(scopeWhere(MAIN_SCOPE)).toEqual({ deletedAt: null });
+    expect(scopeWhere(a)).toEqual({ deletedAt: null, OR: [{ brandId: "brand-a" }, { visibility: "SHARED" }] });
   });
 
-  it("uses can() for read and write", () => {
-    const reader = subject([allow("knowledge.read")]);
-    expect(canReadKnowledge(reader, scope)).toBe(true);
-    expect(canWriteKnowledge(reader, scope)).toBe(false);
-    const writer = subject([allow("knowledge.read"), allow("knowledge.write")]);
-    expect(canWriteKnowledge(writer, scope)).toBe(true);
-    expect(canReadKnowledge(reader, { organizationId: "org-b" })).toBe(false);
-    expect(canReadKnowledge(subject([allow("knowledge.read")], { entitledModuleIds: [] }), scope)).toBe(false);
+  it("edits only inside the note's own Brain", () => {
+    expect(canEditNoteInScope(a, notes.aPrivate)).toBe(true);
+    expect(canEditNoteInScope(a, notes.bShared)).toBe(false);
+    expect(canEditNoteInScope(a, notes.mainShared)).toBe(false);
+    expect(canEditNoteInScope(MAIN_SCOPE, notes.bPrivate)).toBe(true);
+  });
+
+  it("resolves the requested scope safely", () => {
+    expect(resolveScope({ requested: "main", brandId: "brand-a", mainAllowed: true })).toEqual(MAIN_SCOPE);
+    expect(resolveScope({ requested: "main", brandId: "brand-a", mainAllowed: false })).toEqual(a);
+    expect(resolveScope({ requested: undefined, brandId: "brand-a", mainAllowed: true })).toEqual(a);
+    expect(resolveScope({ requested: undefined, brandId: null, mainAllowed: true })).toEqual(MAIN_SCOPE);
+    expect(resolveScope({ requested: "main", brandId: null, mainAllowed: false })).toBeNull();
+  });
+
+  it("labels origin and source", () => {
+    const names = new Map([["brand-b", "Brand B"]]);
+    expect(originLabel(notes.bShared, names)).toBe("Brand B");
+    expect(originLabel(notes.mainShared, names)).toBe("Main Brain");
+    expect(sourceLabel("promo-analyzer")).toBe("Promo Analyzer");
+    expect(sourceLabel("member")).toBe("Written by a member");
+  });
+});
+
+describe("folders", () => {
+  it("normalizes and nests folders with counts", () => {
+    expect(normalizeFolder(" Resources // Experts/ ")).toBe("Resources/Experts");
+    expect(normalizeFolder("../x")).toBe("x");
+    expect(normalizeFolder("")).toBeNull();
+    const tree = buildFolderTree([
+      { folder: "Resources/Experts", count: 3 },
+      { folder: "Resources", count: 1 },
+      { folder: "Areas/MTA", count: 2 },
+      { folder: null, count: 4 },
+    ]);
+    expect(tree.map((node) => node.name)).toEqual(["Areas", "Resources"]);
+    expect(tree[1]).toMatchObject({ path: "Resources", count: 1, total: 4 });
+    expect(tree[1]?.children[0]).toMatchObject({ path: "Resources/Experts", count: 3, total: 3 });
+    expect(folderAncestors("Resources/Experts")).toEqual(["Resources", "Resources/Experts"]);
+  });
+});
+
+describe("Ask the Brain", () => {
+  const sources = [
+    { id: "n1", title: "Headlines", folder: "Copy", origin: "Main Brain", body: "---\ntags: [x]\n---\nUse the 4 U's." },
+    { id: "n2", title: "Offers", folder: null, origin: "Brand A", body: "Lead with the guarantee." },
+  ];
+
+  it("builds an OR query from the meaningful words", () => {
+    expect(anyWordsQuery("What is the best headline formula?")).toBe("best or headline or formula");
+    expect(anyWordsQuery("the and of")).toBe("");
+  });
+
+  it("puts brand context and numbered notes into the prompt", () => {
+    const prompt = askPrompt({ question: "How do I write a headline?", scopeLabel: "Brand A", brandContext: "Reader: busy parents", sources });
+    expect(prompt).toContain('number="1" title="Headlines"');
+    expect(prompt).toContain("Reader: busy parents");
+    expect(prompt).not.toContain("tags: [x]");
+    expect(promptExcerpt("x".repeat(20), 5)).toContain("[…note continues]");
+  });
+
+  it("keeps only citations to notes that were sent", () => {
+    const answer = normalizeAskAnswer(
+      {
+        answer: "Use the 4 U's [1]. Lead with the guarantee [2]. Invented [7].",
+        answered: true,
+        citations: [
+          { source: 1, why: "Headline rule" },
+          { source: 1, why: "dup" },
+          { source: 9, why: "made up" },
+        ],
+      },
+      sources,
+    );
+    expect(answer.citations).toEqual([{ noteId: "n1", title: "Headlines", why: "Headline rule" }]);
+    expect(answer.answer).toBe("Use the 4 U's [1]. Lead with the guarantee [2]. Invented .");
+    expect(answer.consideredIds).toEqual(["n1", "n2"]);
+    expect(normalizeAskAnswer({ answer: "No idea", answered: true, citations: [] }, sources).answered).toBe(false);
+    expect(parseStoredAnswer(answer)).toEqual(answer);
+    expect(parseStoredAnswer({ nope: true })).toBeNull();
   });
 });
