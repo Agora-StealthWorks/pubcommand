@@ -19,7 +19,7 @@ export function issueBrainNote(issue: {
 }): { title: string; body: string } {
   const pct = (v: number | null) => (v == null ? null : `${(v * 100).toFixed(2)}%`);
   const lines = [
-    `Editorial issue on the Marketing Calendar.`,
+    `Editorial issue on the Calendar.`,
     "",
     line("Publication", issue.publicationName ? `${issue.publicationName} (${issue.publicationCode})` : issue.publicationCode),
     line("Mail date", issue.mailDate ? fmtDayFull(issue.mailDate) : "Not scheduled"),
@@ -58,7 +58,7 @@ export function eventBrainNote(event: {
     ? `${fmtDayFull(event.eventDate)}${event.eventEnd && event.eventEnd !== event.eventDate ? ` to ${fmtDayFull(event.eventEnd)}` : ""}${event.startTime ? ` at ${fmtTime(event.startTime)}` : ""}`
     : "Not scheduled";
   const lines = [
-    `Live event on the Marketing Calendar${event.recurring ? " (recurring)" : ""}.`,
+    `Live event on the Calendar${event.recurring ? " (recurring)" : ""}.`,
     "",
     line("When", when),
     line("Marketing window", event.marketingStart || event.marketingEnd ? `${fmtDayFull(event.marketingStart)} to ${fmtDayFull(event.marketingEnd)}` : null),
@@ -85,7 +85,7 @@ export function cubBrainNote(round: {
   overall: number | null;
 }): { title: string; body: string } {
   const lines = [
-    `CUB peer-review round on a promo draft (Marketing Calendar).`,
+    `CUB peer-review round on a promo draft (Calendar).`,
     "",
     line("Deadline", round.dueAt),
     line("Revisions received", round.count),

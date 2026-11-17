@@ -3,13 +3,13 @@ import { defineJob } from "@/lib/jobs/types";
 import { shouldFlipToSent } from "../../../../modules/miniblog/site";
 
 /**
- * When a scheduled Mini-Blog post goes live, its Marketing Calendar issue moves
+ * When a scheduled Mini-Blog post goes live, its Calendar issue moves
  * from "Scheduled" to "Sent". Idempotent: only issues still marked Scheduled
  * are touched, and an issue someone moved to another status by hand is left alone.
  */
 export const miniblogCalendarStatus = defineJob({
   name: "miniblog.calendar-status",
-  description: "Mark Marketing Calendar issues Sent when their scheduled Mini-Blog post goes live.",
+  description: "Mark Calendar issues Sent when their scheduled Mini-Blog post goes live.",
   schedule: "*/5 * * * *",
   async run() {
     const now = new Date();

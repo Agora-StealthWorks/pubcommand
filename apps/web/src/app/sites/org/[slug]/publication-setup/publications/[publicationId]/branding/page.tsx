@@ -30,7 +30,7 @@ export default async function PublicationBrandingPage({ params, searchParams }: 
       </Link>
       <h2 className="mb-1 text-lg font-semibold">Branding · {own.name}</h2>
       <p className="mb-4 text-sm text-muted">
-        Leave a field blank to use the <Link href="/publication-setup/brand" className="text-accent hover:underline">brand defaults</Link>. Emails, funnels, Mini-Blogs and the wiki use the result.
+        Leave a field blank to use the <Link href="/publication-setup/brand" className="text-accent hover:underline">brand defaults</Link>. The wiki and other apps use the result.
       </p>
       <Flash error={query.error} notice={query.notice} />
       <BrandingForm
@@ -42,8 +42,13 @@ export default async function PublicationBrandingPage({ params, searchParams }: 
         name={own.name}
         tagline={pub.tagline ?? defaults?.tagline ?? ""}
         inheritLabel="brand"
-        logo={{ own: own.logoMime ? imageUrl("pub-logo", own.id, own.updatedAt) : null, inherited: defaults?.logoMime ? imageUrl("brand-logo", ctx.brand.id, defaults.updatedAt) : null }}
-        emailHeader={{ own: own.emailHeaderMime ? imageUrl("pub-header", own.id, own.updatedAt) : null, inherited: defaults?.emailHeaderMime ? imageUrl("brand-header", ctx.brand.id, defaults.updatedAt) : null }}
+        logo={{
+          own: { light: own.logoMime ? imageUrl("pub-logo", own.id, own.updatedAt) : null, dark: own.logoOnDarkMime ? imageUrl("pub-logo-dark", own.id, own.updatedAt) : null },
+          inherited: {
+            light: defaults?.logoMime ? imageUrl("brand-logo", ctx.brand.id, defaults.updatedAt) : null,
+            dark: defaults?.logoOnDarkMime ? imageUrl("brand-logo-dark", ctx.brand.id, defaults.updatedAt) : null,
+          },
+        }}
       />
     </div>
   );

@@ -37,7 +37,7 @@ const CARDS: AppCard[] = [
   },
   {
     moduleId: "editorial",
-    name: "Marketing Calendar",
+    name: "Calendar",
     description: "Events, editorial issues and send stats for every publication, on one calendar.",
     icon: "🗓️",
     category: "Editorial",

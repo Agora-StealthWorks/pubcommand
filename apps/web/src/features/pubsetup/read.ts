@@ -2,6 +2,8 @@ import { tenantDb, type Prisma } from "@pubcommand/db";
 import { matchPublication, publicationPromptContext } from "../../../../../modules/pubsetup/brain";
 import { resolveBranding, type ResolvedBranding } from "../../../../../modules/pubsetup/branding";
 import { asPairs, type Pair } from "../../../../../modules/pubsetup/fields";
+import type { LogoSlots } from "../../../../../modules/pubsetup/logos";
+import { sortLegacyLogos } from "./logo-tone";
 
 /**
  * The read API every app uses for publications, editors and branding. Publication Setup
@@ -31,6 +33,11 @@ export type Publication = {
   positioning: string | null;
   audience: string | null;
   deliverables: string[];
+  /** Retail pricing as people typed it ("$7,500/yr"). */
+  retailPrice: string | null;
+  lifetimePrice: string | null;
+  salePrice: string | null;
+  pricingNotes: string | null;
   offers: { label: string; price: string; term: string }[];
   websiteUrl: string | null;
   signupUrl: string | null;
@@ -40,7 +47,10 @@ export type Publication = {
   complianceNotes: string | null;
   /** Calendar chip color. */
   color: string;
+  /** Either logo slot is filled. Pick one with logoFor(pub, background). */
   hasLogo: boolean;
+  /** Logo slots by background: light = for light backgrounds (dark artwork). */
+  logos: LogoSlots;
   hasCover: boolean;
   /** False when retired or archived; pickers should hide it. */
   active: boolean;
@@ -76,9 +86,10 @@ export type Editor = {
   updatedAt: Date;
 };
 
-export type Branding = ResolvedBranding & { brandId: string; publicationId: string | null };
+export type Branding = ResolvedBranding & { brandId: string; publicationId: string | null; /** Cache key for brand logo URLs. */ brandVersion: number | null };
 
-export type ImageKind = "pub-logo" | "pub-cover" | "pub-header" | "editor-photo" | "brand-logo" | "brand-header";
+/** "pub-logo" / "brand-logo" are the light-background slots, "-dark" the dark-background ones. Headers are legacy (email branding was removed). */
+export type ImageKind = "pub-logo" | "pub-logo-dark" | "pub-cover" | "pub-header" | "editor-photo" | "brand-logo" | "brand-logo-dark" | "brand-header";
 
 const PUB_SELECT = {
   id: true,
@@ -97,6 +108,10 @@ const PUB_SELECT = {
   positioning: true,
   audience: true,
   deliverables: true,
+  retailPrice: true,
+  lifetimePrice: true,
+  salePrice: true,
+  pricingNotes: true,
   offers: true,
   websiteUrl: true,
   signupUrl: true,
@@ -106,6 +121,7 @@ const PUB_SELECT = {
   complianceNotes: true,
   color: true,
   logoMime: true,
+  logoOnDarkMime: true,
   coverMime: true,
   active: true,
   deletedAt: true,
@@ -159,6 +175,10 @@ type PubRow = {
   positioning: string | null;
   audience: string | null;
   deliverables: string[];
+  retailPrice: string | null;
+  lifetimePrice: string | null;
+  salePrice: string | null;
+  pricingNotes: string | null;
   offers: unknown;
   websiteUrl: string | null;
   signupUrl: string | null;
@@ -168,6 +188,7 @@ type PubRow = {
   complianceNotes: string | null;
   color: string;
   logoMime: string | null;
+  logoOnDarkMime: string | null;
   coverMime: string | null;
   active: boolean;
   deletedAt: Date | null;
@@ -181,14 +202,15 @@ function pick<K extends string>(rows: Pair[], keys: readonly K[]): Record<K, str
 }
 
 function toPublication(row: PubRow): Publication {
-  const { logoMime, coverMime, deletedAt, editorLinks, launchDate, offers, sampleIssues, slug, ...rest } = row;
+  const { logoMime, logoOnDarkMime, coverMime, deletedAt, editorLinks, launchDate, offers, sampleIssues, slug, ...rest } = row;
   return {
     ...rest,
     slug: slug ?? row.code.toLowerCase(),
     launchDate: launchDate ? launchDate.toISOString().slice(0, 10) : null,
     offers: pick(asPairs(offers), ["label", "price", "term"] as const),
     sampleIssues: pick(asPairs(sampleIssues), ["title", "url"] as const),
-    hasLogo: Boolean(logoMime),
+    hasLogo: Boolean(logoMime || logoOnDarkMime),
+    logos: { light: Boolean(logoMime), dark: Boolean(logoOnDarkMime) },
     hasCover: Boolean(coverMime),
     archived: Boolean(deletedAt),
     active: row.active && !deletedAt,
@@ -236,6 +258,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A brand's publications, in display order. Archived ones only when asked; retired ones are included (status says so). */
 export async function getPublications(organizationId: string, brandId: string, options: { includeArchived?: boolean; activeOnly?: boolean } = {}): Promise<Publication[]> {
+  await sortLegacyLogos(organizationId, brandId);
   const rows = await tenantDb(organizationId).calendarPublication.findMany({
     where: { brandId, ...(options.includeArchived ? {} : { deletedAt: null }), ...(options.activeOnly ? { active: true } : {}) },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -248,6 +271,7 @@ export async function getPublications(organizationId: string, brandId: string, o
 export async function getPublication(organizationId: string, brandId: string, ref: string): Promise<Publication | null> {
   const value = ref.trim();
   if (!value) return null;
+  await sortLegacyLogos(organizationId, brandId);
   const or = [
     ...(UUID.test(value) ? [{ id: value }] : []),
     { slug: value.toLowerCase() },
@@ -286,38 +310,41 @@ const BRANDING_SELECT = {
   headingFont: true,
   bodyFont: true,
   tagline: true,
-  senderName: true,
-  senderEmail: true,
-  footerText: true,
+  logoMime: true,
+  logoOnDarkMime: true,
 } as const;
+
+function slots(row: { logoMime: string | null; logoOnDarkMime: string | null } | null): LogoSlots | undefined {
+  return row ? { light: Boolean(row.logoMime), dark: Boolean(row.logoOnDarkMime) } : undefined;
+}
 
 /** The brand-level defaults alone (what a publication inherits). */
 export async function getBrandBranding(organizationId: string, brandId: string): Promise<Branding> {
   const db = tenantDb(organizationId);
+  await sortLegacyLogos(organizationId, brandId);
   const [brand, defaults] = await Promise.all([
     db.brand.findFirst({ where: { id: brandId }, select: { name: true } }),
-    db.pubBrandBranding.findFirst({ where: { brandId }, select: { ...BRANDING_SELECT, logoMime: true, emailHeaderMime: true } }),
+    db.pubBrandBranding.findFirst({ where: { brandId }, select: { ...BRANDING_SELECT, updatedAt: true } }),
   ]);
-  const resolved = resolveBranding(null, defaults ? { ...defaults, hasLogo: Boolean(defaults.logoMime), hasEmailHeader: Boolean(defaults.emailHeaderMime) } : null, brand?.name ?? "");
-  return { ...resolved, brandId, publicationId: null };
+  const resolved = resolveBranding(null, defaults ? { ...defaults, logos: slots(defaults) } : null, brand?.name ?? "");
+  return { ...resolved, brandId, publicationId: null, brandVersion: defaults?.updatedAt.getTime() ?? null };
 }
 
 /** A publication's branding with brand defaults filled in (each value says where it came from). */
 export async function getBranding(organizationId: string, publicationId: string): Promise<Branding | null> {
   if (!UUID.test(publicationId)) return null;
   const db = tenantDb(organizationId);
-  const pub = await db.calendarPublication.findFirst({ where: { id: publicationId }, select: { ...BRANDING_SELECT, brandId: true, logoMime: true, emailHeaderMime: true } });
+  const found = await db.calendarPublication.findFirst({ where: { id: publicationId }, select: { brandId: true } });
+  if (!found) return null;
+  await sortLegacyLogos(organizationId, found.brandId);
+  const pub = await db.calendarPublication.findFirst({ where: { id: publicationId }, select: { ...BRANDING_SELECT, brandId: true } });
   if (!pub) return null;
   const [brand, defaults] = await Promise.all([
     db.brand.findFirst({ where: { id: pub.brandId }, select: { name: true } }),
-    db.pubBrandBranding.findFirst({ where: { brandId: pub.brandId }, select: { ...BRANDING_SELECT, logoMime: true, emailHeaderMime: true } }),
+    db.pubBrandBranding.findFirst({ where: { brandId: pub.brandId }, select: { ...BRANDING_SELECT, updatedAt: true } }),
   ]);
-  const resolved = resolveBranding(
-    { ...pub, hasLogo: Boolean(pub.logoMime), hasEmailHeader: Boolean(pub.emailHeaderMime) },
-    defaults ? { ...defaults, hasLogo: Boolean(defaults.logoMime), hasEmailHeader: Boolean(defaults.emailHeaderMime) } : null,
-    brand?.name ?? "",
-  );
-  return { ...resolved, brandId: pub.brandId, publicationId };
+  const resolved = resolveBranding({ ...pub, logos: slots(pub) }, defaults ? { ...defaults, logos: slots(defaults) } : null, brand?.name ?? "");
+  return { ...resolved, brandId: pub.brandId, publicationId, brandVersion: defaults?.updatedAt.getTime() ?? null };
 }
 
 /**
@@ -335,6 +362,10 @@ export async function getImage(organizationId: string, kind: ImageKind, id: stri
       const r = await db.calendarPublication.findFirst({ where: { id, ...scope }, select: { logoData: true, logoMime: true, logoFilename: true } });
       return r ? out(r.logoData, r.logoMime, r.logoFilename) : null;
     }
+    case "pub-logo-dark": {
+      const r = await db.calendarPublication.findFirst({ where: { id, ...scope }, select: { logoOnDarkData: true, logoOnDarkMime: true, logoOnDarkFilename: true } });
+      return r ? out(r.logoOnDarkData, r.logoOnDarkMime, r.logoOnDarkFilename) : null;
+    }
     case "pub-cover": {
       const r = await db.calendarPublication.findFirst({ where: { id, ...scope }, select: { coverData: true, coverMime: true, coverFilename: true } });
       return r ? out(r.coverData, r.coverMime, r.coverFilename) : null;
@@ -350,6 +381,10 @@ export async function getImage(organizationId: string, kind: ImageKind, id: stri
     case "brand-logo": {
       const r = await db.pubBrandBranding.findFirst({ where: { brandId: id }, select: { logoData: true, logoMime: true, logoFilename: true } });
       return r ? out(r.logoData, r.logoMime, r.logoFilename) : null;
+    }
+    case "brand-logo-dark": {
+      const r = await db.pubBrandBranding.findFirst({ where: { brandId: id }, select: { logoOnDarkData: true, logoOnDarkMime: true, logoOnDarkFilename: true } });
+      return r ? out(r.logoOnDarkData, r.logoOnDarkMime, r.logoOnDarkFilename) : null;
     }
     case "brand-header": {
       const r = await db.pubBrandBranding.findFirst({ where: { brandId: id }, select: { emailHeaderData: true, emailHeaderMime: true, emailHeaderFilename: true } });

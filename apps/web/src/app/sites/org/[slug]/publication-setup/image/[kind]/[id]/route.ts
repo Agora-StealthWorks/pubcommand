@@ -1,7 +1,7 @@
 import { pubsetupPage } from "@/features/pubsetup/guard";
 import { getImage, type ImageKind } from "@/features/pubsetup/read";
 
-const KINDS: readonly ImageKind[] = ["pub-logo", "pub-cover", "pub-header", "editor-photo", "brand-logo", "brand-header"];
+const KINDS: readonly ImageKind[] = ["pub-logo", "pub-logo-dark", "pub-cover", "editor-photo", "brand-logo", "brand-logo-dark"];
 
 /** Admin-only image route. Other apps serve images from their own routes via getImage(). */
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string; kind: string; id: string }> }) {

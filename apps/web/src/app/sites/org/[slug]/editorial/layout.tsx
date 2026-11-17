@@ -29,7 +29,7 @@ export default async function MarketingCalendarLayout({ children, params }: { ch
   const { slug } = await params;
   const ctx = await getOrgContext(slug);
   if (ctx.kind !== "ok") notFound();
-  if (!ctx.subject.entitledModuleIds.includes("editorial")) return <Denied title="Marketing Calendar is turned off" />;
+  if (!ctx.subject.entitledModuleIds.includes("editorial")) return <Denied title="Calendar is turned off" />;
   if (!can(ctx.subject, "editorial.read", ctx.scope)) return <Denied />;
   if (!ctx.brand) return <Denied title="Add a brand in Settings → Brands first" />;
   const request = await currentRequest();
@@ -43,7 +43,7 @@ export default async function MarketingCalendarLayout({ children, params }: { ch
     <div className="min-w-0">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">Marketing Calendar</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
           <p className="text-sm text-muted">Events, issues and send stats for {ctx.brand.name}.</p>
         </div>
         {writable ? (
@@ -57,7 +57,7 @@ export default async function MarketingCalendarLayout({ children, params }: { ch
           </div>
         ) : null}
       </div>
-      <nav className="-mx-1 mb-5 flex gap-1 overflow-x-auto border-b border-line" aria-label="Marketing Calendar sections">
+      <nav className="-mx-1 mb-5 flex gap-1 overflow-x-auto border-b border-line" aria-label="Calendar sections">
         {tabs.map(([href, label]) => (
           <Link
             key={href}

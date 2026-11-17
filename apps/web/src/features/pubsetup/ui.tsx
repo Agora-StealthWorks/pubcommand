@@ -1,6 +1,7 @@
 import { Badge, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { FONT_OPTIONS, asPairs, fieldGroups, optionLabel, type FieldDef } from "../../../../../modules/pubsetup/fields";
+import { logoFor, type LogoBackground, type LogoSlots } from "../../../../../modules/pubsetup/logos";
 
 export type FormValues = Record<string, unknown>;
 
@@ -133,6 +134,26 @@ export function ImageField({ name, label, src, hint, round }: { name: string; la
 
 export function imageUrl(kind: string, id: string, version: Date | string | number): string {
   return `/publication-setup/image/${kind}/${id}?v=${encodeURIComponent(version instanceof Date ? version.getTime() : String(version))}`;
+}
+
+/** The admin URL of a publication's best logo for a background (see logoFor), or null. */
+export function pubLogoSrc(pub: { id: string; logos: LogoSlots; updatedAt: Date }, background: LogoBackground): string | null {
+  const choice = logoFor(pub, background);
+  return choice ? imageUrl(choice.kind, choice.id, choice.version ?? 0) : null;
+}
+
+/** A publication's logo on a white tile (dark tile for a dark-background-only logo), or its code on its calendar color. */
+export function PubLogoTile({ pub, size = "md" }: { pub: { id: string; code: string; color: string; logos: LogoSlots; updatedAt: Date }; size?: "md" | "lg" }) {
+  const box = size === "lg" ? "h-16 w-16 text-base" : "h-12 w-12 text-sm";
+  const choice = logoFor(pub, "light");
+  // Only a logo for dark backgrounds exists: give it a dark tile so white artwork stays visible.
+  return choice ? (
+    <img src={imageUrl(choice.kind, choice.id, choice.version ?? 0)} alt="" className={`${box} shrink-0 rounded-md border border-line object-contain p-1`} style={{ background: choice.slot === "dark" ? "#111827" : "#ffffff" }} />
+  ) : (
+    <span className={`${box} flex shrink-0 items-center justify-center rounded-md font-bold text-white`} style={{ background: pub.color }} aria-hidden>
+      {pub.code.slice(0, 3)}
+    </span>
+  );
 }
 
 export function PubChip({ code, color }: { code: string; color: string }) {

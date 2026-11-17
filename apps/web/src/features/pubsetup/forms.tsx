@@ -3,6 +3,7 @@ import Link from "next/link";
 import { EDITOR_FIELDS, PUBLICATION_FIELDS } from "../../../../../modules/pubsetup/fields";
 import { saveEditor, savePublication } from "./actions";
 import type { Editor, Publication } from "./read";
+import { LogoSlotsField } from "./logo-field";
 import { FieldSections, ImageField, imageUrl } from "./ui";
 
 export function PublicationForm({ pub }: { pub?: Publication | null }) {
@@ -12,11 +13,16 @@ export function PublicationForm({ pub }: { pub?: Publication | null }) {
       {pub ? <input type="hidden" name="publicationId" value={pub.id} /> : null}
       <FieldSections defs={PUBLICATION_FIELDS} values={values} />
       <fieldset className="rounded-xl border border-line bg-white p-4">
-        <legend className="px-1 text-sm font-semibold">Images</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <ImageField name="logo" label="Logo" src={pub?.hasLogo ? imageUrl("pub-logo", pub.id, pub.updatedAt) : null} hint="PNG, JPG, WebP or SVG, under 2 MB. Leave empty to use the brand logo." />
-          <ImageField name="cover" label="Cover image" src={pub?.hasCover ? imageUrl("pub-cover", pub.id, pub.updatedAt) : null} hint="Optional. Shown on wiki and funnel pages. Under 5 MB." />
-        </div>
+        <legend className="px-1 text-sm font-semibold">Logos</legend>
+        <LogoSlotsField
+          light={pub?.logos.light ? imageUrl("pub-logo", pub.id, pub.updatedAt) : null}
+          dark={pub?.logos.dark ? imageUrl("pub-logo-dark", pub.id, pub.updatedAt) : null}
+        />
+        <p className="mt-2 text-xs text-muted">Leave both empty to use the brand logo.</p>
+      </fieldset>
+      <fieldset className="rounded-xl border border-line bg-white p-4">
+        <legend className="px-1 text-sm font-semibold">Cover image</legend>
+        <ImageField name="cover" label="Cover image" src={pub?.hasCover ? imageUrl("pub-cover", pub.id, pub.updatedAt) : null} hint="Optional. Shown on wiki and funnel pages. Under 5 MB." />
       </fieldset>
       <div className="flex flex-wrap gap-2">
         <Button type="submit">{pub ? "Save publication" : "Add publication"}</Button>

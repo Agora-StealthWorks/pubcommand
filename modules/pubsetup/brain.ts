@@ -57,17 +57,13 @@ export function publicationFacts(input: {
   brandName: string;
   record: FactRecord;
   editors: readonly { name: string; role: string }[];
+  /** Accepted for callers; email branding is no longer part of the facts. */
   branding?: ResolvedBranding | null;
   archived?: boolean;
   now?: Date;
 }): Facts {
   const fields = collect(PUBLICATION_FIELDS, input.record);
   if (input.editors.length) fields.editors = input.editors.map((e) => `${e.name} (${EDITOR_ROLE_LABELS[e.role] ?? e.role})`);
-  if (input.branding) {
-    const b = input.branding.values;
-    if (b.senderName) fields.senderName = b.senderName;
-    if (b.senderEmail) fields.senderEmail = b.senderEmail;
-  }
   if (input.archived) fields.archived = "yes";
   return { version: 1, kind: "publication", ref: `pub:${input.id}`, brand: input.brandName, updatedAt: (input.now ?? new Date()).toISOString(), fields };
 }
@@ -113,6 +109,11 @@ export function publicationNote(facts: Facts): { title: string; body: string } {
     ...section("Audience", f.audience),
     ...section("What readers get", f.deliverables),
     ...section("Editors", f.editors),
+    ...section(
+      "Pricing",
+      (["retailPrice", "lifetimePrice", "salePrice"] as const).flatMap((key) => (f[key] ? [`${labelOf(PUBLICATION_FIELDS, key)}: ${String(f[key])}`] : [])),
+    ),
+    ...section("Pricing notes", f.pricingNotes),
     ...section("Price points and offers", f.offers),
     ...section("Voice and style", f.voiceNotes),
     ...section("Compliance notes", f.complianceNotes),

@@ -29,8 +29,10 @@ export default async function BrandDefaultsPage({ params, searchParams }: { para
         name={ctx.brand.name}
         tagline=""
         inheritLabel="platform"
-        logo={{ own: own?.logoMime ? imageUrl("brand-logo", ctx.brand.id, own.updatedAt) : null, inherited: null }}
-        emailHeader={{ own: own?.emailHeaderMime ? imageUrl("brand-header", ctx.brand.id, own.updatedAt) : null, inherited: null }}
+        logo={{
+          own: { light: own?.logoMime ? imageUrl("brand-logo", ctx.brand.id, own.updatedAt) : null, dark: own?.logoOnDarkMime ? imageUrl("brand-logo-dark", ctx.brand.id, own.updatedAt) : null },
+          inherited: { light: null, dark: null },
+        }}
       />
     </div>
   );

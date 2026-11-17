@@ -14,7 +14,7 @@ The one place a publisher records each publication, its editors and its branding
 
 | Table | What |
 | --- | --- |
-| `calendar_publications` (model `CalendarPublication`) | Publications. The Marketing Calendar's table, moved here unchanged and extended with Publication Setup columns. |
+| `calendar_publications` (model `CalendarPublication`) | Publications. The Calendar's table, moved here unchanged and extended with Publication Setup columns. |
 | `pubsetup_editors` (`PubEditor`) | Editors / experts, photo as bytes. |
 | `pubsetup_publication_editors` (`PubPublicationEditor`) | Who writes which publication, with a role (`lead`, `co-editor`, `contributor`, `analyst`, `guest`). Cascades with either side. |
 | `pubsetup_brand_branding` (`PubBrandBranding`) | One row per brand: branding defaults publications inherit. |
@@ -26,12 +26,28 @@ Rules:
 - `active` stays the calendar's "show in pickers" flag: it is `false` for `status = retired` and for archived rows.
 - Archive = `deleted_at` (soft delete). Archived publications drop out of pickers but old issues and stats keep them; restore puts them back. Nothing is hard-deleted.
 - Changing a code updates `calendar_issues.publication_code` so issues stay attached (as the calendar did).
-- Images (logo, cover, email header, editor photo, brand logo/header) are `Bytes` columns. `/publication-setup/image/<kind>/<id>` serves them to admins; other apps call `getImage()` and serve from their own route.
+- Images (logos, cover, editor photo, brand logos) are `Bytes` columns. `/publication-setup/image/<kind>/<id>` serves them to admins; other apps call `getImage()` and serve from their own route.
+- Email branding (email header image, default sender name/email, email footer) was removed from the app on 2026-11-17. Its columns stay (additive-only policy) but nothing reads or writes them. Nothing outside Publication Setup ever read them (funnels, Mini-Blog, forms and Calendar CUB emails have their own settings).
+
+## Logos: two slots
+
+Each publication and the brand defaults have two logo slots, named by the background they sit on:
+
+| Slot | Columns | Image kind | Use |
+| --- | --- | --- | --- |
+| light | `logo_*` (the original columns) | `pub-logo` / `brand-logo` | white pages, light headers (dark artwork) |
+| dark | `logo_on_dark_*` | `pub-logo-dark` / `brand-logo-dark` | dark headers (light artwork) |
+
+- "Upload a logo" is sorted by its artwork (`features/pubsetup/logo-tone.ts` rasterizes with resvg and `logos.ts#toneFromPixels` measures the visible pixels; an opaque image is judged by its own border). WebP cannot be decoded, so it goes to the light slot with a note. Admins can replace, remove or swap either slot.
+- Logos uploaded before the slots existed have `logo_sorted = false`. The read API checks each once and moves a light logo into the dark slot (no migration needed).
+- **Render logos only through `logoFor(owner, background, brandFallback?)`** (`logos.ts`): the matching slot, then the other slot, then the brand's. It returns the image kind and the slot used, so a caller can put an other-slot logo on a contrasting tile. Pick the background the spot really has (a white card is `"light"`; a header on the primary color is `contrastText(primary) === "#ffffff" ? "dark" : "light"`).
 
 ## Pure code (this folder, tested in `pubsetup.test.ts`)
 
 - `fields.ts`: **the field list** for publications, editors and branding (key, label, kind, group, limits, options). Forms, validation (`parseFields`), facts and Brain notes all read it. Add a field = one entry here + one column. It is a fixed schema, not a user field builder.
-- `branding.ts`: `resolveBranding(publication, brandDefaults, brandName)`: own value → brand default → platform default, with the source of each value. Logos and email headers follow the same rule.
+- `branding.ts`: `resolveBranding(publication, brandDefaults, brandName)`: own value → brand default → platform default, with the source of each value. Logos follow the same rule (see Logos).
+- `logos.ts`: logo slots, `logoFor()`, artwork tone.
+- `groups.ts`: funnel order for publication lists, `groupByFunnel()`: Free newsletters, Text letters & alerts (type "Text letter (SMS)" or "Alert service"), Front-end, Mid-tier, Back-end, High-ticket, Lifetime / bundles, Bonus / complimentary, Other. Type "Free newsletter" or tier "Free / lead gen" is free. Within a group: sortOrder, then name. Used by the wiki list and home and the Publication Setup list.
 - `brain.ts`: facts, Brain notes, `publicationPromptContext()` for AI prompts, `matchPublication()` (promo product → publication by code, slug or name).
 
 ## Brain
@@ -56,15 +72,16 @@ Every save (publication, branding, editor, editor link, archive/restore, brand d
     "status": "active",
     "launchDate": "2024-05-01",
     "deliverables": ["Daily issue", "Model portfolio"],
+    "retailPrice": "$7,500/yr",
     "offers": ["Annual · $49 · per year"],
     "editors": ["Ada Lee (Lead editor)"],
-    "senderName": "The Daily Edge Desk",
     "archived": "yes"
   }
 }
 ```
 
-- `fields` keys are the `fields.ts` keys (`PUBLICATION_FIELDS` / `EDITOR_FIELDS`), plus `editors` (publication), `publications` (editor), `senderName`/`senderEmail` (resolved branding) and `archived`.
+- `fields` keys are the `fields.ts` keys (`PUBLICATION_FIELDS` / `EDITOR_FIELDS`), plus `editors` (publication), `publications` (editor) and `archived`. (Facts before 2026-11-17 also carried `senderName`/`senderEmail`; they are no longer written.)
+- Pricing (`retailPrice`, `lifetimePrice`, `salePrice`, `pricingNotes`) is plain text exactly as typed, e.g. "$7,500/yr". Nothing computes or parses it.
 - Values are a string or a list of strings. Only non-empty fields appear; layout-only fields (`sortOrder`) never do. An editor's `email` is never included.
 - Pair fields are flattened: offers `"label · price · term"`, sample issues `"title url"`, social links `"label: url"`.
 - A conflict checker compares `fields[key]` with what the Brain believes about `ref` and treats Publication Setup as the source of truth.
@@ -94,10 +111,12 @@ in `import.ts` (pure, tested in `import.test.ts`):
 ```json
 {
   "format": "pubcommand.publication-setup/v1",
-  "brand": { "logo": "data:image/png;base64,…" },
+  "brand": { "logo": "data:image/png;base64,…", "logoDark": "data:image/svg+xml;base64,…" },
   "publications": [
     { "code": "WAR", "name": "…", "slug": "…", "tagline": "…", "deliverables": ["…"],
+      "retailPrice": "$7,500/yr", "lifetimePrice": "…", "salePrice": "…", "pricingNotes": "…",
       "offers": [{ "label": "…", "price": "…", "term": "…" }], "logo": "data:image/png;base64,…",
+      "logoLight": "data:image/png;base64,…", "logoDark": "data:image/png;base64,…",
       "editors": [{ "editor": "Editor Name", "role": "lead" }] }
   ],
   "editors": [{ "name": "…", "title": "…", "shortBio": "…", "longBio": "…", "specialties": ["…"], "photo": "data:image/jpeg;base64,…" }]
@@ -109,4 +128,5 @@ in `import.ts` (pure, tested in `import.test.ts`):
 - Publications match on code, editors on URL name or name. A match only gets the fields it
   has left blank (and a logo/photo if it has none). Nothing typed in the app is overwritten,
   so re-running a file is a no-op.
+- `logoLight` (for light backgrounds) and `logoDark` (for dark backgrounds) go straight to that slot; `logo` is sorted by its artwork into a slot the record did not name (`placeLogos`). Only empty slots are filled.
 - The dry run changes nothing. Each saved publication and editor teaches the Brain, as a form save does.

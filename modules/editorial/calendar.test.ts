@@ -20,10 +20,10 @@ import { candidateCodes, guessMapping, matchStats, parseCsv, parseMailDate, pars
 import { normalizeWhatsWorking, whatsWorkingFacts, whatsWorkingPrompt, type WorkingSend } from "./whats-working";
 
 describe("manifest", () => {
-  it("is the Marketing Calendar on the editorial route", () => {
+  it("is the Calendar on the editorial route", () => {
     expect(manifest.id).toBe("editorial");
     expect(manifest.slug).toBe("editorial");
-    expect(manifest.name).toBe("Marketing Calendar");
+    expect(manifest.name).toBe("Calendar");
     expect(manifest.nav[0]).toMatchObject({ href: "/editorial", permission: "editorial.read" });
   });
 });

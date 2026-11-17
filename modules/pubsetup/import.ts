@@ -8,13 +8,20 @@
  * so running the same file twice changes nothing the second time.
  */
 import { EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, parseFields, slugify, type FieldDef, type FieldValue, type FieldValues, type FormLike } from "./fields";
+import { slotForUpload, type LogoBackground } from "./logos";
 
 export const IMPORT_FORMAT = "pubcommand.publication-setup/v1";
 export const IMPORT_MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
 export type ImportImage = { mime: string; data: Uint8Array<ArrayBuffer>; filename: string };
 
-export type ImportPublication = { values: FieldValues; logo: ImportImage | null };
+/**
+ * Logos from a file: `logoLight` (for light backgrounds) and `logoDark` (for dark backgrounds)
+ * go straight to their slot; `logo` is sorted by its artwork (placeLogos) into a slot the
+ * file did not fill. Unsorted, it counts as the light-background logo.
+ */
+export type ImportLogos = { auto: ImportImage | null; light: ImportImage | null; dark: ImportImage | null };
+export type ImportPublication = { values: FieldValues; logos: ImportLogos };
 export type ImportEditor = { values: FieldValues; photo: ImportImage | null };
 export type ImportLink = { code: string; editorSlug: string; role: string };
 
@@ -22,7 +29,7 @@ export type ParsedImport = {
   publications: ImportPublication[];
   editors: ImportEditor[];
   links: ImportLink[];
-  brandLogo: ImportImage | null;
+  brandLogos: ImportLogos;
   /** Problems with single records. Those records are left out; the rest still import. */
   warnings: string[];
 };
@@ -121,9 +128,7 @@ export function parseImport(text: string): { ok: true; file: ParsedImport } | { 
       warnings.push(`${label} skipped. Code ${code} appears twice in the file.`);
       continue;
     }
-    const logo = decodeDataUri(rec.logo, code.toLowerCase());
-    if (logo === "bad") warnings.push(`${label}: the logo is not a PNG, JPG, GIF, WebP or SVG under 3 MB, so it was left out.`);
-    publications.push({ values: parsed.values, logo: logo === "bad" ? null : logo });
+    publications.push({ values: parsed.values, logos: readLogos(rec, code.toLowerCase(), label, warnings) });
 
     const refs = Array.isArray(rec.editors) ? rec.editors : [];
     for (const ref of refs) {
@@ -140,12 +145,45 @@ export function parseImport(text: string): { ok: true; file: ParsedImport } | { 
     }
   }
 
-  const brand = body.brand && typeof body.brand === "object" ? (body.brand as { logo?: unknown }) : {};
-  const brandLogo = decodeDataUri(brand.logo, "brand-logo");
-  if (brandLogo === "bad") warnings.push("The brand logo is not a PNG, JPG, GIF, WebP or SVG under 3 MB, so it was left out.");
+  const brand = body.brand && typeof body.brand === "object" ? (body.brand as Record<string, unknown>) : {};
+  const brandLogos = readLogos(brand, "brand-logo", "The brand", warnings);
 
   if (publications.length === 0 && editors.length === 0) return { ok: false, error: warnings[0] ?? "The file has no publications or editors." };
-  return { ok: true, file: { publications, editors, links, brandLogo: brandLogo === "bad" ? null : brandLogo, warnings } };
+  return { ok: true, file: { publications, editors, links, brandLogos, warnings } };
+}
+
+const LOGO_KEYS = [
+  ["logo", "auto", "the logo"],
+  ["logoLight", "light", "the logo for light backgrounds"],
+  ["logoDark", "dark", "the logo for dark backgrounds"],
+] as const;
+
+function readLogos(rec: Record<string, unknown>, base: string, label: string, warnings: string[]): ImportLogos {
+  const out: ImportLogos = { auto: null, light: null, dark: null };
+  for (const [key, slot, what] of LOGO_KEYS) {
+    const image = decodeDataUri(rec[key], slot === "auto" ? base : `${base}-on-${slot}`);
+    if (image === "bad") warnings.push(`${label}: ${what} is not a PNG, JPG, GIF, WebP or SVG under 3 MB, so it was left out.`);
+    else out[slot] = image;
+  }
+  return out;
+}
+
+/**
+ * Put an auto-sorted `logo` into its slot. A slot the file filled by name wins; when the
+ * matching slot is taken the logo goes to the other one if that is free, else it is dropped.
+ */
+export function placeLogos(logos: ImportLogos, tone: LogoBackground | null): ImportLogos {
+  if (!logos.auto) return logos;
+  const want = slotForUpload(tone);
+  const other: LogoBackground = want === "light" ? "dark" : "light";
+  const slot = !logos[want] ? want : !logos[other] && tone === null ? other : null;
+  return { auto: null, light: logos.light, dark: logos.dark, ...(slot ? { [slot]: logos.auto } : {}) };
+}
+
+/** The final light/dark images of a record (an unsorted `logo` counts as the light one). */
+export function logoSlotsOf(logos: ImportLogos): { light: ImportImage | null; dark: ImportImage | null } {
+  const placed = placeLogos(logos, null);
+  return { light: placed.light, dark: placed.dark };
 }
 
 // ── Plan ───────────────────────────────────────────────────────────────────
@@ -168,28 +206,40 @@ export function fillBlanks(defs: readonly FieldDef[], existing: Record<string, u
   return out;
 }
 
-export type ExistingPublication = Record<string, unknown> & { id: string; code: string; slug: string | null; hasLogo: boolean };
+export type ExistingPublication = Record<string, unknown> & { id: string; code: string; slug: string | null; hasLogoLight: boolean; hasLogoDark: boolean };
 export type ExistingEditor = Record<string, unknown> & { id: string; slug: string; name: string; hasPhoto: boolean };
 
-export type PlanStep<T> = { action: "create" | "fill" | "same"; label: string; record: T; existingId: string | null; fill: FieldValues; image: boolean };
+export type PlanStep<T> = {
+  action: "create" | "fill" | "same";
+  label: string;
+  record: T;
+  existingId: string | null;
+  fill: FieldValues;
+  /** An image is added (editor photo, or any publication logo slot). */
+  image: boolean;
+  /** Publications only: which logo slots the import fills. */
+  logoSlots?: { light: boolean; dark: boolean };
+};
 
 export type ImportPlan = {
   publications: PlanStep<ImportPublication>[];
   editors: PlanStep<ImportEditor>[];
   links: (ImportLink & { action: "create" | "same" })[];
+  /** Brand logo slots the import fills (only empty ones). */
+  brandLogos: { light: boolean; dark: boolean };
   brandLogo: boolean;
   counts: { create: number; fill: number; same: number; links: number };
 };
 
-function labelFill(defs: readonly FieldDef[], fill: FieldValues, image: string | null): string {
+function labelFill(defs: readonly FieldDef[], fill: FieldValues, images: string[]): string {
   const names = Object.keys(fill).map((key) => defs.find((d) => d.key === key)?.label.toLowerCase() ?? key);
-  if (image) names.push(image);
+  names.push(...images);
   return names.length ? `adds ${names.join(", ")}` : "already up to date";
 }
 
 export function planImport(
   file: ParsedImport,
-  existing: { publications: ExistingPublication[]; editors: ExistingEditor[]; links: { code: string; editorSlug: string }[]; brandHasLogo: boolean },
+  existing: { publications: ExistingPublication[]; editors: ExistingEditor[]; links: { code: string; editorSlug: string }[]; brandLogos: { light: boolean; dark: boolean } },
 ): ImportPlan {
   const editors = file.editors.map((record): PlanStep<ImportEditor> => {
     const slug = String(record.values.slug);
@@ -199,17 +249,23 @@ export function planImport(
     const fill = fillBlanks(EDITOR_FIELDS, match, record.values, ["status"]);
     const image = Boolean(record.photo) && !match.hasPhoto;
     const action = Object.keys(fill).length || image ? "fill" : "same";
-    return { action, label: labelFill(EDITOR_FIELDS, fill, image ? "photo" : null), record, existingId: match.id, fill, image };
+    return { action, label: labelFill(EDITOR_FIELDS, fill, image ? ["photo"] : []), record, existingId: match.id, fill, image };
   });
 
   const publications = file.publications.map((record): PlanStep<ImportPublication> => {
     const code = String(record.values.code);
     const match = existing.publications.find((p) => p.code === code);
-    if (!match) return { action: "create", label: "new", record, existingId: null, fill: {}, image: Boolean(record.logo) };
+    const slots = logoSlotsOf(record.logos);
+    if (!match) {
+      const logoSlots = { light: Boolean(slots.light), dark: Boolean(slots.dark) };
+      return { action: "create", label: "new", record, existingId: null, fill: {}, image: logoSlots.light || logoSlots.dark, logoSlots };
+    }
     const fill = fillBlanks(PUBLICATION_FIELDS, match, record.values);
-    const image = Boolean(record.logo) && !match.hasLogo;
+    const logoSlots = { light: Boolean(slots.light) && !match.hasLogoLight, dark: Boolean(slots.dark) && !match.hasLogoDark };
+    const image = logoSlots.light || logoSlots.dark;
     const action = Object.keys(fill).length || image ? "fill" : "same";
-    return { action, label: labelFill(PUBLICATION_FIELDS, fill, image ? "logo" : null), record, existingId: match.id, fill, image };
+    const images = [...(logoSlots.light ? ["logo for light backgrounds"] : []), ...(logoSlots.dark ? ["logo for dark backgrounds"] : [])];
+    return { action, label: labelFill(PUBLICATION_FIELDS, fill, images), record, existingId: match.id, fill, image, logoSlots };
   });
 
   // An imported editor may match an existing one under a different slug (same name).
@@ -221,11 +277,14 @@ export function planImport(
   });
 
   const all = [...editors, ...publications];
+  const brandSlots = logoSlotsOf(file.brandLogos);
+  const brandLogos = { light: Boolean(brandSlots.light) && !existing.brandLogos.light, dark: Boolean(brandSlots.dark) && !existing.brandLogos.dark };
   return {
     publications,
     editors,
     links,
-    brandLogo: Boolean(file.brandLogo) && !existing.brandHasLogo,
+    brandLogos,
+    brandLogo: brandLogos.light || brandLogos.dark,
     counts: {
       create: all.filter((s) => s.action === "create").length,
       fill: all.filter((s) => s.action === "fill").length,

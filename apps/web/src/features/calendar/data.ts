@@ -11,9 +11,9 @@ export async function listPublications(organizationId: string, brandId: string, 
   const rows = await tenantDb(organizationId).calendarPublication.findMany({
     where: { brandId, ...(includeInactive ? {} : { active: true }) },
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-    select: { id: true, code: true, name: true, color: true, description: true, logoMime: true, active: true, sortOrder: true },
+    select: { id: true, code: true, name: true, color: true, description: true, logoMime: true, logoOnDarkMime: true, active: true, sortOrder: true },
   });
-  return rows.map(({ logoMime, ...row }) => ({ ...row, hasLogo: Boolean(logoMime) }));
+  return rows.map(({ logoMime, logoOnDarkMime, ...row }) => ({ ...row, hasLogo: Boolean(logoMime || logoOnDarkMime) }));
 }
 
 export async function listChannels(organizationId: string, brandId: string): Promise<ChannelView[]> {

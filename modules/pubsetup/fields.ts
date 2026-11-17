@@ -44,13 +44,14 @@ export const PUBLICATION_TYPES = [
   "Paid newsletter",
   "Premium service",
   "Alert service",
+  "Text letter (SMS)",
   "Membership",
   "Course",
   "Podcast or video",
   "Live events",
   "Other",
 ] as const;
-export const PUBLICATION_TIERS = ["Free / lead gen", "Front-end", "Mid-tier", "Back-end", "High-ticket", "Lifetime"] as const;
+export const PUBLICATION_TIERS = ["Free / lead gen", "Front-end", "Mid-tier", "Back-end", "High-ticket", "Lifetime", "Bonus / complimentary"] as const;
 export const FREQUENCIES = ["Daily", "Weekdays", "Several times a week", "Weekly", "Every two weeks", "Monthly", "Quarterly", "As needed"] as const;
 
 export const EDITOR_STATUSES = ["active", "inactive"] as const;
@@ -108,11 +109,15 @@ export const PUBLICATION_FIELDS: readonly FieldDef[] = [
   { key: "positioning", label: "Positioning", kind: "textarea", group: "Description", max: 2000, rows: 3, hint: "What makes it different and why a reader picks it." },
   { key: "audience", label: "Audience", kind: "textarea", group: "Description", max: 1000, rows: 2, hint: "Who it is for, in plain words." },
   { key: "deliverables", label: "What readers get", kind: "list", group: "Description", max: 200, hint: "One per line." },
+  { key: "retailPrice", label: "Retail price", kind: "text", group: "Pricing", max: 80, hint: "Annual list price, as you would write it, e.g. $7,500/yr." },
+  { key: "lifetimePrice", label: "Unlimited / lifetime price", kind: "text", group: "Pricing", max: 80, hint: "e.g. $25,000 one-time." },
+  { key: "salePrice", label: "Typical sale price", kind: "text", group: "Pricing", max: 80, hint: "What it usually sells for in promotions." },
+  { key: "pricingNotes", label: "Pricing notes", kind: "textarea", group: "Pricing", max: 2000, rows: 2, hint: "Renewals, payment plans, who may offer what." },
   {
     key: "offers",
     label: "Price points and offers",
     kind: "pairs",
-    group: "Offers",
+    group: "Pricing",
     maxRows: 8,
     columns: [
       { key: "label", label: "Offer", max: 120, placeholder: "Annual" },
@@ -164,7 +169,10 @@ export const EDITOR_FIELDS: readonly FieldDef[] = [
   { key: "voiceNotes", label: "Voice and style", kind: "textarea", group: "Voice", max: 3000, rows: 4, hint: "How this editor writes: tone, phrases, sign-off." },
 ];
 
-/** Text branding values. Images (logo, email header) are handled separately as bytes. */
+/**
+ * Text branding values. Logos are handled separately as bytes (two slots, see logos.ts).
+ * Email branding (sender, footer, header image) was removed from the app; its columns stay.
+ */
 export const BRANDING_FIELDS: readonly FieldDef[] = [
   { key: "primaryColor", label: "Header color", kind: "color", group: "Colors" },
   { key: "accentColor", label: "Accent (links, buttons)", kind: "color", group: "Colors" },
@@ -172,10 +180,7 @@ export const BRANDING_FIELDS: readonly FieldDef[] = [
   { key: "backgroundColor", label: "Background", kind: "color", group: "Colors" },
   { key: "headingFont", label: "Heading font", kind: "font", group: "Fonts" },
   { key: "bodyFont", label: "Body font", kind: "font", group: "Fonts" },
-  { key: "tagline", label: "Tagline", kind: "text", group: "Email", max: 200 },
-  { key: "senderName", label: "Default sender name", kind: "text", group: "Email", max: 120 },
-  { key: "senderEmail", label: "Default sender email", kind: "email", group: "Email" },
-  { key: "footerText", label: "Email footer", kind: "textarea", group: "Email", max: 2000, rows: 3, hint: "Plain text: address, why they get this, unsubscribe wording." },
+  { key: "tagline", label: "Tagline", kind: "text", group: "Identity", max: 200 },
 ];
 
 export function fieldGroups(defs: readonly FieldDef[]): { group: string; fields: FieldDef[] }[] {

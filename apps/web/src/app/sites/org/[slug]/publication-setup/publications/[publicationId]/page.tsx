@@ -6,7 +6,7 @@ import { linkEditor, setPublicationArchived, unlinkEditor } from "@/features/pub
 import { pubsetupPage } from "@/features/pubsetup/guard";
 import { BRANDING_KEYS, EDITOR_ROLES, EDITOR_ROLE_LABELS, PUBLICATION_FIELDS, optionLabel } from "@/features/pubsetup/module";
 import { getBranding, getEditors, getPublication } from "@/features/pubsetup/read";
-import { Detail, PubChip, SafeLink, StatusBadge, imageUrl } from "@/features/pubsetup/ui";
+import { Detail, PubChip, PubLogoTile, SafeLink, StatusBadge, imageUrl } from "@/features/pubsetup/ui";
 
 const BRANDING_LABELS: Record<string, string> = {
   primaryColor: "Header color",
@@ -16,9 +16,6 @@ const BRANDING_LABELS: Record<string, string> = {
   headingFont: "Heading font",
   bodyFont: "Body font",
   tagline: "Tagline",
-  senderName: "Sender name",
-  senderEmail: "Sender email",
-  footerText: "Footer",
 };
 
 const SOURCE_LABELS = { publication: "own", brand: "brand default", default: "platform default" } as const;
@@ -56,13 +53,7 @@ export default async function PublicationPage({ params, searchParams }: { params
       </Link>
       <Flash error={query.error} notice={query.notice} />
       <header className="flex flex-wrap items-start gap-4 rounded-xl border border-line bg-white p-4">
-        {pub.hasLogo ? (
-          <img src={imageUrl("pub-logo", pub.id, pub.updatedAt)} alt="" className="h-16 w-16 shrink-0 rounded-md border border-line object-contain" />
-        ) : (
-          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md text-base font-bold text-white" style={{ background: pub.color }} aria-hidden>
-            {pub.code.slice(0, 3)}
-          </span>
-        )}
+        <PubLogoTile pub={pub} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-semibold [overflow-wrap:anywhere]">{pub.name}</h2>
@@ -112,6 +103,27 @@ export default async function PublicationPage({ params, searchParams }: { params
             <Detail label="Positioning">{pub.positioning}</Detail>
             <Detail label="Audience">{pub.audience}</Detail>
             <Detail label="What readers get">{pub.deliverables.length ? pub.deliverables.map((d) => `• ${d}`).join("\n") : null}</Detail>
+            <Detail label="Pricing">
+              {[pub.retailPrice, pub.lifetimePrice, pub.salePrice].some(Boolean) ? (
+                <span className="grid gap-1 sm:grid-cols-[auto_1fr] sm:gap-x-4">
+                  {(
+                    [
+                      ["Retail price", pub.retailPrice],
+                      ["Unlimited / lifetime", pub.lifetimePrice],
+                      ["Typical sale price", pub.salePrice],
+                    ] as const
+                  )
+                    .filter(([, v]) => v)
+                    .map(([label, v]) => (
+                      <span key={label} className="contents">
+                        <span className="text-muted">{label}</span>
+                        <span className="font-medium">{v}</span>
+                      </span>
+                    ))}
+                </span>
+              ) : null}
+            </Detail>
+            <Detail label="Pricing notes">{pub.pricingNotes}</Detail>
             <Detail label="Price points and offers">{pub.offers.length ? pub.offers.map((o) => [o.label, o.price, o.term].filter(Boolean).join(" · ")).join("\n") : null}</Detail>
             <Detail label="Voice and style">{pub.voiceNotes}</Detail>
             <Detail label="Compliance notes">{pub.complianceNotes}</Detail>
@@ -218,15 +230,38 @@ export default async function PublicationPage({ params, searchParams }: { params
                     <dt className="shrink-0 text-muted">{BRANDING_LABELS[key]}</dt>
                     <dd className="min-w-0 text-right [overflow-wrap:anywhere]">
                       {key.endsWith("Color") ? <span className="mr-1 inline-block h-3 w-3 rounded-sm border border-line align-middle" style={{ background: branding.values[key] }} aria-hidden /> : null}
-                      {key === "footerText" ? `${branding.values[key].slice(0, 60)}${branding.values[key].length > 60 ? "…" : ""}` : branding.values[key]}
+                      {branding.values[key]}
                       <span className="block text-xs text-muted">{SOURCE_LABELS[branding.sources[key]]}</span>
                     </dd>
                   </div>
                 ))}
                 <div className="flex justify-between gap-3">
                   <dt className="text-muted">Logo</dt>
-                  <dd>{branding.logo === "publication" ? "own" : branding.logo === "brand" ? "brand default" : "none (name as text)"}</dd>
+                  <dd className="text-right">
+                    {branding.logo === "publication" ? "own" : branding.logo === "brand" ? "brand default" : "none (name as text)"}
+                    {branding.logo ? (
+                      <span className="block text-xs text-muted">
+                        {(["light", "dark"] as const)
+                          .filter((slot) => branding.logos[branding.logo === "publication" ? "publication" : "brand"][slot])
+                          .map((slot) => (slot === "light" ? "light backgrounds" : "dark backgrounds"))
+                          .join(" + ")}
+                      </span>
+                    ) : null}
+                  </dd>
                 </div>
+                {pub.logos.light || pub.logos.dark ? (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {(["light", "dark"] as const).map((slot) => (
+                      <div key={slot} className="flex h-14 items-center justify-center rounded-md border border-line px-2" style={{ background: slot === "light" ? "#ffffff" : "#111827" }} title={slot === "light" ? "For light backgrounds" : "For dark backgrounds"}>
+                        {pub.logos[slot] ? (
+                          <img src={imageUrl(slot === "light" ? "pub-logo" : "pub-logo-dark", pub.id, pub.updatedAt)} alt={`Logo for ${slot} backgrounds`} className="max-h-10 max-w-full object-contain" />
+                        ) : (
+                          <span className={`text-xs ${slot === "dark" ? "text-white/70" : "text-muted"}`}>Empty</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </dl>
             </section>
           ) : null}

@@ -582,7 +582,7 @@ export async function ViewportSurface({
         {orgFrame(
           "/editorial",
           <div>
-            <PageHeader title="Marketing Calendar" description="Live events, editorial issues and send stats for every publication, on one calendar." />
+            <PageHeader title="Calendar" description="Live events, editorial issues and send stats for every publication, on one calendar." />
             <p className="rounded-xl border border-line bg-white p-4 text-sm text-muted">The calendar reads live data; sign in to see it.</p>
           </div>,
         )}

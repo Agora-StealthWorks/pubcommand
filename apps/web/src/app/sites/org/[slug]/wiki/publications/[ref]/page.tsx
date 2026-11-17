@@ -4,7 +4,7 @@ import { Denied } from "@/components/ui";
 import { StatusBadge } from "@/features/pubsetup/ui";
 import { wikiPublication } from "@/features/wiki/data";
 import { wikiPage } from "@/features/wiki/guard";
-import { Avatar, ExternalLink, Fact, Section, TestimonialCard, wikiImage } from "@/features/wiki/ui";
+import { Avatar, ExternalLink, Fact, Section, TestimonialCard, wikiImage, wikiLogo } from "@/features/wiki/ui";
 import { contrastText } from "../../../../../../../../../../modules/pubsetup/branding";
 import { EDITOR_ROLE_LABELS, fontStack } from "../../../../../../../../../../modules/pubsetup/fields";
 
@@ -20,7 +20,20 @@ export default async function WikiPublicationPage({ params }: { params: Promise<
   const primary = branding?.values.primaryColor ?? pub.color;
   const onPrimary = contrastText(primary);
   const heading = branding ? fontStack(branding.values.headingFont) : undefined;
-  const logo = branding?.logo === "publication" ? wikiImage("pub-logo", pub.id, pub.updatedAt) : branding?.logo === "brand" ? wikiImage("brand-logo", ctx.brand.id) : null;
+  // The header sits on the primary color: use the logo made for that background.
+  const headerBg = onPrimary === "#ffffff" ? "dark" : "light";
+  const logo = branding
+    ? wikiLogo({ id: pub.id, logos: branding.logos.publication, updatedAt: pub.updatedAt }, headerBg, { id: ctx.brand.id, logos: branding.logos.brand, updatedAt: branding.brandVersion })
+    : wikiLogo(pub, headerBg);
+  // Only the other variant exists: put it on a tile so it stays readable.
+  const logoTile = logo && logo.slot !== headerBg ? (logo.slot === "light" ? "#ffffff" : "#111827") : null;
+  const pricing = (
+    [
+      ["Retail price", pub.retailPrice],
+      ["Unlimited / lifetime", pub.lifetimePrice],
+      ["Typical sale price", pub.salePrice],
+    ] as const
+  ).filter(([, v]) => v);
   const tagline = pub.tagline || (branding?.sources.tagline === "brand" ? "" : branding?.values.tagline) || "";
   const editorRef = (id: string | null) => (id ? team.find((m) => m.id === id) : undefined);
 
@@ -29,7 +42,7 @@ export default async function WikiPublicationPage({ params }: { params: Promise<
       <header className="overflow-hidden rounded-xl border border-line bg-white">
         <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-6" style={{ background: primary, color: onPrimary }}>
           {logo ? (
-            <img src={logo} alt="" className="h-20 w-20 shrink-0 rounded-lg bg-white object-contain p-1.5 sm:h-24 sm:w-24" />
+            <img src={logo.src} alt="" className="h-20 w-20 shrink-0 rounded-lg object-contain p-1.5 sm:h-24 sm:w-24" style={logoTile ? { background: logoTile } : undefined} />
           ) : (
             <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-white/15 text-lg font-bold sm:h-24 sm:w-24" aria-hidden>
               {pub.code.slice(0, 4)}
@@ -94,8 +107,20 @@ export default async function WikiPublicationPage({ params }: { params: Promise<
             {!pub.description && !pub.longDescription && !pub.positioning && !pub.audience && !pub.deliverables.length ? <p className="text-sm text-muted">No description yet.</p> : null}
           </Section>
 
-          {pub.offers.length ? (
-            <Section title="Offers and price points">
+          {pricing.length || pub.pricingNotes || pub.offers.length ? (
+            <Section title="Pricing">
+              {pricing.length ? (
+                <dl className="grid gap-3 sm:grid-cols-3">
+                  {pricing.map(([label, v]) => (
+                    <div key={label} className="min-w-0 rounded-lg bg-canvas p-3">
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</dt>
+                      <dd className="mt-1 text-base font-semibold [overflow-wrap:anywhere]">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {pub.pricingNotes ? <p className="mt-3 whitespace-pre-line text-sm text-muted [overflow-wrap:anywhere]">{pub.pricingNotes}</p> : null}
+              {pub.offers.length ? <h3 className="mb-1 mt-4 text-sm font-semibold">Offers and price points</h3> : null}
               <ul className="divide-y divide-line">
                 {pub.offers.map((o, i) => (
                   <li key={i} className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
@@ -141,7 +166,7 @@ export default async function WikiPublicationPage({ params }: { params: Promise<
           </Section>
 
           {can.calendar ? (
-            <Section title="Recent issues" action={<Link href="/editorial" className="text-sm text-accent hover:underline">Marketing Calendar</Link>}>
+            <Section title="Recent issues" action={<Link href="/editorial" className="text-sm text-accent hover:underline">Calendar</Link>}>
               {issues.length ? (
                 <ul className="divide-y divide-line">
                   {issues.map((i) => (
@@ -222,7 +247,6 @@ export default async function WikiPublicationPage({ params }: { params: Promise<
               <dl className="grid grid-cols-2 gap-3">
                 <Fact label="Headings">{branding.values.headingFont}</Fact>
                 <Fact label="Body">{branding.values.bodyFont}</Fact>
-                <Fact label="Sender">{branding.values.senderName}</Fact>
                 <Fact label="Primary">{branding.values.primaryColor}</Fact>
               </dl>
             </Section>

@@ -175,8 +175,8 @@ export async function savePost(formData: FormData) {
         console.error("[miniblog] calendar sync failed", post.id, error);
         return "skipped" as const;
       });
-      if (synced === "created") notice += " Added to the Marketing Calendar.";
-      if (synced === "updated") notice += " Marketing Calendar issue updated.";
+      if (synced === "created") notice += " Added to the Calendar.";
+      if (synced === "updated") notice += " Calendar issue updated.";
     }
     after(() => teachPost({ organizationId: ctx.resolved.id, postId: post.id, actorId: ctx.actorId }));
   }

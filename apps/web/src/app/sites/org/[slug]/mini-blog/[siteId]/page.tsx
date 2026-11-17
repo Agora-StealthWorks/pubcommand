@@ -100,7 +100,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                           </Link>
                           <span className="block truncate text-xs text-muted">
                             /b/{site.slug}/{post.slug}
-                            {post.calendarIssueId ? " · on the Marketing Calendar" : ""}
+                            {post.calendarIssueId ? " · on the Calendar" : ""}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -193,9 +193,9 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
               </Section>
               <Section title="Connections">
                 <Field
-                  label="Marketing Calendar publication"
+                  label="Calendar publication"
                   htmlFor="calendarCode"
-                  hint={publications.length ? "Each published or scheduled post adds one issue under this publication." : "No Marketing Calendar publications for this brand (or the calendar is off)."}
+                  hint={publications.length ? "Each published or scheduled post adds one issue under this publication." : "No Calendar publications for this brand (or the calendar is off)."}
                 >
                   <select id="calendarCode" name="calendarCode" defaultValue={site.calendarCode ?? ""} className="pc-control w-full text-sm">
                     <option value="">Don't add posts to the calendar</option>

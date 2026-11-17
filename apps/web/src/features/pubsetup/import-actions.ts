@@ -4,7 +4,8 @@ import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { EDITOR_FIELDS, PUBLICATION_FIELDS, uniqueSlug, type FieldValues } from "../../../../../modules/pubsetup/fields";
-import { parseImport, planImport, type ImportPlan, type ParsedImport } from "../../../../../modules/pubsetup/import";
+import { logoSlotsOf, parseImport, placeLogos, planImport, type ImportImage, type ImportLogos, type ImportPlan, type ParsedImport } from "../../../../../modules/pubsetup/import";
+import { classifyLogo } from "./logo-tone";
 import { pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
 import { refreshEditor, refreshPublication } from "./teach";
 
@@ -28,22 +29,44 @@ async function readText(formData: FormData): Promise<string | { error: string }>
   return text.trim() ? text : { error: "Choose an import file." };
 }
 
+/** Sort each file `logo` by its artwork into the light- or dark-background slot. */
+function sortFileLogos(file: ParsedImport): ParsedImport {
+  const sort = (logos: ImportLogos) => (logos.auto ? placeLogos(logos, classifyLogo(logos.auto.data, logos.auto.mime)) : logos);
+  return { ...file, publications: file.publications.map((p) => ({ ...p, logos: sort(p.logos) })), brandLogos: sort(file.brandLogos) };
+}
+
+/** Columns for the logo slots a plan step fills. */
+function logoCols(logos: ImportLogos, slots: { light: boolean; dark: boolean } | undefined): Record<string, string | boolean | Uint8Array> {
+  const placed = logoSlotsOf(logos);
+  const out: Record<string, string | boolean | Uint8Array> = {};
+  const put = (img: ImportImage | null, prefix: "logo" | "logoOnDark") => {
+    if (!img) return;
+    out[`${prefix}Filename`] = img.filename;
+    out[`${prefix}Mime`] = img.mime;
+    out[`${prefix}Data`] = img.data;
+  };
+  if (slots?.light) put(placed.light, "logo");
+  if (slots?.dark) put(placed.dark, "logoOnDark");
+  if (Object.keys(out).length) out.logoSorted = true;
+  return out;
+}
+
 async function currentPlan(ctx: PubsetupCtx, file: ParsedImport): Promise<ImportPlan> {
   const db = tenantDb(ctx.resolved.id);
-  const pubSelect = Object.fromEntries([...PUBLICATION_FIELDS.map((d) => [d.key, true]), ["id", true], ["logoFilename", true]]) as Prisma.CalendarPublicationSelect;
+  const pubSelect = Object.fromEntries([...PUBLICATION_FIELDS.map((d) => [d.key, true]), ["id", true], ["logoMime", true], ["logoOnDarkMime", true]]) as Prisma.CalendarPublicationSelect;
   const editorSelect = Object.fromEntries([...EDITOR_FIELDS.map((d) => [d.key, true]), ["id", true], ["photoFilename", true]]) as Prisma.PubEditorSelect;
   const [pubs, editors, links, branding] = await Promise.all([
     db.calendarPublication.findMany({ where: { brandId: ctx.brand.id }, select: pubSelect }),
     db.pubEditor.findMany({ where: { brandId: ctx.brand.id }, select: editorSelect }),
     db.pubPublicationEditor.findMany({ where: { publication: { brandId: ctx.brand.id } }, select: { publication: { select: { code: true } }, editor: { select: { slug: true } } } }),
-    db.pubBrandBranding.findFirst({ where: { brandId: ctx.brand.id }, select: { logoFilename: true } }),
+    db.pubBrandBranding.findFirst({ where: { brandId: ctx.brand.id }, select: { logoMime: true, logoOnDarkMime: true } }),
   ]);
   type Row = Record<string, unknown>;
   return planImport(file, {
-    publications: (pubs as Row[]).map((p) => ({ ...p, id: String(p.id), code: String(p.code), slug: (p.slug as string | null) ?? null, hasLogo: Boolean(p.logoFilename) })),
+    publications: (pubs as Row[]).map((p) => ({ ...p, id: String(p.id), code: String(p.code), slug: (p.slug as string | null) ?? null, hasLogoLight: Boolean(p.logoMime), hasLogoDark: Boolean(p.logoOnDarkMime) })),
     editors: (editors as Row[]).map((e) => ({ ...e, id: String(e.id), slug: String(e.slug), name: String(e.name), hasPhoto: Boolean(e.photoFilename) })),
     links: (links as unknown as { publication: { code: string }; editor: { slug: string } }[]).map((l) => ({ code: l.publication.code, editorSlug: l.editor.slug })),
-    brandHasLogo: Boolean(branding?.logoFilename),
+    brandLogos: { light: Boolean(branding?.logoMime), dark: Boolean(branding?.logoOnDarkMime) },
   });
 }
 
@@ -53,7 +76,7 @@ export async function previewImport(_prev: ImportPreview, formData: FormData): P
   if (typeof text !== "string") return { ok: false, error: text.error };
   const parsed = parseImport(text);
   if (!parsed.ok) return { ok: false, error: parsed.error };
-  const plan = await currentPlan(ctx, parsed.file);
+  const plan = await currentPlan(ctx, sortFileLogos(parsed.file));
   const editorNames = new Map(parsed.file.editors.map((e) => [String(e.values.slug), String(e.values.name)]));
   const rows: ImportSummaryRow[] = [
     ...plan.publications.map((s) => ({ kind: "publication" as const, name: String(s.record.values.name), code: String(s.record.values.code), action: s.action, detail: s.label })),
@@ -97,7 +120,8 @@ export async function commitImport(formData: FormData) {
   if (typeof text !== "string") redirect(withMessage(BACK, "error", text.error));
   const parsed = parseImport(text);
   if (!parsed.ok) redirect(withMessage(BACK, "error", parsed.error));
-  const plan = await currentPlan(ctx, parsed.file);
+  const sorted = sortFileLogos(parsed.file);
+  const plan = await currentPlan(ctx, sorted);
   const base = { organizationId: ctx.resolved.id, brandId: ctx.brand.id };
   const touchedEditors = new Set<string>();
   const touchedPubs = new Set<string>();
@@ -131,9 +155,9 @@ export async function commitImport(formData: FormData) {
   const pubIdByCode = new Map<string, string>();
   const takenPubSlugs = new Set((await db.calendarPublication.findMany({ where: { brandId: ctx.brand.id }, select: { slug: true } })).map((p) => p.slug).filter((s): s is string => Boolean(s)));
   for (const step of plan.publications) {
-    const { values, logo } = step.record;
+    const { values, logos } = step.record;
     const code = String(values.code);
-    const logoCols = logo ? { logoFilename: logo.filename, logoMime: logo.mime, logoData: logo.data } : {};
+    const logoColumns = logoCols(logos, step.logoSlots);
     if (step.action === "create") {
       const slug = uniqueSlug(str(values, "slug") ?? code.toLowerCase(), takenPubSlugs);
       takenPubSlugs.add(slug);
@@ -149,7 +173,7 @@ export async function commitImport(formData: FormData) {
           slug,
           status,
           active: status !== "retired",
-          ...logoCols,
+          ...logoColumns,
           createdById: ctx.actorId,
           updatedById: ctx.actorId,
         } as Prisma.CalendarPublicationUncheckedCreateInput,
@@ -160,7 +184,7 @@ export async function commitImport(formData: FormData) {
     } else {
       pubIdByCode.set(code, step.existingId!);
       if (step.action === "fill") {
-        await db.calendarPublication.updateMany({ where: { id: step.existingId! }, data: { ...columns(step.fill), ...(step.image ? logoCols : {}), updatedById: ctx.actorId } });
+        await db.calendarPublication.updateMany({ where: { id: step.existingId! }, data: { ...columns(step.fill), ...logoColumns, updatedById: ctx.actorId } });
         touchedPubs.add(step.existingId!);
       }
     }
@@ -181,9 +205,8 @@ export async function commitImport(formData: FormData) {
     linked += 1;
   }
 
-  if (plan.brandLogo && parsed.file.brandLogo) {
-    const logo = parsed.file.brandLogo;
-    const cols = { logoFilename: logo.filename, logoMime: logo.mime, logoData: logo.data, updatedById: ctx.actorId };
+  if (plan.brandLogo) {
+    const cols = { ...logoCols(sorted.brandLogos, plan.brandLogos), updatedById: ctx.actorId };
     const row = await db.pubBrandBranding.findFirst({ where: { brandId: ctx.brand.id }, select: { id: true } });
     if (row) await db.pubBrandBranding.updateMany({ where: { id: row.id }, data: cols });
     else await db.pubBrandBranding.create({ data: { ...base, ...cols } });
