@@ -3,9 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Flash } from "@/components/ui";
 import { deleteEventAction } from "@/features/calendar/actions";
+import { findPromo } from "@/features/calendar/promos";
+import { trashSeriesAction } from "@/features/calendar/settings-actions";
 import { calendarPage } from "@/features/calendar/context";
 import { listChannels, loadEvent } from "@/features/calendar/data";
-import { count, ExternalLink, LinkButton, money, Section, Stat, StageDot, StageNow } from "@/features/calendar/ui";
+import { count, ExternalLink, LinkButton, money, PromoLine, Section, Stat, StageDot, StageNow } from "@/features/calendar/ui";
 import { fmtDayFull, fmtTime, todayIn } from "../../../../../../../../../../modules/editorial/dates";
 import { FREQUENCY_LABELS, isFrequency } from "../../../../../../../../../../modules/editorial/recurrence";
 import { STAGE_LABELS, stageOn, stageSpans } from "../../../../../../../../../../modules/editorial/stages";
@@ -24,6 +26,7 @@ export default async function EventPage({
   const [loaded, channels] = await Promise.all([loadEvent(ctx.resolved.id, ctx.brand.id, eventId), listChannels(ctx.resolved.id, ctx.brand.id)]);
   if (!loaded) notFound();
   const { event: e, dates, series, followingCount } = loaded;
+  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, e.promoId);
   const spans = stageSpans(dates);
   const channelColor = new Map(channels.map((c) => [c.name, c.color]));
   const metrics = [
@@ -137,6 +140,12 @@ export default async function EventPage({
             <dt className="text-muted">Promo code</dt>
             <dd className="font-medium">{e.promoCode ?? "—"}</dd>
           </div>
+          <div className="sm:col-span-2">
+            <dt className="text-muted">Promo</dt>
+            <dd className="mt-1">
+              <PromoLine promo={promo} />
+            </dd>
+          </div>
           <div className="flex flex-col gap-1 sm:col-span-2">
             <ExternalLink href={e.ctaLink}>Call-to-action link ↗</ExternalLink>
             <ExternalLink href={e.registrationLink}>Registration link ↗</ExternalLink>
@@ -174,7 +183,16 @@ export default async function EventPage({
                 </Button>
               </form>
             ) : null}
+            {series ? (
+              <form action={trashSeriesAction}>
+                <input type="hidden" name="seriesId" value={series.id} />
+                <Button type="submit" variant="danger">
+                  Move the whole series to the trash
+                </Button>
+              </form>
+            ) : null}
           </div>
+          <p className="mt-2 text-xs text-muted">Deleted items go to the trash (Setup → Trash), where you can restore them.</p>
         </details>
       ) : null}
       <p>

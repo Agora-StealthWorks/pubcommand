@@ -209,7 +209,40 @@ export function candidateCodes(list: string, publications: Publication[]): strin
 export type UnmatchedRow = { line: number; mailDate: string | null; list: string; subject: string; reason: string };
 export type StatMatch = { issueId: string; pubCode: string; row: ParsedStatRow; subjectScore: number };
 
-export function matchStats(rows: ParsedStatRow[], issues: MatchableIssue[], publications: Publication[]): { matches: StatMatch[]; unmatched: UnmatchedRow[] } {
+/** The lookup key of a list label: trimmed, lower case, single spaces. */
+export function labelKey(label: string): string {
+  return label.replace(/\s+/g, " ").trim().toLowerCase().slice(0, 200);
+}
+
+/**
+ * Saved list mappings, label key → publication code. An empty code means the
+ * list is ignored on purpose (a dedicated send, a test list).
+ */
+export type ListMappings = Map<string, string>;
+
+export const IGNORED_REASON = "Ignored list (saved mapping)";
+
+/** Distinct list labels among unmatched rows, most rows first, for the "remember this list" form. */
+export function unmatchedLabels(rows: UnmatchedRow[], mappings: ListMappings = new Map()): { label: string; count: number; mapped: boolean }[] {
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const row of rows) {
+    if (!row.list.trim() || row.reason === IGNORED_REASON) continue;
+    const key = labelKey(row.list);
+    const hit = counts.get(key) ?? { label: row.list.trim(), count: 0 };
+    hit.count += 1;
+    counts.set(key, hit);
+  }
+  return [...counts.entries()]
+    .map(([key, v]) => ({ ...v, mapped: mappings.has(key) }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+export function matchStats(
+  rows: ParsedStatRow[],
+  issues: MatchableIssue[],
+  publications: Publication[],
+  mappings: ListMappings = new Map(),
+): { matches: StatMatch[]; unmatched: UnmatchedRow[] } {
   const index = new Map<string, MatchableIssue[]>();
   for (const issue of issues) {
     if (!issue.mailDate) continue;
@@ -224,7 +257,13 @@ export function matchStats(rows: ParsedStatRow[], issues: MatchableIssue[], publ
       miss("No readable mail date");
       continue;
     }
-    const codes = candidateCodes(row.list, publications);
+    const mapped = mappings.get(labelKey(row.list));
+    if (mapped === "") {
+      miss(IGNORED_REASON);
+      continue;
+    }
+    // A saved mapping wins over guessing from the label.
+    const codes = mapped ? [mapped] : candidateCodes(row.list, publications);
     if (!codes.length) {
       miss("No publication");
       continue;

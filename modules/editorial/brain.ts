@@ -75,3 +75,22 @@ export function eventBrainNote(event: {
   ].filter((l): l is string => l != null);
   return { title: `Event: ${event.name}`.slice(0, 180), body: lines.join("\n") };
 }
+
+/** A finished CUB round: averaged, anonymous scores only. No reviewer names. */
+export function cubBrainNote(round: {
+  promoName: string;
+  dueAt: string;
+  count: number;
+  averages: { label: string; value: number | null }[];
+  overall: number | null;
+}): { title: string; body: string } {
+  const lines = [
+    `CUB peer-review round on a promo draft (Marketing Calendar).`,
+    "",
+    line("Deadline", round.dueAt),
+    line("Revisions received", round.count),
+    ...round.averages.map((a) => line(`Average ${a.label.toLowerCase()} (0-10)`, a.value == null ? null : a.value.toFixed(1))),
+    line("Average of all four (0-10)", round.overall == null ? null : round.overall.toFixed(1)),
+  ].filter((l): l is string => l != null);
+  return { title: `CUB round: ${round.promoName}`.slice(0, 180), body: lines.join("\n") };
+}

@@ -29,7 +29,11 @@ export async function calendarPage(slug: string) {
 }
 
 export function withMessage(path: string, key: "error" | "notice", message: string): string {
-  return `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(message)}`;
+  // Keep a #fragment at the end, where browsers read it (not inside the query).
+  const hashAt = path.indexOf("#");
+  const base = hashAt >= 0 ? path.slice(0, hashAt) : path;
+  const hash = hashAt >= 0 ? path.slice(hashAt) : "";
+  return `${base}${base.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(message)}${hash}`;
 }
 
 export function field(formData: FormData, key: string, max = 300): string {

@@ -6,7 +6,8 @@ import { deleteIssueAction, issueAssistAction } from "@/features/calendar/action
 import { AssistPanel } from "@/features/calendar/assist-panel";
 import { calendarPage } from "@/features/calendar/context";
 import { listPublications, loadIssue } from "@/features/calendar/data";
-import { count, ExternalLink, LinkButton, money, pct, PubChip, Section, Stat } from "@/features/calendar/ui";
+import { count, ExternalLink, LinkButton, money, pct, PromoLine, PubChip, Section, Stat } from "@/features/calendar/ui";
+import { findPromo } from "@/features/calendar/promos";
 import { fmtDayFull, toDay } from "../../../../../../../../../../modules/editorial/dates";
 
 export default async function IssuePage({
@@ -23,6 +24,7 @@ export default async function IssuePage({
   const [loaded, publications] = await Promise.all([loadIssue(ctx.resolved.id, ctx.brand.id, issueId), listPublications(ctx.resolved.id, ctx.brand.id, true)]);
   if (!loaded) notFound();
   const { issue: i, mailDate } = loaded;
+  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, i.promoId);
   const pub = publications.find((p) => p.code === i.publicationCode);
   const s = i.stat;
   const revPerThousand = s?.revenue != null && s.delivered ? (s.revenue / s.delivered) * 1000 : null;
@@ -85,6 +87,18 @@ export default async function IssuePage({
             <dt className="text-muted">Offer</dt>
             <dd className="break-words [overflow-wrap:anywhere] font-medium">{i.offer ?? "—"}</dd>
           </div>
+          <div>
+            <dt className="text-muted">Promo</dt>
+            <dd className="mt-1">
+              <PromoLine promo={promo} />
+            </dd>
+          </div>
+          {i.tickers.length ? (
+            <div>
+              <dt className="text-muted">Tickers</dt>
+              <dd className="font-medium">{i.tickers.join(", ")}</dd>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-1">
             <ExternalLink href={i.websiteLink}>Web version ↗</ExternalLink>
             <ExternalLink href={i.ctaLink}>Call-to-action link ↗</ExternalLink>
@@ -111,7 +125,7 @@ export default async function IssuePage({
           <form action={deleteIssueAction} className="mt-3">
             <input type="hidden" name="issueId" value={i.id} />
             <Button type="submit" variant="danger">
-              Delete this issue
+              Move this issue to the trash
             </Button>
           </form>
         </details>

@@ -7,7 +7,8 @@ import { calendarPage } from "@/features/calendar/context";
 import { feedItems, listChannels, listPublications, loadRange } from "@/features/calendar/data";
 import { PubChip, StageLegend, StageNow } from "@/features/calendar/ui";
 import { fmtDay, fmtTime, isDay, todayIn } from "../../../../../../../../modules/editorial/dates";
-import { EVENT_STAGES, ISSUE_STATUSES, filterFeed, stageOn } from "../../../../../../../../modules/editorial/stages";
+import { filterFeed, stageOn } from "../../../../../../../../modules/editorial/stages";
+import { loadOptions } from "@/features/calendar/options";
 
 type Query = { q?: string; kind?: string; channel?: string; pub?: string; stage?: string; view?: string; recurring?: string; from?: string; to?: string; error?: string; notice?: string };
 
@@ -20,11 +21,13 @@ export default async function RunningListPage({ params, searchParams }: { params
   const upcoming = query.view !== "all";
   const from = !upcoming && isDay(query.from) ? query.from : null;
   const to = !upcoming && isDay(query.to) ? query.to : null;
-  const [range, publications, channels] = await Promise.all([
+  const [range, publications, channels, options] = await Promise.all([
     loadRange(ctx.resolved.id, ctx.brand.id, upcoming ? today : from, to),
     listPublications(ctx.resolved.id, ctx.brand.id, true),
     listChannels(ctx.resolved.id, ctx.brand.id),
+    loadOptions(ctx.resolved.id, ctx.brand.id),
   ]);
+  const eventStages = options["event.stage"];
   const kind = query.kind === "event" || query.kind === "issue" ? query.kind : "all";
   const items = filterFeed(feedItems(range), {
     today,
@@ -94,14 +97,14 @@ export default async function RunningListPage({ params, searchParams }: { params
         <select name="stage" defaultValue={query.stage ?? ""} aria-label="Stage or status" className="pc-control">
           <option value="">Any stage or status</option>
           <optgroup label="Event stage">
-            {EVENT_STAGES.map((s) => (
+            {eventStages.map((s) => (
               <option key={`e-${s}`} value={s}>
                 {s}
               </option>
             ))}
           </optgroup>
           <optgroup label="Issue status">
-            {ISSUE_STATUSES.filter((s) => !(EVENT_STAGES as readonly string[]).includes(s)).map((s) => (
+            {options["issue.status"].filter((s) => !eventStages.includes(s)).map((s) => (
               <option key={`i-${s}`} value={s}>
                 {s}
               </option>

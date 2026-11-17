@@ -1,8 +1,8 @@
 import { Button, Input, Textarea } from "@pubcommand/ui";
 import { FREQUENCIES, FREQUENCY_LABELS, type SeriesScope } from "../../../../../modules/editorial/recurrence";
-import { EVENT_FORMATS, EVENT_STAGES, EVENT_TYPES } from "../../../../../modules/editorial/stages";
 import type { ChannelView, LoadedEvent } from "./data";
-import { Field } from "./ui";
+import type { FormExtras } from "./options";
+import { Field, OptionSelect, PromoSelect } from "./ui";
 
 type Props = {
   action: (formData: FormData) => Promise<void>;
@@ -10,11 +10,12 @@ type Props = {
   loaded?: LoadedEvent;
   scope?: SeriesScope;
   defaultDate?: string;
+  extras: FormExtras;
 };
 
 const num = (n: number | null | undefined) => (n == null ? "" : String(n));
 
-export function EventForm({ action, channels, loaded, scope = "single", defaultDate }: Props) {
+export function EventForm({ action, channels, loaded, scope = "single", defaultDate, extras }: Props) {
   const e = loaded?.event;
   const d = loaded?.dates;
   const inSeries = Boolean(loaded?.series);
@@ -30,13 +31,7 @@ export function EventForm({ action, channels, loaded, scope = "single", defaultD
           <Input name="name" required maxLength={200} defaultValue={e?.name ?? ""} />
         </Field>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Stage">
-            <select name="stage" className="pc-control w-full" defaultValue={e?.stage ?? "Idea"}>
-              {EVENT_STAGES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </Field>
+          <OptionSelect name="stage" label="Stage" options={extras.options["event.stage"]} value={e?.stage} />
           <Field label="Event type">
             <Input name="eventType" list="cal-event-types" defaultValue={e?.eventType ?? ""} maxLength={80} />
           </Field>
@@ -45,15 +40,16 @@ export function EventForm({ action, channels, loaded, scope = "single", defaultD
           </Field>
         </div>
         <datalist id="cal-event-types">
-          {EVENT_TYPES.map((t) => (
+          {extras.options["event.type"].map((t) => (
             <option key={t} value={t} />
           ))}
         </datalist>
         <datalist id="cal-event-formats">
-          {EVENT_FORMATS.map((t) => (
+          {extras.options["event.format"].map((t) => (
             <option key={t} value={t} />
           ))}
         </datalist>
+        <PromoSelect promos={extras.promos} value={e?.promoId} hint={inSeries ? "Linked to this occurrence only." : undefined} />
       </section>
 
       <section className="space-y-4 rounded-xl border border-line bg-white p-4 sm:p-5">

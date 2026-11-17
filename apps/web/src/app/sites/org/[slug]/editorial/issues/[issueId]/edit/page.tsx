@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { updateIssueAction } from "@/features/calendar/actions";
 import { calendarPage } from "@/features/calendar/context";
+import { loadFormExtras } from "@/features/calendar/options";
 import { listPublications, loadIssue } from "@/features/calendar/data";
 import { IssueForm } from "@/features/calendar/issue-form";
 
@@ -11,6 +12,7 @@ export default async function EditIssuePage({ params, searchParams }: { params: 
   const query = await searchParams;
   const ctx = await calendarPage(slug);
   if (!ctx) notFound();
+  const extras = await loadFormExtras(ctx.resolved.id, ctx.brand);
   if (!ctx.canWrite) return <Denied title="You can view the calendar but not edit issues" />;
   const [loaded, publications] = await Promise.all([loadIssue(ctx.resolved.id, ctx.brand.id, issueId), listPublications(ctx.resolved.id, ctx.brand.id, true)]);
   if (!loaded) notFound();
@@ -23,7 +25,7 @@ export default async function EditIssuePage({ params, searchParams }: { params: 
       </p>
       <h2 className="mb-3 break-words [overflow-wrap:anywhere] text-xl font-semibold">Edit {loaded.issue.title}</h2>
       <Flash error={query.error} />
-      <IssueForm action={updateIssueAction} publications={publications} loaded={loaded} />
+      <IssueForm extras={extras} action={updateIssueAction} publications={publications} loaded={loaded} />
     </div>
   );
 }

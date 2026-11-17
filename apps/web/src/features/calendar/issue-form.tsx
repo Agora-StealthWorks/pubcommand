@@ -1,18 +1,20 @@
 import { Button, Input, Textarea } from "@pubcommand/ui";
-import { ISSUE_STATUSES, ISSUE_TYPES } from "../../../../../modules/editorial/stages";
 import type { LoadedIssue, PublicationView } from "./data";
-import { Field } from "./ui";
+import type { FormExtras } from "./options";
+import { Field, OptionSelect, PromoSelect } from "./ui";
 
 export function IssueForm({
   action,
   publications,
   loaded,
   defaults,
+  extras,
 }: {
   action: (formData: FormData) => Promise<void>;
   publications: PublicationView[];
   loaded?: LoadedIssue;
   defaults?: { publicationCode?: string; mailDate?: string };
+  extras: FormExtras;
 }) {
   const i = loaded?.issue;
   const pubs = publications.filter((p) => p.active || p.code === i?.publicationCode);
@@ -37,19 +39,13 @@ export function IssueForm({
           <Field label="Mail date">
             <input type="date" name="mailDate" className="pc-control w-full" defaultValue={loaded?.mailDate ?? defaults?.mailDate ?? ""} />
           </Field>
-          <Field label="Status">
-            <select name="status" className="pc-control w-full" defaultValue={i?.status ?? "Planned"}>
-              {ISSUE_STATUSES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </Field>
+          <OptionSelect name="status" label="Status" options={extras.options["issue.status"]} value={i?.status ?? (extras.options["issue.status"].includes("Planned") ? "Planned" : undefined)} />
           <Field label="Type">
             <Input name="issueType" list="cal-issue-types" maxLength={80} defaultValue={i?.issueType ?? ""} />
           </Field>
         </div>
         <datalist id="cal-issue-types">
-          {ISSUE_TYPES.map((t) => (
+          {extras.options["issue.type"].map((t) => (
             <option key={t} value={t} />
           ))}
         </datalist>
@@ -60,6 +56,16 @@ export function IssueForm({
           <Field label="Offer">
             <Input name="offer" maxLength={300} defaultValue={i?.offer ?? ""} />
           </Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <PromoSelect promos={extras.promos} value={i?.promoId} />
+          {extras.tickers ? (
+            <Field label="Tickers mentioned" hint="Separate with commas, e.g. NVDA, AAPL. Prices come from market data.">
+              <Input name="tickers" maxLength={400} defaultValue={i?.tickers.join(", ") ?? ""} />
+            </Field>
+          ) : (
+            <input type="hidden" name="tickers" value={i?.tickers.join(", ") ?? ""} />
+          )}
         </div>
         <Field label="Subject lines" hint="One per line. Used to tell two same-day sends apart when stats are imported.">
           <Textarea name="subjectLines" rows={3} defaultValue={i?.subjectLines.join("\n") ?? ""} />

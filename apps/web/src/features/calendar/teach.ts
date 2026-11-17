@@ -36,6 +36,8 @@ export async function teachIssue(input: { organizationId: string; brandId: strin
       source: "marketing-calendar",
       actorId: input.actorId,
     });
+    // Not an edit: keep updatedAt so the catch-up job and Airtable push read it correctly.
+    await db.calendarIssue.updateMany({ where: { id: issue.id, updatedAt: issue.updatedAt }, data: { brainTaughtAt: new Date(), updatedAt: issue.updatedAt } });
   } catch (error) {
     console.error("[calendar] could not teach the Brain about an issue", error);
   }
@@ -44,7 +46,8 @@ export async function teachIssue(input: { organizationId: string; brandId: strin
 /** Write or refresh the Brain note for one event. Soft-fails. */
 export async function teachEvent(input: { organizationId: string; brandId: string; eventId: string; actorId: string | null }): Promise<void> {
   try {
-    const event = await tenantDb(input.organizationId).calendarEvent.findFirst({ where: { id: input.eventId, deletedAt: null } });
+    const db = tenantDb(input.organizationId);
+    const event = await db.calendarEvent.findFirst({ where: { id: input.eventId, deletedAt: null } });
     if (!event) return;
     const note = eventBrainNote({
       ...eventDates(event),
@@ -70,7 +73,27 @@ export async function teachEvent(input: { organizationId: string; brandId: strin
       source: "marketing-calendar",
       actorId: input.actorId,
     });
+    await db.calendarEvent.updateMany({ where: { id: event.id, updatedAt: event.updatedAt }, data: { brainTaughtAt: new Date(), updatedAt: event.updatedAt } });
   } catch (error) {
     console.error("[calendar] could not teach the Brain about an event", error);
   }
+}
+
+/**
+ * Teach every event and issue saved since it was last taught: anything written
+ * outside the calendar's own forms (Mini-Blog posts, jobs, Airtable pulls) still
+ * reaches the Brain. Idempotent: a taught row is skipped until it changes again.
+ */
+export async function teachPending(organizationId: string, limit = 100): Promise<{ issues: number; events: number }> {
+  const db = tenantDb(organizationId);
+  const stale = <T extends { updatedAt: Date; brainTaughtAt: Date | null }>(rows: T[]) => rows.filter((r) => !r.brainTaughtAt || r.updatedAt.getTime() > r.brainTaughtAt.getTime());
+  const [issues, events] = await Promise.all([
+    db.calendarIssue.findMany({ where: { deletedAt: null }, select: { id: true, brandId: true, updatedAt: true, brainTaughtAt: true }, orderBy: { updatedAt: "desc" }, take: 2000 }),
+    db.calendarEvent.findMany({ where: { deletedAt: null }, select: { id: true, brandId: true, updatedAt: true, brainTaughtAt: true }, orderBy: { updatedAt: "desc" }, take: 2000 }),
+  ]);
+  const dueIssues = stale(issues).slice(0, limit);
+  const dueEvents = stale(events).slice(0, limit);
+  for (const row of dueIssues) await teachIssue({ organizationId, brandId: row.brandId, issueId: row.id, actorId: null });
+  for (const row of dueEvents) await teachEvent({ organizationId, brandId: row.brandId, eventId: row.id, actorId: null });
+  return { issues: dueIssues.length, events: dueEvents.length };
 }

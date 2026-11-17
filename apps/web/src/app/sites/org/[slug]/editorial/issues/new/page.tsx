@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { createIssueAction } from "@/features/calendar/actions";
 import { calendarPage } from "@/features/calendar/context";
+import { loadFormExtras } from "@/features/calendar/options";
 import { listPublications } from "@/features/calendar/data";
 import { IssueForm } from "@/features/calendar/issue-form";
 import { isDay } from "../../../../../../../../../../modules/editorial/dates";
@@ -11,13 +12,14 @@ export default async function NewIssuePage({ params, searchParams }: { params: P
   const query = await searchParams;
   const ctx = await calendarPage(slug);
   if (!ctx) notFound();
+  const extras = await loadFormExtras(ctx.resolved.id, ctx.brand);
   if (!ctx.canWrite) return <Denied title="You can view the calendar but not add issues" />;
   const publications = await listPublications(ctx.resolved.id, ctx.brand.id);
   return (
     <div className="max-w-4xl">
       <h2 className="mb-3 text-xl font-semibold">New issue</h2>
       <Flash error={query.error} />
-      <IssueForm action={createIssueAction} publications={publications} defaults={{ mailDate: isDay(query.date) ? query.date : undefined, publicationCode: query.pub }} />
+      <IssueForm extras={extras} action={createIssueAction} publications={publications} defaults={{ mailDate: isDay(query.date) ? query.date : undefined, publicationCode: query.pub }} />
     </div>
   );
 }
