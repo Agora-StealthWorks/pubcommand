@@ -3,8 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied } from "@/components/ui";
 import { listPromos } from "@/features/promos/data";
+import { loadOverrides } from "@/features/promos/insights";
+import { INSIGHT_VIEWS } from "@/features/promos/insights-view";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
+import { resolveName } from "../../../../../../../../modules/promo-studio/entities";
 
 const STATUS_DOT: Record<string, string> = {
   QUEUED: "bg-[#fdb022]",
@@ -29,7 +32,7 @@ export default async function PromoAnalyzerLayout({
   if (!ctx.brand) return <Denied title="Add a brand in Settings → Brands first" />;
   const request = await currentRequest();
   const q = new URLSearchParams(request.search.replace(/^\?/, "")).get("q") ?? "";
-  const promos = await listPromos(ctx.resolved.id, ctx.brand.id, q);
+  const [promos, overrides] = await Promise.all([listPromos(ctx.resolved.id, ctx.brand.id, q), loadOverrides(ctx.resolved.id, ctx.brand.id)]);
   const activeId = request.pathname.split("/")[2] ?? "";
 
   return (
@@ -41,6 +44,13 @@ export default async function PromoAnalyzerLayout({
             + New promo
           </Link>
         </div>
+        <nav className="flex flex-wrap gap-x-3 gap-y-1 border-b border-line px-4 py-2 text-xs font-semibold" aria-label="Brand views">
+          {INSIGHT_VIEWS.map(([key, label]) => (
+            <Link key={key} href={`/promo-studio/${key}`} className={`inline-flex min-h-8 items-center hover:underline ${activeId === key ? "text-ink" : "text-accent"}`}>
+              {label}
+            </Link>
+          ))}
+        </nav>
         <form action={request.pathname} className="border-b border-line px-3 py-2">
           <input
             name="q"
@@ -65,7 +75,7 @@ export default async function PromoAnalyzerLayout({
                   </span>
                   <span className="block truncate text-xs text-muted">
                     {promo.createdAt.toISOString().slice(0, 10)}
-                    {promo.publisher ? ` · ${promo.publisher}` : ""}
+                    {promo.publisher ? ` · ${resolveName("publisher", promo.publisher, overrides)}` : ""}
                   </span>
                 </span>
                 {promo.score != null ? (

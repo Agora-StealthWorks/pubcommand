@@ -6,7 +6,13 @@ export const manifest = defineModule({
   name: "Promo Analyzer",
   description: "Upload promos, get a full copy analysis, and teach the brand Brain.",
   nav: [{ label: "Promo Analyzer", href: "/promo-studio", permission: "promo.read" }],
-  routes: [{ path: "/promo-studio", title: "Promo Analyzer" }],
+  routes: [
+    { path: "/promo-studio", title: "Promo Analyzer" },
+    { path: "/promo-studio/performance", title: "Promo performance" },
+    { path: "/promo-studio/lessons", title: "Lessons learned" },
+    { path: "/promo-studio/directory", title: "Promo directory" },
+    { path: "/promo-studio/bulk", title: "Bulk re-analyze" },
+  ],
   permissions: [
     { key: "promo.read", description: "Read promotions" },
     { key: "promo.write", description: "Edit promotions" },

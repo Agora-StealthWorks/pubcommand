@@ -152,6 +152,8 @@ export async function runPromoAnalysis(input: {
         pricePoint: promo.pricePoint ?? (price != null && Number.isFinite(price) ? price : null),
       },
     });
+    // The detected type may move the promo into another results cohort.
+    if (!promo.promoType && detectedType) await import("./insights").then((m) => m.retier(input.organizationId, promo.brandId)).catch(() => undefined);
     const note = brainNote({ title: promo.title, brandName: input.brand.name, score, result });
     await teachBrain({
       organizationId: input.organizationId,

@@ -87,3 +87,129 @@ model PromoFile {
   @@index([organizationId, promoId])
   @@map("promo_files")
 }
+
+/// One uploaded results sheet (CSV/XLSX). The file stays here until it is mapped and imported.
+model PromoPerformanceImport {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  filename       String
+  mimeType       String   @map("mime_type")
+  size           Int
+  data           Bytes
+  /// MAPPING (waiting for column choices), DONE, FAILED.
+  status         String   @default("MAPPING")
+  error          String?
+  headers        String[] @default([])
+  mapping        Json?
+  rowCount       Int      @default(0) @map("row_count")
+  codeCount      Int      @default(0) @map("code_count")
+  matchedCount   Int      @default(0) @map("matched_count")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId, brandId, createdAt])
+  @@map("promo_performance_imports")
+}
+
+/// Real-world results for one promo code in one brand (rows with the same code are summed).
+model PromoPerformance {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  importId       String?   @map("import_id") @db.Uuid
+  /// Normalized code used for matching (upper case, letters and digits only).
+  codeKey        String    @map("code_key")
+  promoCode      String    @map("promo_code")
+  label          String?
+  promoId        String?   @map("promo_id") @db.Uuid
+  sheetType      String?   @map("sheet_type")
+  startDate      DateTime? @map("start_date") @db.Date
+  endDate        DateTime? @map("end_date") @db.Date
+  sent           Float?
+  views          Float?
+  clicks         Float?
+  orders         Float?
+  revenue        Float?
+  cost           Float?
+  extra          Json?
+  /// Cohort and tier, recomputed from the whole brand's data after every import.
+  cohort         String?
+  cohortSize     Int?      @map("cohort_size")
+  metric         String?
+  metricValue    Float?    @map("metric_value")
+  percentile     Float?
+  tierScheme     String?   @map("tier_scheme")
+  tier           String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([brandId, codeKey])
+  @@index([organizationId, brandId])
+  @@index([promoId])
+  @@map("promo_performance")
+}
+
+/// A brand-level lesson theme: AI-clustered from analyses and results, or written by a person.
+model PromoLesson {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  title          String
+  body           String
+  category       String    @default("other")
+  /// ai or manual.
+  origin         String    @default("ai")
+  /// Distinct promos behind this theme (computed from data, not by the AI).
+  evidenceCount  Int       @default(0) @map("evidence_count")
+  promoIds       String[]  @default([]) @map("promo_ids")
+  fromResults    Boolean   @default(false) @map("from_results")
+  suggestedShared Boolean  @default(false) @map("suggested_shared")
+  pinned         Boolean   @default(false)
+  hidden         Boolean   @default(false)
+  edited         Boolean   @default(false)
+  sharedAt       DateTime? @map("shared_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId, brandId])
+  @@map("promo_lessons")
+}
+
+/// One lesson-clustering run, polled by the Lessons page.
+model PromoLessonRun {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  status         String   @default("QUEUED")
+  error          String?
+  inputCount     Int      @default(0) @map("input_count")
+  themeCount     Int      @default(0) @map("theme_count")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId, brandId, createdAt])
+  @@map("promo_lesson_runs")
+}
+
+/// A correction to the Directory: rename/merge/alias (toName set) or hide (hidden). Promos keep their detected values.
+model PromoEntityOverride {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  /// publisher, guru or product.
+  kind           String
+  fromKey        String   @map("from_key")
+  fromName       String   @map("from_name")
+  toName         String?  @map("to_name")
+  hidden         Boolean  @default(false)
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([brandId, kind, fromKey])
+  @@index([organizationId, brandId])
+  @@map("promo_entity_overrides")
+}
