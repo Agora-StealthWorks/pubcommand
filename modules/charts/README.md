@@ -1,27 +1,40 @@
-# Charts
+# ChartBuilder (`charts`)
 
-Route: `/charts` on the organization host (`https://{org}.{ROOT_DOMAIN}/charts`).
+Route: `/charts` on the organization host. Simple, good-looking stock charts for promos, social and
+publications (not a trading tool). Pick a ticker, period and timeframe, a Promo or Publication template and
+a size; add a headline, text, callouts, arrows, dots and images and drag them into place; download PNG,
+JPG, SVG or PDF.
 
-Paste a two-column CSV, draw one line chart in the PubCommand brand accent (`#1d4ed8`), add an annotation, download SVG, and create a share link. The token is HMAC-signed and bound to the organization id, so another org cannot open it.
+## Rules
+1. **One renderer.** `render.ts` turns `(ChartSpec, bars)` into SVG and is pure. The editor preview,
+   saved-chart thumbnails and every export call it. Text is measured from `font-metrics.ts` (generated from
+   the bundled Inter files in `fonts/`), so the browser and the server lay out text identically. The
+   server rasterizes the same SVG with resvg using only those fonts.
+2. **`spec.ts` is the contract.** `normalizeSpec()` is the only way untrusted JSON becomes a `ChartSpec`
+   (clamped numbers, safe colors, escaped text). Templates store a `StyleSpec`; sizes are design units
+   scaled to the canvas (`scaleFactor`), so one template works at every social size.
+3. **Numbers come from data, never from the AI.** `tokens.ts` resolves `{gain}`, `{gainRounded}` (rounded
+   DOWN to 2 significant figures), `{start}`, `{end}`, `{cagr}` (a year or more), `{span}`, `{ticker}`,
+   `{name}` from the closes drawn. A person may type a figure over the headline; the editor keeps showing
+   "Data says", the save marks `headline_overridden`, and the Brain note records both.
+4. **The server re-fetches the data on save** and stores the exact bars drawn (`charts.bars`), so every
+   figure is traceable and downloads are reproducible.
+5. **Market data** comes from `@pubcommand/market` (Massive → Tiingo → FRED, A/B ratios, CSV; no Yahoo),
+   cached in `market_cache`.
+6. Starter templates are seeded **create-only** by slug on first visit; the team owns them afterwards.
+   Deletes of charts and projects are soft.
 
-`id`, `slug`, and `planEntitlement` are `charts`. Permissions are `charts.read` and `charts.write`. Seeded roles grant `charts.read`; either permission can use this slice.
+## Permissions
+`charts.read` (seeded for editors) makes, saves, exports and organizes charts. `charts.write` also deletes
+locked starter templates and anyone's projects.
 
-## Example CSV
+## Pages
+- `/charts` editor (`?chart=<id>` reopens, `?template=<id>` starts from a template)
+- `/charts/projects`, `/charts/projects/<id>` (ZIP of all charts)
+- `/charts/bulk`, `/charts/bulk/<batchId>` (up to 100 rows, 4 at a time, ZIP, save to project)
+- `/charts/templates`
+- `/charts/c/<id>/export?format=png|jpg|svg|pdf`
 
-```csv
-month,readers
-Jan,1200
-Feb,1380
-Mar,1290
-Apr,1510
-May,1620
-Jun,1580
-```
-
-The first row is the header. Column one is the label. Column two is the number.
-
-## TODO
-
-- TODO: live FRED series import is not connected.
-- TODO: PNG export.
-- TODO: video transcription.
+## Env
+`MASSIVE_API_KEY` (optional `MASSIVE_BASE_URL`), `TIINGO_API_KEY`. FRED needs no key. Without keys the
+editor says so and works with FRED series and pasted CSV.

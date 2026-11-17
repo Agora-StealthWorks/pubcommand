@@ -10,6 +10,7 @@ COPY packages/db/package.json packages/db/package.json
 COPY packages/auth/package.json packages/auth/package.json
 COPY packages/ai/package.json packages/ai/package.json
 COPY packages/ui/package.json packages/ui/package.json
+COPY packages/market/package.json packages/market/package.json
 COPY modules/package.json modules/package.json
 RUN pnpm install --frozen-lockfile
 COPY . .

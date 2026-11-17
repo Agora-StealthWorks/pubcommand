@@ -1,0 +1,130 @@
+// ChartBuilder tables (module `charts`). Plain organization/brand columns; FKs are added in the migration.
+
+/// A chart design (StyleSpec JSON). Starters are seeded create-only by slug; the team owns them after that.
+model ChartTemplate {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  slug           String?
+  name           String
+  description    String    @default("")
+  category       String    @default("PROMO")
+  style          Json
+  /// Locked templates are edited or deleted only with charts.write.
+  locked         Boolean   @default(false)
+  sortOrder      Int       @default(100) @map("sort_order")
+  usageCount     Int       @default(0) @map("usage_count")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, deletedAt])
+  @@map("chart_templates")
+}
+
+/// A shared folder of saved charts for one brand.
+model ChartProject {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  name           String
+  description    String    @default("")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+  charts         Chart[]
+
+  @@index([organizationId, brandId, deletedAt])
+  @@map("chart_projects")
+}
+
+/// Every saved chart, with the exact bars that were drawn so any figure is traceable to its data.
+model Chart {
+  id                 String        @id @default(uuid()) @db.Uuid
+  organizationId     String        @map("organization_id") @db.Uuid
+  brandId            String        @map("brand_id") @db.Uuid
+  projectId          String?       @map("project_id") @db.Uuid
+  batchId            String?       @map("batch_id") @db.Uuid
+  templateId         String?       @map("template_id") @db.Uuid
+  name               String        @default("")
+  symbol             String
+  /// The full ChartSpec.
+  spec               Json
+  /// Compact bars [[t, o, h, l, c], ...] exactly as drawn.
+  bars               Json
+  stats              Json?
+  /// Resolved token values ({gain}, {cagr}, ...) at save time.
+  tokens             Json
+  source             String
+  seriesName         String        @default("") @map("series_name")
+  unit               String        @default("$")
+  warnings           Json          @default("[]")
+  headline           String        @default("")
+  headlineOverridden Boolean       @default(false) @map("headline_overridden")
+  createdVia         String        @default("ui") @map("created_via")
+  createdById        String?       @map("created_by_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  deletedAt          DateTime?     @map("deleted_at")
+  project            ChartProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  batch              ChartBatch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, brandId, deletedAt, updatedAt])
+  @@index([projectId, deletedAt])
+  @@index([batchId])
+  @@index([symbol])
+  @@map("charts")
+}
+
+/// One bulk run: rows of tickers + one design. Built after the response; the page polls `status`.
+model ChartBatch {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  status         String    @default("QUEUED")
+  rows           Json
+  design         Json
+  total          Int       @default(0)
+  done           Int       @default(0)
+  failed         Int       @default(0)
+  errors         Json      @default("[]")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  charts         Chart[]
+
+  @@index([organizationId, brandId, createdAt])
+  @@map("chart_batches")
+}
+
+/// Images placed on charts (logos, photos). Postgres bytea, no volume.
+model ChartAsset {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String?  @map("brand_id") @db.Uuid
+  filename       String
+  mimeType       String   @map("mime_type")
+  width          Int
+  height         Int
+  size           Int
+  data           Bytes
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, brandId])
+  @@map("chart_assets")
+}
+
+/// Market data response cache shared by every tenant (public prices, no tenant data). Used by
+/// @pubcommand/market through apps/web/src/features/charts/market.ts.
+model MarketCache {
+  key       String   @id
+  value     Json
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("market_cache")
+}

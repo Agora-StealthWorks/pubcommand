@@ -1,0 +1,2 @@
+{"ticker":"AAPL","queryCount":1,"resultsCount":1,"adjusted":true,"status":"OK","request_id":"fixture-2",
+ "results":[{"v":59000000,"vw":133.2,"o":132.75,"c":134.1,"h":134.6,"l":132.4,"t":1700172800000,"n":1}]}
