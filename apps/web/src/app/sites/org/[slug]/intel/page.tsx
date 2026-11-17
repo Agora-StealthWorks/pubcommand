@@ -5,6 +5,7 @@ import { Denied, Flash } from "@/components/ui";
 import { extractAllPending } from "@/features/intel/actions";
 import { intelAccess } from "@/features/intel/context";
 import { PAGE_SIZE, competitorOptions, inboxCounts, listInbox, readFilters } from "@/features/intel/data";
+import { entityOptions } from "@/features/intel/registry";
 import { AiMissingNotice, TypeBadge, formatDay } from "@/features/intel/ui";
 import { AutoRefresh } from "@/features/promos/auto-refresh";
 import { EMAIL_TYPES, EMAIL_TYPE_LABELS } from "../../../../../../../../modules/intel/index";
@@ -22,11 +23,19 @@ export default async function IntelInboxPage({
   if (!access.ok) return <Denied title={access.error} />;
   const { scope } = access;
   const filters = readFilters(search);
-  const [inbox, counts, competitors] = await Promise.all([
+  const [inbox, counts, competitors, experts, lists, topics] = await Promise.all([
     listInbox(scope.organizationId, scope.brand.id, filters),
     inboxCounts(scope.organizationId, scope.brand.id),
     competitorOptions(scope.organizationId, scope.brand.id),
+    entityOptions(scope.organizationId, scope.brand.id, "expert"),
+    entityOptions(scope.organizationId, scope.brand.id, "list"),
+    entityOptions(scope.organizationId, scope.brand.id, "topic"),
   ]);
+  const registryFilters = [
+    { key: "list" as const, label: "List", options: lists, value: filters.list },
+    { key: "expert" as const, label: "Expert", options: experts, value: filters.expert },
+    { key: "topic" as const, label: "Topic", options: topics, value: filters.topic },
+  ];
   const ai = aiConfigured();
   const pages = Math.max(1, Math.ceil(inbox.total / PAGE_SIZE));
   const pageHref = (page: number) => {
@@ -36,7 +45,10 @@ export default async function IntelInboxPage({
     const text = query.toString();
     return text ? `/intel?${text}` : "/intel";
   };
-  const filtered = Boolean(filters.competitor || filters.type || filters.from || filters.to || filters.q);
+  const filtered = Boolean(filters.competitor || filters.type || filters.from || filters.to || filters.q || filters.expert || filters.list || filters.topic);
+  const exportQuery = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (key !== "page" && value) exportQuery.set(key, String(value));
+  const exportHref = `/intel/export${exportQuery.toString() ? `?${exportQuery.toString()}` : ""}`;
 
   return (
     <div className="min-w-0">
@@ -85,6 +97,24 @@ export default async function IntelInboxPage({
           <Label htmlFor="intel-to">To</Label>
           <Input id="intel-to" name="to" type="date" defaultValue={filters.to} className="mt-1" />
         </div>
+        <details className="min-w-0 sm:col-span-2 lg:order-last lg:col-span-full" open={Boolean(filters.expert || filters.list || filters.topic)}>
+          <summary className="cursor-pointer text-sm font-semibold text-accent">List, expert and topic</summary>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            {registryFilters.map((filter) => (
+              <div key={filter.key} className="min-w-0">
+                <Label htmlFor={`intel-${filter.key}`}>{filter.label}</Label>
+                <select id={`intel-${filter.key}`} name={filter.key} defaultValue={filter.value} className="pc-control mt-1 w-full">
+                  <option value="">All</option>
+                  {filter.options.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </details>
         <div className="flex items-end gap-2">
           <Button type="submit" variant="secondary" className="w-full sm:w-auto">
             Filter
@@ -110,13 +140,18 @@ export default async function IntelInboxPage({
             </>
           ) : null}
         </p>
-        {scope.canWrite && ai ? (
-          <form action={extractAllPending}>
-            <Button type="submit" variant="secondary" size="sm">
-              Extract all pending
-            </Button>
-          </form>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          <a href={exportHref} className="text-sm text-accent underline">
+            Export CSV
+          </a>
+          {scope.canWrite && ai ? (
+            <form action={extractAllPending}>
+              <Button type="submit" variant="secondary" size="sm">
+                Extract all pending
+              </Button>
+            </form>
+          ) : null}
+        </div>
       </div>
 
       {inbox.rows.length === 0 ? (

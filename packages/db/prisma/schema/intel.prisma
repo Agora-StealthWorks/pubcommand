@@ -21,6 +21,7 @@ model IntelCompetitor {
   updatedAt       DateTime     @updatedAt @map("updated_at")
   deletedAt       DateTime?    @map("deleted_at")
   emails          IntelEmail[]
+  videos          IntelVideo[]
 
   @@index([organizationId, brandId])
   @@map("intel_competitors")
@@ -66,12 +67,16 @@ model IntelEmail {
   extractedAt      DateTime?          @map("extracted_at")
   /// The Promo Analyzer promo made from this email, if any.
   analyzerPromoId  String?            @map("analyzer_promo_id") @db.Uuid
+  /// The fetched landing page (text only), when one was captured.
+  landingPageId    String?            @map("landing_page_id") @db.Uuid
   createdById      String?            @map("created_by_id") @db.Uuid
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
   deletedAt        DateTime?          @map("deleted_at")
   competitor       IntelCompetitor?   @relation(fields: [competitorId], references: [id], onDelete: SetNull)
   gmailAccount     IntelGmailAccount? @relation(fields: [gmailAccountId], references: [id], onDelete: SetNull)
+  landingPage      IntelLandingPage?  @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
+  entityRefs       IntelEntityRef[]
 
   @@unique([brandId, dedupeKey])
   @@index([organizationId, brandId, receivedAt])
@@ -127,4 +132,176 @@ model IntelRadarDigest {
   @@unique([brandId, weekStart])
   @@index([organizationId, brandId])
   @@map("intel_radar_digests")
+}
+
+/// A competitor video (VSL, webinar replay, YouTube, Vimeo, Wistia...) captured from a page URL.
+/// The video itself is never kept: only the transcript, a few small keyframes and the AI extraction.
+model IntelVideo {
+  id               String            @id @default(uuid()) @db.Uuid
+  organizationId   String            @map("organization_id") @db.Uuid
+  brandId          String            @map("brand_id") @db.Uuid
+  competitorId     String?           @map("competitor_id") @db.Uuid
+  /// website (page host matched a competitor) or manual.
+  matchedBy        String?           @map("matched_by")
+  /// The URL someone pasted.
+  url              String
+  /// The media URL handed to the downloader (an embed found on the page, or the page itself).
+  mediaUrl         String?           @map("media_url")
+  /// youtube, vimeo, wistia, vidalytics, brightcove, other
+  platform         String?
+  title            String?
+  uploader         String?
+  durationSec      Int?              @map("duration_sec")
+  thumbnailUrl     String?           @map("thumbnail_url")
+  /// QUEUED, RUNNING, DONE, FAILED
+  status           String            @default("QUEUED")
+  /// The pipeline step while RUNNING: page, download, audio, transcribe, frames, extract.
+  step             String?
+  error            String?
+  attempts         Int               @default(0)
+  transcript       String            @default("")
+  /// captions, whisper, revai
+  transcriptSource String?           @map("transcript_source")
+  landingPageId    String?           @map("landing_page_id") @db.Uuid
+  /// Copied from the extraction so lists can filter on it.
+  videoType        String?           @map("video_type")
+  /// NONE, QUEUED, RUNNING, DONE, FAILED
+  extractionStatus String            @default("NONE") @map("extraction_status")
+  extractionError  String?           @map("extraction_error")
+  extraction       Json?
+  extractionModel  String?           @map("extraction_model")
+  extractedAt      DateTime?         @map("extracted_at")
+  analyzerPromoId  String?           @map("analyzer_promo_id") @db.Uuid
+  startedAt        DateTime?         @map("started_at")
+  finishedAt       DateTime?         @map("finished_at")
+  createdById      String?           @map("created_by_id") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  deletedAt        DateTime?         @map("deleted_at")
+  competitor       IntelCompetitor?  @relation(fields: [competitorId], references: [id], onDelete: SetNull)
+  landingPage      IntelLandingPage? @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
+  frames           IntelVideoFrame[]
+  entityRefs       IntelEntityRef[]
+
+  @@index([organizationId, brandId, createdAt])
+  @@index([status, createdAt])
+  @@map("intel_videos")
+}
+
+/// A small JPEG keyframe from a captured video.
+model IntelVideoFrame {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  videoId        String     @map("video_id") @db.Uuid
+  position       Int
+  atSec          Int        @map("at_sec")
+  data           Bytes
+  size           Int
+  createdAt      DateTime   @default(now()) @map("created_at")
+  video          IntelVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, position])
+  @@index([organizationId])
+  @@map("intel_video_frames")
+}
+
+/// A competitor landing page, fetched once (text only, no screenshot) and shared by every email or video that links to it.
+model IntelLandingPage {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  brandId        String       @map("brand_id") @db.Uuid
+  /// The URL we were asked to fetch (after tracker unwrapping).
+  url            String
+  /// Where redirects ended.
+  finalUrl       String?      @map("final_url")
+  /// OK, FAILED
+  status         String
+  httpStatus     Int?         @map("http_status")
+  title          String?
+  description    String?
+  headings       String[]     @default([])
+  text           String       @default("")
+  /// Links on the page: [{ href, text, count }].
+  links          Json         @default("[]")
+  error          String?
+  fetchedAt      DateTime     @default(now()) @map("fetched_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  emails         IntelEmail[]
+  videos         IntelVideo[]
+
+  @@unique([brandId, url])
+  @@index([organizationId, brandId])
+  @@map("intel_landing_pages")
+}
+
+/// Registries: experts (gurus), lists (sender lists / newsletters) and topics.
+model IntelEntity {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  brandId        String           @map("brand_id") @db.Uuid
+  /// expert, list, topic
+  kind           String
+  name           String
+  /// Other spellings (and, for lists, sender addresses) that resolve to this entry.
+  aliases        String[]         @default([])
+  /// The publisher an expert writes for or a list belongs to.
+  competitorId   String?          @map("competitor_id") @db.Uuid
+  /// Lists only: free, paid, hotlist, marketing.
+  category       String?
+  notes          String?
+  /// Ignored entries keep their links (so they are not re-created) but are hidden from filters and counts.
+  ignored        Boolean          @default(false)
+  autoCreated    Boolean          @default(true) @map("auto_created")
+  mergedIntoId   String?          @map("merged_into_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deletedAt      DateTime?        @map("deleted_at")
+  refs           IntelEntityRef[]
+
+  @@index([organizationId, brandId, kind])
+  @@map("intel_entities")
+}
+
+/// Which email or video mentions which registry entry.
+model IntelEntityRef {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  entityId       String      @map("entity_id") @db.Uuid
+  emailId        String?     @map("email_id") @db.Uuid
+  videoId        String?     @map("video_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at")
+  entity         IntelEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  email          IntelEmail? @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  video          IntelVideo? @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([entityId, emailId])
+  @@unique([entityId, videoId])
+  @@index([organizationId])
+  @@index([emailId])
+  @@index([videoId])
+  @@map("intel_entity_refs")
+}
+
+/// Per-brand Intel settings: the weekly digest and landing-page capture.
+model IntelSettings {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  brandId          String    @map("brand_id") @db.Uuid
+  digestEnabled    Boolean   @default(false) @map("digest_enabled")
+  /// Slack incoming webhook URL, encrypted with AUTH_SECRET.
+  slackWebhookEnc  String?   @map("slack_webhook_enc")
+  /// Team members who asked for the digest by email.
+  digestEmails     String[]  @default([]) @map("digest_emails")
+  /// Fetch each email's landing page (text) before extraction.
+  autoLanding      Boolean   @default(true) @map("auto_landing")
+  lastDigestWeek   DateTime? @map("last_digest_week") @db.Date
+  lastDigestAt     DateTime? @map("last_digest_at")
+  lastDigestError  String?   @map("last_digest_error")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@unique([brandId])
+  @@index([organizationId])
+  @@map("intel_settings")
 }

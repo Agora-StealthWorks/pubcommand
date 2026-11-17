@@ -6,6 +6,7 @@
  * The AI reads and classifies. It never supplies facts: a price is only what the
  * email itself says, and the landing page must be one of the links we parsed.
  */
+import { landingPromptBlock } from "./landing";
 import { hostOf, type EmailLink } from "./links";
 
 export const EMAIL_TYPES = ["promo", "editorial", "renewal", "upsell", "event", "welcome", "survey", "transactional", "other"] as const;
@@ -89,9 +90,7 @@ export const EXTRACTION_SCHEMA = {
 
 type RawExtraction = Omit<EmailExtraction, "landingUrl"> & { landingLink: number | null };
 
-export const EXTRACTION_SYSTEM = `You are a competitive-intelligence analyst for a newsletter publisher. You read one email that a competing publisher sent to its list and record, as structured data, what it is and how it sells.
-
-How to classify the send:
+const EXTRACTION_RULES = `How to classify the send:
 - promo: sells a paid product, subscription, course, supplement, book, service or bundle, including lift notes that push a sales page.
 - editorial: free content (an article, a market or health update, a tip), even if it carries a small ad.
 - renewal: asks an existing customer to renew, extend or upgrade before expiry.
@@ -113,7 +112,17 @@ Rules:
 - angles are 1 to 5 short, reusable labels for the persuasion angle (for example "insider secret", "fear of missing out", "contrarian warning", "new discovery", "social proof"), lowercase, two to four words each.
 - topics are 1 to 5 short lowercase subject labels.
 - summary is two sentences on what the email does. takeaway is one sentence on what our editors and copywriters can learn from it, or null if nothing.
-- Follow the brand's compliance rules when you write the summary and takeaway: describe the competitor's claims, never repeat them as true.`;
+- Follow the brand's compliance rules when you write the summary and takeaway: describe the competitor's claims, never repeat them as true.
+- When the landing page text is included, use it to fill in the offer, price and guarantee, but only with what the page itself states.`;
+
+export const EXTRACTION_SYSTEM = `You are a competitive-intelligence analyst for a newsletter publisher. You read one email that a competing publisher sent to its list and record, as structured data, what it is and how it sells.
+
+${EXTRACTION_RULES}`;
+
+/** The same extraction for a competitor video (a sales video, webinar replay or channel video), read from its transcript. */
+export const VIDEO_EXTRACTION_SYSTEM = `You are a competitive-intelligence analyst for a newsletter publisher. You read the transcript of one video a competing publisher put out (a video sales letter, a webinar replay, a channel video) and record, as structured data, what it is and how it sells. Treat the video as the "send": headline is its main promise, hook is how it opens, cta is what viewers are told to do. Transcripts can contain recognition errors; never "correct" a number or a name into something the transcript does not say.
+
+${EXTRACTION_RULES}`;
 
 export const MAX_EXTRACTION_TEXT = 24_000;
 
@@ -126,6 +135,7 @@ export function extractionPrompt(input: {
   receivedAt: Date;
   text: string;
   links: readonly EmailLink[];
+  landing?: Parameters<typeof landingPromptBlock>[0];
 }): string {
   const body = input.text.length > MAX_EXTRACTION_TEXT ? `${input.text.slice(0, MAX_EXTRACTION_TEXT)}\n[…email truncated]` : input.text;
   const links = input.links.length
@@ -146,7 +156,50 @@ export function extractionPrompt(input: {
     "",
     "Body:",
     body || "(empty body)",
-  ].join("\n");
+    landingPromptBlock(input.landing ?? null),
+  ]
+    .filter((line, index, all) => line !== "" || index < all.length - 1)
+    .join("\n");
+}
+
+/** How much of a transcript goes into the extraction. */
+export const MAX_TRANSCRIPT_TEXT = 40_000;
+
+export function videoExtractionPrompt(input: {
+  brandContext: string;
+  competitorName: string | null;
+  title: string | null;
+  uploader: string | null;
+  url: string;
+  durationSec: number | null;
+  transcript: string;
+  links: readonly EmailLink[];
+  landing?: Parameters<typeof landingPromptBlock>[0];
+}): string {
+  const transcript = input.transcript.length > MAX_TRANSCRIPT_TEXT ? `${input.transcript.slice(0, MAX_TRANSCRIPT_TEXT)}\n[…transcript truncated]` : input.transcript;
+  const links = input.links.length
+    ? input.links.map((link, index) => `${index + 1}. ${link.text ? `"${link.text}" → ` : ""}${link.href}`).join("\n")
+    : "(no links)";
+  return [
+    "Our brand (the reader of this analysis):",
+    input.brandContext,
+    "",
+    "The competitor video:",
+    `Competitor: ${input.competitorName ?? "not matched yet"}`,
+    `Page: ${input.url}`,
+    input.title ? `Title: ${input.title}` : null,
+    input.uploader ? `Channel or uploader: ${input.uploader}` : null,
+    input.durationSec ? `Length: ${Math.round(input.durationSec / 60)} minutes` : null,
+    "",
+    "Links on the video's page (numbered; landingLink refers to these):",
+    links,
+    "",
+    "Transcript:",
+    transcript || "(no transcript: classify from the title and page only, and use null wherever you cannot tell)",
+    landingPromptBlock(input.landing ?? null),
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
 function cleanText(value: unknown, max = 600): string | null {

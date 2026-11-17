@@ -4,7 +4,7 @@ import { isStale } from "./server";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
-export type InboxFilters = { competitor: string; type: string; from: string; to: string; q: string; page: number };
+export type InboxFilters = { competitor: string; type: string; from: string; to: string; q: string; expert: string; list: string; topic: string; page: number };
 
 export const PAGE_SIZE = 50;
 
@@ -16,11 +16,15 @@ export function readFilters(search: Record<string, string | undefined>): InboxFi
     from: day(search.from),
     to: day(search.to),
     q: (search.q ?? "").trim().slice(0, 120),
+    expert: UUID.test(search.expert ?? "") ? search.expert! : "",
+    list: UUID.test(search.list ?? "") ? search.list! : "",
+    topic: UUID.test(search.topic ?? "") ? search.topic! : "",
     page: Math.max(1, Math.min(500, Number(search.page) || 1)),
   };
 }
 
-export async function listInbox(organizationId: string, brandId: string, filters: InboxFilters) {
+/** The Prisma filter for the inbox (also used by the CSV export). */
+export function inboxWhere(brandId: string, filters: Omit<InboxFilters, "page">): Prisma.IntelEmailWhereInput {
   const where: Prisma.IntelEmailWhereInput = { brandId, deletedAt: null };
   if (filters.competitor === "none") where.competitorId = null;
   else if (UUID.test(filters.competitor)) where.competitorId = filters.competitor;
@@ -40,6 +44,13 @@ export async function listInbox(organizationId: string, brandId: string, filters
       { textBody: { contains: filters.q, mode: "insensitive" } },
     ];
   }
+  const entityIds = [filters.expert, filters.list, filters.topic].filter(Boolean);
+  if (entityIds.length) where.AND = entityIds.map((entityId) => ({ entityRefs: { some: { entityId } } }));
+  return where;
+}
+
+export async function listInbox(organizationId: string, brandId: string, filters: InboxFilters) {
+  const where = inboxWhere(brandId, filters);
   const db = tenantDb(organizationId);
   const [total, rows] = await Promise.all([
     db.intelEmail.count({ where }),
@@ -153,6 +164,7 @@ export async function loadEmail(organizationId: string, brandId: string, emailId
       extractionModel: true,
       extractedAt: true,
       analyzerPromoId: true,
+      landingPageId: true,
       matchedBy: true,
       updatedAt: true,
       competitorId: true,

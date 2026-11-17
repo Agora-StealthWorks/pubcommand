@@ -53,6 +53,14 @@ export default async function IntelCompetitorPage({
         <Link href={`/intel?competitor=${competitor.id}`} className="text-accent underline">
           See them in the inbox
         </Link>
+        {" · "}
+        <a href={`/intel/export?competitor=${competitor.id}`} className="text-accent underline">
+          Export emails (CSV)
+        </a>
+        {" · "}
+        <a href={`/intel/export?kind=videos&competitor=${competitor.id}`} className="text-accent underline">
+          Export videos (CSV)
+        </a>
       </p>
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">

@@ -22,6 +22,12 @@ RUN pnpm --filter @pubcommand/db generate && pnpm --filter @pubcommand/web build
 
 FROM node:22-alpine AS runner
 RUN apk add --no-cache openssl libc6-compat
+# Intel video capture: ffmpeg (audio, keyframes, HLS remux) and yt-dlp (the downloader).
+# yt-dlp is pinned from PyPI because sites change often; bump YTDLP_VERSION to update it.
+ARG YTDLP_VERSION=2026.10.26
+RUN apk add --no-cache ffmpeg python3 py3-pip \
+  && pip3 install --no-cache-dir --break-system-packages "yt-dlp==${YTDLP_VERSION}" \
+  && yt-dlp --version && ffmpeg -hide_banner -version | head -n 1
 RUN corepack enable && corepack prepare pnpm@10.33.4 --activate
 WORKDIR /app
 ENV NODE_ENV=production

@@ -1,6 +1,7 @@
 import { Badge } from "@pubcommand/ui";
 import { AutoRefresh } from "../promos/auto-refresh";
-import { EMAIL_TYPE_LABELS, hostOf, type EmailExtraction, type EmailType } from "../../../../../modules/intel/index";
+import Link from "next/link";
+import { EMAIL_TYPE_LABELS, ENTITY_LABELS, VIDEO_STEP_LABELS, hostOf, type EmailExtraction, type EmailType, type EntityKind, type VideoStep } from "../../../../../modules/intel/index";
 
 export function formatDate(date: Date): string {
   return date.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" }) + " UTC";
@@ -59,7 +60,7 @@ function Chips({ items }: { items: string[] }) {
   );
 }
 
-export function ExtractionView({ extraction }: { extraction: EmailExtraction }) {
+export function ExtractionView({ extraction, source = "email" }: { extraction: EmailExtraction; source?: "email" | "video" }) {
   const e = extraction;
   return (
     <div>
@@ -74,7 +75,7 @@ export function ExtractionView({ extraction }: { extraction: EmailExtraction }) 
         <Row label="Hook">{e.hook}</Row>
         <Row label="Product">{e.product}</Row>
         <Row label="Offer">{e.offer}</Row>
-        <Row label="Price">{e.priceText ? <>{e.priceText} <span className="text-xs text-muted">(as stated in the email)</span></> : null}</Row>
+        <Row label="Price">{e.priceText ? <>{e.priceText} <span className="text-xs text-muted">(as stated in the {source === "video" ? "video or its page" : "email"})</span></> : null}</Row>
         <Row label="Discount">{e.discount}</Row>
         <Row label="Guarantee">{e.guarantee}</Row>
         <Row label="Expert">{e.experts.length ? e.experts.join(", ") : null}</Row>
@@ -107,5 +108,82 @@ export function AiMissingNotice({ what }: { what: string }) {
     <p className="mb-4 rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">
       The AI key is not set, so {what}. Add <code>ANTHROPIC_API_KEY</code> in Railway, then press Extract.
     </p>
+  );
+}
+
+export function VideoStatusBadge({ status, step }: { status: string; step?: string | null }) {
+  if (status === "DONE") return null;
+  if (status === "FAILED") return <Badge tone="danger">failed</Badge>;
+  if (status === "RUNNING") return <Badge tone="warn">{step ? VIDEO_STEP_LABELS[step as VideoStep]?.toLowerCase() ?? "capturing" : "capturing"}</Badge>;
+  return <Badge tone="warn">queued</Badge>;
+}
+
+/** The captured landing page (text only). */
+export function LandingCard({
+  landing,
+  children,
+}: {
+  landing: { url: string; finalUrl: string | null; status: string; title: string | null; description: string | null; headings: string[]; text: string; error: string | null; fetchedAt: Date } | null;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-white p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Landing page</h3>
+        {children}
+      </div>
+      {!landing ? (
+        <p className="text-sm text-muted">Not captured yet.</p>
+      ) : landing.status !== "OK" ? (
+        <p className="pc-break text-sm text-[#912018]">Could not be read: {landing.error ?? "unknown error"}</p>
+      ) : (
+        <div className="min-w-0 text-sm">
+          <a href={landing.finalUrl ?? landing.url} target="_blank" rel="noopener noreferrer nofollow" className="pc-break font-semibold text-accent underline">
+            {landing.title ?? hostOf(landing.finalUrl ?? landing.url)}
+          </a>
+          <p className="pc-break text-xs text-muted">{hostOf(landing.finalUrl ?? landing.url)} · fetched {formatDay(landing.fetchedAt)}</p>
+          {landing.description ? <p className="mt-2 text-ink">{landing.description}</p> : null}
+          {landing.headings.length ? (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-ink">
+              {landing.headings.slice(0, 6).map((heading) => (
+                <li key={heading} className="pc-break">
+                  {heading}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {landing.text ? (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-semibold text-accent">Page text ({Math.round(landing.text.length / 100) / 10}k characters)</summary>
+              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-canvas p-3 font-sans text-xs text-ink">{landing.text.slice(0, 20_000)}</pre>
+            </details>
+          ) : null}
+          {landing.error ? <p className="mt-2 text-xs text-muted">{landing.error}</p> : null}
+          <p className="mt-2 text-xs text-muted">Text only, fetched by Intel. Offers and prices are as the page states them.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Experts, list and topics an email or video is linked to; each links to the inbox filtered by it. */
+export function EntityChips({ entities, base = "/intel" }: { entities: Record<EntityKind, { id: string; name: string }[]>; base?: string }) {
+  const kinds = (["list", "expert", "topic"] as const).filter((kind) => entities[kind].length);
+  if (!kinds.length) return null;
+  return (
+    <dl className="mt-3 grid gap-1 text-sm">
+      {kinds.map((kind) => (
+        <div key={kind} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <dt className="text-muted">{kind === "list" ? "List" : ENTITY_LABELS[kind].many}</dt>
+          <dd className="flex min-w-0 flex-wrap gap-1">
+            {entities[kind].map((entity) => (
+              <Link key={entity.id} href={`${base}?${kind}=${entity.id}`} className="rounded-full bg-canvas px-2 py-0.5 text-xs text-ink hover:bg-accent hover:text-white">
+                {entity.name}
+              </Link>
+            ))}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

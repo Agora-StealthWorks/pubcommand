@@ -32,6 +32,9 @@ import {
   type RadarSummary,
 } from "../../../../../modules/intel/index";
 import type { IntelBrand } from "./context";
+import { captureEmailLanding, loadLanding } from "./landing";
+import { linkEmail, linkEntities, loadRegistry } from "./registry";
+import { readSettings } from "./settings";
 
 /** A run stuck this long (server restarted mid-run) is shown as interrupted. */
 export const STALE_RUN_MS = 10 * 60 * 1000;
@@ -66,6 +69,7 @@ export async function storeEmails(input: {
   const matchers = await competitorMatchers(input.organizationId, input.brandId);
   const queued = aiConfigured() ? "QUEUED" : "NONE";
   const result: StoreResult = { added: 0, duplicates: 0, ids: [] };
+  const registry = await loadRegistry(input.organizationId, input.brandId);
   for (const email of input.emails) {
     const match = matchCompetitor(email.fromAddress, matchers);
     try {
@@ -100,6 +104,15 @@ export async function storeEmails(input: {
       });
       result.added += 1;
       result.ids.push(row.id);
+      // The sender's list (registry). Never blocks storing the email.
+      await linkEntities({
+        organizationId: input.organizationId,
+        brandId: input.brandId,
+        target: { emailId: row.id },
+        registry,
+        competitorId: match?.competitorId ?? null,
+        sender: { fromName: email.fromName, fromAddress: email.fromAddress },
+      }).catch((error: unknown) => console.error("[intel] list link failed", error));
     } catch (error) {
       if (isUniqueViolation(error)) {
         result.duplicates += 1;
@@ -174,6 +187,12 @@ export async function runEmailExtraction(input: { organizationId: string; brand:
   await db.intelEmail.updateMany({ where: { id: email.id }, data: { extractionStatus: "RUNNING", extractionError: null } });
   try {
     const links = contentLinks((email.links as unknown as EmailLink[]) ?? []).slice(0, 40);
+    // The landing page (text only) goes into the extraction when the brand allows fetching it.
+    let landing = await loadLanding(input.organizationId, email.landingPageId);
+    if (!landing && email.landingUrl && (await readSettings(input.organizationId, input.brand.id)).autoLanding) {
+      landing = await captureEmailLanding({ organizationId: input.organizationId, brandId: input.brand.id, emailId: email.id }).catch(() => null);
+    }
+    const landingForPrompt = landing?.status === "OK" ? landing : null;
     const answer = await runStructured<Parameters<typeof normalizeExtraction>[0]>({
       system: EXTRACTION_SYSTEM,
       input: [
@@ -188,6 +207,7 @@ export async function runEmailExtraction(input: { organizationId: string; brand:
             receivedAt: email.receivedAt,
             text: email.textBody,
             links,
+            landing: landingForPrompt,
           }),
         },
       ],
@@ -220,6 +240,7 @@ export async function runEmailExtraction(input: { organizationId: string; brand:
         landingUrl: extraction.landingUrl ?? email.landingUrl,
       },
     });
+    await linkEmail(input.organizationId, input.brand.id, email.id).catch((error: unknown) => console.error("[intel] registry link failed", error));
     if (isCommercial(extraction.type)) {
       const note = emailBrainNote({
         competitorName: email.competitor?.name ?? null,
