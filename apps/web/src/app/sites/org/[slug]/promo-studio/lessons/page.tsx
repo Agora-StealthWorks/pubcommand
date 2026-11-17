@@ -44,7 +44,7 @@ export default async function LessonsPage({
           <h1 className="text-2xl font-semibold tracking-tight">Lessons learned</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">
             What {ctx.brand.name}&apos;s promos teach, grouped into themes from {analyzed} analyzed promo{analyzed === 1 ? "" : "s"} and their real
-            results. Counts are the promos behind each theme. Pin what matters, hide noise, and share generic best practices with the main Brain.
+            results. Counts are the promos behind each theme. Pin what matters, hide noise, and suggest generic best practices.
           </p>
         </div>
         {writable ? (
@@ -94,7 +94,7 @@ export default async function LessonsPage({
               <Badge>{lesson.category}</Badge>
               {lesson.fromResults ? <Badge tone="ok">backed by results</Badge> : null}
               {lesson.origin === "manual" ? <Badge>added by hand</Badge> : lesson.edited ? <Badge>edited</Badge> : null}
-              {lesson.sharedAt ? <Badge tone="accent">shared with main Brain</Badge> : lesson.suggestedShared ? <Badge tone="accent">looks generic</Badge> : null}
+              {lesson.sharedAt ? <Badge tone="accent">suggested</Badge> : lesson.suggestedShared ? <Badge tone="accent">looks generic</Badge> : null}
             </div>
             {lesson.promoIds.length ? (
               <p className="pc-break mt-2 text-xs text-muted">
@@ -142,15 +142,15 @@ export default async function LessonsPage({
                 </details>
                 {!lesson.sharedAt ? (
                   <details className="w-full">
-                    <summary className="cursor-pointer font-semibold text-accent">Share with the main Brain</summary>
+                    <summary className="cursor-pointer font-semibold text-accent">Suggest as a best practice</summary>
                     <form action={shareLesson} className="mt-2 space-y-2 rounded-md bg-canvas p-3">
                       <input type="hidden" name="lessonId" value={lesson.id} />
-                      <p className="text-xs text-muted">Shared notes are visible to every brand. Only share a general copywriting best practice: no brand, product, person, result or private detail.</p>
+                      <p className="text-xs text-muted">Only suggest a general copywriting best practice: no brand, product, person, result or private detail.</p>
                       <label className="flex items-start gap-2 text-sm">
                         <input type="checkbox" name="confirmGeneric" className="mt-0.5 h-4 w-4" required />
-                        This is a generic best practice and safe for every brand to see.
+                        This is a generic best practice with nothing private in it.
                       </label>
-                      <Button type="submit" size="sm" variant="secondary">Share as best practice</Button>
+                      <Button type="submit" size="sm" variant="secondary">Suggest as best practice</Button>
                     </form>
                   </details>
                 ) : null}

@@ -7,7 +7,7 @@ How every app (module) in PubCommand is built. Read this before you change anyth
 - PubCommand replaces Stephen's old OxfordHub suite of internal tools with one app.
 - **One team uses it for now.** Several teams later. Do not build selling features (billing, plans, signup).
 - Inside a workspace, **brands are publishers** (MTA is the first, used as the sandbox). **Not finance-specific:** a brand has a `niche` (finance, health, general), an `audience` and `complianceNotes`. Build every prompt from `brandPromptContext(brandProfile(ctx.brand))` (`@pubcommand/core`) and never hardcode an investing reader, stocks or finance-only rules unless the app is finance-only. The sidebar has a brand switcher. App data belongs to the current brand (`ctx.brand`), unless the app says otherwise.
-- **Brain:** each brand has a mini-brain; the main Brain is `brandId = null`. Apps teach the Brain through `teachBrain()` (below).
+- **Brain:** each brand has a mini-brain. The main Brain is platform-level and staff-only (see `modules/knowledge/README.md`). Apps teach the brand's Brain through `teachBrain()` (below).
 - Light theme: white cards (`rounded-xl border border-line bg-white`) on `bg-canvas`, one blue accent (`text-accent` / `bg-accent`), muted text `text-muted`. No dark theme.
 - Must work on a phone at 375px wide with no sideways scroll.
 

@@ -1,3 +1,4 @@
+import { brandScope, scopeWhere } from "../../../../../modules/knowledge/visibility";
 import { runStructured, type AiInput } from "@pubcommand/ai";
 import { brandProfile, brandPromptContext } from "@pubcommand/core";
 import { tenantDb, type Prisma } from "@pubcommand/db";
@@ -71,8 +72,7 @@ async function bestPerformers(db: Db, brandId: string, promoId: string): Promise
 async function brainNotes(db: Db, brandId: string, promoId: string, packageId: string): Promise<BrainNote[]> {
   const rows = await db.knowledgePage.findMany({
     where: {
-      OR: [{ brandId }, { visibility: "SHARED" }],
-      NOT: { sourceRef: { in: [`promo:${promoId}`, `package:${packageId}`] } },
+      AND: [scopeWhere(brandScope(brandId)), { NOT: { sourceRef: { in: [`promo:${promoId}`, `package:${packageId}`] } } }],
     },
     select: { title: true, body: true },
     orderBy: { updatedAt: "desc" },

@@ -160,7 +160,7 @@ export async function deleteLesson(formData: FormData) {
   go(LESSONS, "notice", "Lesson deleted.");
 }
 
-/** Share a generic best practice with the main Brain, visible to every brand. Requires the person to confirm. */
+/** Suggest a generic best practice (sent to the platform's main Brain, never shown to other brands). Requires the person to confirm. */
 export async function shareLesson(formData: FormData) {
   const ctx = await promoAction("promo.write", LESSONS);
   const lesson = await ownLesson(ctx, field(formData, "lessonId", 40));
@@ -178,7 +178,7 @@ export async function shareLesson(formData: FormData) {
   });
   await tenantDb(ctx.resolved.id).promoLesson.updateMany({ where: { id: lesson.id }, data: { sharedAt: new Date() } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.lesson.shared", targetType: "promo_lesson", targetId: lesson.id });
-  go(LESSONS, "notice", "Shared with the main Brain as a best practice.");
+  go(LESSONS, "notice", "Suggested as a best practice.");
 }
 
 // ---------------------------------------------------------------------------

@@ -45,7 +45,7 @@ const CARDS: AppCard[] = [
   {
     moduleId: "knowledge",
     name: "Brain",
-    description: "This brand's knowledge, plus shared best practices from the main Brain.",
+    description: "This brand's knowledge, with best practices to build on.",
     icon: "🧠",
     category: "Research & Knowledge",
   },
