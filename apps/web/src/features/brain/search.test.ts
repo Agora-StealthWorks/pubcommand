@@ -28,7 +28,8 @@ describe("Brain search isolation", () => {
       env: process.env,
       stdio: "ignore",
     });
-    const plan = await db.plan.findFirstOrThrow();
+    // Own plan: borrowing another test's plan races with its clean-up when test files run in parallel.
+    const plan = await db.plan.create({ data: { key: `brain-${suffix}`, name: "Brain test", seatLimit: 5, monthlyPriceCents: 0 } });
     const org = await db.organization.create({ data: { name: `Brain ${suffix}`, slug: `brain-${suffix}`, planId: plan.id, seatLimit: 5 } });
     const other = await db.organization.create({ data: { name: `Other ${suffix}`, slug: `brain-other-${suffix}`, planId: plan.id, seatLimit: 5 } });
     const a = await db.brand.create({ data: { organizationId: org.id, name: "Brand A", slug: `a-${suffix}` } });
@@ -62,6 +63,7 @@ describe("Brain search isolation", () => {
 
   afterAll(async () => {
     await db.organization.deleteMany({ where: { id: { in: [ids.org, ids.other].filter(Boolean) } } });
+    await db.plan.deleteMany({ where: { key: `brain-${suffix}` } });
   });
 
   const titles = async (scope: BrainScope, query = word, mode: "all" | "any" = "all") =>
