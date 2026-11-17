@@ -1,19 +1,21 @@
-import { richToInput } from "@/features/funnels/sanitize";
+import { richToInput } from "@/features/miniblog/sanitize";
 import { tenantDb } from "@pubcommand/db";
 import { Badge, Button, Input, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
-import { UUID_RE, loadSiteForBrand, orgTimezone, postState, statusBadge } from "@/features/funnels/data";
-import { Field, LinkBox, Section } from "@/features/funnels/fields";
-import { funnelsAccess, orgPublicUrl } from "@/features/funnels/guard";
-import { deletePost, savePost } from "@/features/funnels/text-actions";
-import { utcToZonedLocal, zoneLabel } from "../../../../../../../../../../../../modules/funnels/time";
+import { UUID_RE, loadSiteForBrand, orgTimezone, statusBadge } from "@/features/miniblog/data";
+import { Field, LinkBox, Section } from "@/features/miniblog/fields";
+import { miniblogAccess, orgPublicUrl } from "@/features/miniblog/guard";
+import { deletePost, savePost } from "@/features/miniblog/actions";
+import { miniBlogPath } from "../../../../../../../../../../../modules/miniblog/paths";
+import { postState } from "../../../../../../../../../../../modules/miniblog/site";
+import { utcToZonedLocal, zoneLabel } from "../../../../../../../../../../../modules/miniblog/time";
 
-export default async function TextPostEditor({ params, searchParams }: { params: Promise<{ slug: string; siteId: string; postId: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
+export default async function MiniBlogPostEditor({ params, searchParams }: { params: Promise<{ slug: string; siteId: string; postId: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
   const { slug, siteId, postId } = await params;
   const query = await searchParams;
-  const access = await funnelsAccess(slug);
+  const access = await miniblogAccess(slug);
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
   const { ctx, canWrite, canPublish } = access;
@@ -24,11 +26,11 @@ export default async function TextPostEditor({ params, searchParams }: { params:
   const timeZone = await orgTimezone(ctx.resolved.id);
   const state = postState(post, new Date());
   const badge = statusBadge(state);
-  const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, `/t/${site.slug}/${post.slug}`);
+  const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug, post.slug));
 
   return (
     <div>
-      <Link href={`/funnels/text/${site.id}`} className="text-sm font-semibold text-accent">
+      <Link href={`/mini-blog/${site.id}`} className="text-sm font-semibold text-accent">
         ← {site.name}
       </Link>
       <h1 className="mb-1 mt-1 break-words text-2xl font-semibold tracking-tight">{post.title}</h1>
@@ -46,7 +48,7 @@ export default async function TextPostEditor({ params, searchParams }: { params:
               <Field label="Title" htmlFor="title" className="sm:col-span-2">
                 <Input id="title" name="title" defaultValue={post.title} maxLength={200} required />
               </Field>
-              <Field label="Link name" htmlFor="slug" hint={`/t/${site.slug}/${post.slug}`}>
+              <Field label="Link name" htmlFor="slug" hint={`/b/${site.slug}/${post.slug}`}>
                 <Input id="slug" name="slug" defaultValue={post.slug} maxLength={80} pattern="[a-z0-9-]+" />
               </Field>
               <Field label={`Publish time (${zoneLabel(post.publishAt, timeZone)})`} htmlFor="publishAt" hint="A future time schedules the post; it stays hidden until then.">

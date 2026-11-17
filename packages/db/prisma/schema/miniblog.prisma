@@ -1,0 +1,117 @@
+// Mini-Blog tables: a small public blog per brand (latest post, archive, post
+// pages, SMS subscribe page). These were the Funnels "text-letter site" tables;
+// the models moved here unchanged and the table names are kept, so no data moved.
+//
+// Phone numbers are PII: they stay in text_optins and leave only through an
+// admin CSV export (miniblog.publish). The Brain gets post text and aggregates.
+//
+// No relation fields to Organization/Brand/User (shared files). Foreign keys to
+// those tables are in migration 20261117040800_funnels_launch_and_text_sites.
+// Logos are stored in funnel_assets (owner_id = the site id).
+
+/// A Mini-Blog: subscribe page (SMS opt-in), archive and posts. Table name kept from
+/// when it was a "text-letter site" inside Funnels.
+model TextSite {
+  id               String       @id @default(uuid()) @db.Uuid
+  organizationId   String       @map("organization_id") @db.Uuid
+  brandId          String       @map("brand_id") @db.Uuid
+  name             String
+  /// Public link: https://{org}.pubcommand.com/b/<slug> (the old /t/<slug> still works). Unique per organization.
+  slug             String
+  /// draft | live
+  status           String       @default("draft")
+  tagline          String       @default("")
+  /// Shown on the subscribe page. Sanitized rich text.
+  introHtml        String       @default("") @map("intro_html")
+  programName      String       @default("") @map("program_name")
+  companyName      String       @default("") @map("company_name")
+  messageFrequency String       @default("Message frequency varies") @map("message_frequency")
+  helpContact      String       @default("") @map("help_contact")
+  privacyUrl       String?      @map("privacy_url")
+  termsUrl         String?      @map("terms_url")
+  logoAssetId      String?      @map("logo_asset_id") @db.Uuid
+  logoUrl          String?      @map("logo_url")
+  logoHeight       Int          @default(36) @map("logo_height")
+  headerBg         String       @default("#111827") @map("header_bg")
+  accentColor      String       @default("#1d4ed8") @map("accent_color")
+  archivesEnabled  Boolean      @default(true) @map("archives_enabled")
+  /// Marketing Calendar publication code; when set, each published post adds a calendar issue.
+  calendarCode     String?      @map("calendar_code")
+  brainSyncEnabled Boolean      @default(true) @map("brain_sync_enabled")
+  createdById      String?      @map("created_by_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  deletedAt        DateTime?    @map("deleted_at")
+  posts            TextPost[]
+  optins           TextOptin[]
+  views            TextView[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, brandId, updatedAt])
+  @@map("text_sites")
+}
+
+/// A post. Published with a future publishAt = scheduled (hidden until then).
+model TextPost {
+  id              String     @id @default(uuid()) @db.Uuid
+  organizationId  String     @map("organization_id") @db.Uuid
+  siteId          String     @map("site_id") @db.Uuid
+  title           String
+  slug            String
+  /// draft | published
+  status          String     @default("draft")
+  publishAt       DateTime   @default(now()) @map("publish_at")
+  /// Sanitized rich text.
+  bodyHtml        String     @default("") @map("body_html")
+  actionToTake    String?    @map("action_to_take")
+  buttonText      String?    @map("button_text")
+  buttonUrl       String?    @map("button_url")
+  /// The Marketing Calendar issue this post created (idempotent re-saves).
+  calendarIssueId String?    @map("calendar_issue_id") @db.Uuid
+  createdById     String?    @map("created_by_id") @db.Uuid
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  deletedAt       DateTime?  @map("deleted_at")
+  site            TextSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  views           TextView[]
+
+  @@unique([siteId, slug])
+  @@index([organizationId, siteId, publishAt])
+  @@map("text_posts")
+}
+
+/// A subscribe-page opt-in with the exact consent text shown. Append-only. PII.
+model TextOptin {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  /// E.164
+  phone          String
+  consentText    String   @map("consent_text")
+  /// Salted SHA-256 of the IP. The raw IP is never stored.
+  ipHash         String?  @map("ip_hash")
+  pageUrl        String?  @map("page_url")
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+  site           TextSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, siteId, createdAt])
+  @@index([siteId, phone])
+  @@map("text_optins")
+}
+
+/// First-party page views on a Mini-Blog. No visitor id is kept.
+model TextView {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  siteId         String    @map("site_id") @db.Uuid
+  /// Null = the site home / subscribe page.
+  postId         String?   @map("post_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  site           TextSite  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  post           TextPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, siteId, createdAt])
+  @@index([postId])
+  @@map("text_views")
+}

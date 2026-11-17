@@ -93,8 +93,8 @@ export function TargetPicker({ id, groups, current }: { id: string; groups: Targ
       </div>
       <div>
         <Label htmlFor={`custom-${id}`}>Or a path on your public site</Label>
-        <Input id={`custom-${id}`} name="customPath" defaultValue={known ? "" : (current ?? "")} placeholder="/l/my-launch or /t/my-site" maxLength={300} />
-        <p className="mt-1 text-xs text-muted">Public pages only: /f/… forms, /embed/… embedded forms, /l/… launch funnels, /t/… text-letter sites.</p>
+        <Input id={`custom-${id}`} name="customPath" defaultValue={known ? "" : (current ?? "")} placeholder="/l/my-launch or /b/my-blog" maxLength={300} />
+        <p className="mt-1 text-xs text-muted">Public pages only: /f/… forms, /embed/… embedded forms, /l/… launch funnels, /b/… Mini-Blogs.</p>
       </div>
     </div>
   );

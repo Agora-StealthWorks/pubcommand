@@ -1,5 +1,5 @@
 /**
- * Funnel and text-letter aggregates, and the Brain notes built from them. Only
+ * Funnel aggregates, and the Brain notes built from them. Only
  * counts and averages leave the database here: never an email, phone number or
  * visitor id.
  */
@@ -100,57 +100,4 @@ export function funnelBrainNote(input: {
     "Use this to plan the next launch: which topics held attention (watch %), and where people dropped off between days.",
   ];
   return { title: `Launch funnel: ${input.name}`, body: lines.join("\n") };
-}
-
-/** Plain text from sanitized HTML, for excerpts and Brain notes. */
-export function htmlToText(html: string): string {
-  return html
-    .replace(/<(br|\/p|\/li|\/h[1-6]|\/div)[^>]*>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "- ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s*\n+/g, "\n\n")
-    .trim();
-}
-
-export function excerpt(html: string, max = 180): string {
-  const text = htmlToText(html).replace(/\s+/g, " ");
-  return text.length > max ? `${text.slice(0, max - 1).replace(/\s+\S*$/, "")}…` : text;
-}
-
-export function postBrainNote(input: {
-  siteName: string;
-  title: string;
-  publishLabel: string;
-  bodyHtml: string;
-  actionToTake: string | null;
-  siteOptins: number;
-  postViews: number;
-}): { title: string; body: string } {
-  const text = htmlToText(input.bodyHtml);
-  const words = text ? text.split(/\s+/).length : 0;
-  return {
-    title: `Text letter: ${input.title}`,
-    body: [
-      `# Text letter: ${input.title}`,
-      "",
-      `Published on the ${input.siteName} text-letter site, ${input.publishLabel}. ${words} words.`,
-      input.actionToTake ? `Action to take: ${input.actionToTake}` : "",
-      "",
-      "## Post",
-      text.slice(0, 4000),
-      "",
-      "## Reach (aggregates)",
-      `- Post page views: ${input.postViews}.`,
-      `- Site subscribers (all time): ${input.siteOptins}.`,
-    ]
-      .filter((line, index, all) => line !== "" || all[index - 1] !== "")
-      .join("\n"),
-  };
 }

@@ -1,13 +1,13 @@
 import { appendOrgAudit, tenantDb } from "@pubcommand/db";
-import { excerpt } from "../../../../../modules/funnels/stats";
-import { zonedDayKey } from "../../../../../modules/funnels/time";
+import { excerpt } from "../../../../../modules/miniblog/site";
+import { zonedDayKey } from "../../../../../modules/miniblog/time";
 import { orgTimezone } from "./data";
 
 export type CalendarSync = "created" | "updated" | "skipped";
 
 /**
- * A published (or scheduled) text-letter post becomes one Marketing Calendar
- * issue under the site's publication code. It runs on every save, not only when
+ * A published (or scheduled) Mini-Blog post becomes one Marketing Calendar
+ * issue under the Mini-Blog's publication code. It runs on every save, not only when
  * the post goes live, so a post written ahead of its date is never missed. The
  * issue id is kept on the post, so re-saving updates the same issue.
  */
@@ -26,7 +26,7 @@ export async function syncPostToCalendar(input: { organizationId: string; postId
     mailDate: new Date(`${zonedDayKey(post.publishAt, timeZone)}T00:00:00Z`),
     title: post.title,
     status: post.publishAt > new Date() ? "Scheduled" : "Sent",
-    notes: `Text-letter post on ${site.name}. ${excerpt(post.bodyHtml, 240)}`.trim(),
+    notes: `Mini-Blog post on ${site.name}. ${excerpt(post.bodyHtml, 240)}`.trim(),
     websiteLink: input.publicUrl,
     ctaLink: post.buttonUrl && /^https?:\/\//i.test(post.buttonUrl) ? post.buttonUrl : null,
     updatedById: input.actorId,

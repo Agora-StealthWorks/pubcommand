@@ -122,7 +122,7 @@ export default async function DomainsPage({ params, searchParams }: { params: Pr
     <div className="min-w-0 max-w-3xl">
       <PageHeader
         title="Custom domains"
-        description="Show a public page (a form, a launch funnel, a text-letter site) on a domain of your own. Buy one here or connect one you already own."
+        description="Show a public page (a form, a launch funnel, a Mini-Blog) on a domain of your own. Buy one here or connect one you already own."
       />
       <Flash error={query.error} notice={query.notice} />
       {settling ? (

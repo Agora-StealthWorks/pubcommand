@@ -15,6 +15,7 @@ describe("module registry", () => {
       "forms",
       "charts",
       "funnels",
+      "miniblog",
       "billing",
       "settings",
     ]);
@@ -24,6 +25,8 @@ describe("module registry", () => {
     expect(moduleRegistry.permissionModules()["promo.approve"]).toBe("promo-studio");
     expect(moduleRegistry.permissionModules()["forms.export"]).toBe("forms");
     expect(moduleRegistry.permissionModules()["funnels.publish"]).toBe("funnels");
+    expect(moduleRegistry.permissionModules()["miniblog.publish"]).toBe("miniblog");
+    expect(moduleRegistry.getById("miniblog")?.nav[0]?.href).toBe("/mini-blog");
     expect(moduleRegistry.jobs().some((job) => job.name === "example.ping")).toBe(true);
   });
 });

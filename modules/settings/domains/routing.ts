@@ -14,14 +14,15 @@
  *
  * - `/f/<form>`, `/embed/<form>`: Forms (built).
  * - `/p/...`: token pages such as CUB review links; `/p` is dropped internally.
- * - `/l/<funnel>/...`: launch funnels (another app, merging in).
- * - `/t/<site>/...`: text-letter sites (another app, merging in).
+ * - `/l/<funnel>/...`: launch funnels.
+ * - `/b/<site>/...`: Mini-Blogs (canonical).
+ * - `/t/<site>/...`: Mini-Blogs under their old text-letter path (kept so old links work).
  */
-export const PUBLIC_PREFIXES = ["f", "embed", "p", "l", "t"] as const;
+export const PUBLIC_PREFIXES = ["f", "embed", "p", "l", "b", "t"] as const;
 export type PublicPrefix = (typeof PUBLIC_PREFIXES)[number];
 
 /** Prefixes a domain may point at. `/p/` links are single-use tokens, so not a target. */
-export const TARGET_PREFIXES: readonly PublicPrefix[] = ["f", "embed", "l", "t"];
+export const TARGET_PREFIXES: readonly PublicPrefix[] = ["f", "embed", "l", "b", "t"];
 
 /**
  * Paths refused outright on a custom host, even though joining them onto the
@@ -101,16 +102,16 @@ export type CustomHostDecision =
  * Decide what a custom-domain request serves.
  *
  * - A path that already starts with a public prefix (`/f/x/submit`,
- *   `/t/site/post`) is an absolute public path of the same organization and is
+ *   `/b/site/post`) is an absolute public path of the same organization and is
  *   served as-is. That is what makes links, form submits, logos and embeds
  *   inside public pages work, since those pages use org-relative URLs.
  * - Anything else is joined onto the target: `/` → the target itself,
  *   `/day-2` on a `/l/launch` domain → `/l/launch/day-2`.
  * - App, admin, auth and API paths are refused.
  *
- * Caveat: a page slug that equals a public prefix (a text-letter post called
+ * Caveat: a page slug that equals a public prefix (a Mini-Blog post called
  * "f") is read as an absolute path. Such a page is still reachable at its full
- * path, e.g. `/t/site/f`.
+ * path, e.g. `/b/site/f`.
  */
 export function decideCustomHost(input: {
   pathname: string;

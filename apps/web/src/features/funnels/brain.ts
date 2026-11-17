@@ -1,6 +1,6 @@
 import { tenantDb } from "@pubcommand/db";
 import { teachBrain } from "@/features/brain/teach";
-import { funnelBrainNote, postBrainNote } from "../../../../../modules/funnels/stats";
+import { funnelBrainNote } from "../../../../../modules/funnels/stats";
 import { PROGRESSIONS, type Progression } from "../../../../../modules/funnels/state";
 import { formatZoned } from "../../../../../modules/funnels/time";
 import { funnelStats, orgTimezone } from "./data";
@@ -38,42 +38,5 @@ export async function teachFunnel(input: { organizationId: string; funnelId: str
     });
   } catch (error) {
     console.error("[funnels] teach funnel failed", input.funnelId, error);
-  }
-}
-
-/** Teach the brand Brain about a published text-letter post. Never phone numbers. Soft-fails. */
-export async function teachPost(input: { organizationId: string; postId: string; actorId: string | null }): Promise<void> {
-  try {
-    const db = tenantDb(input.organizationId);
-    const post = await db.textPost.findFirst({ where: { id: input.postId, deletedAt: null } });
-    if (!post || post.status !== "published") return;
-    const site = await db.textSite.findFirst({ where: { id: post.siteId, deletedAt: null } });
-    if (!site || !site.brainSyncEnabled) return;
-    const [optins, views, timeZone] = await Promise.all([
-      db.textOptin.count({ where: { siteId: site.id } }),
-      db.textView.count({ where: { postId: post.id } }),
-      orgTimezone(input.organizationId),
-    ]);
-    const note = postBrainNote({
-      siteName: site.name,
-      title: post.title,
-      publishLabel: formatZoned(post.publishAt, timeZone, { year: true }),
-      bodyHtml: post.bodyHtml,
-      actionToTake: post.actionToTake,
-      siteOptins: optins,
-      postViews: views,
-    });
-    await teachBrain({
-      organizationId: input.organizationId,
-      brandId: site.brandId,
-      sourceRef: `tletter-post:${post.id}`,
-      title: note.title,
-      body: note.body,
-      folder: "Text letters",
-      source: "funnels",
-      actorId: input.actorId,
-    });
-  } catch (error) {
-    console.error("[funnels] teach post failed", input.postId, error);
   }
 }

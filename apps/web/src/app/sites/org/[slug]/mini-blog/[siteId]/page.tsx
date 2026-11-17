@@ -1,29 +1,29 @@
-import { richToInput } from "@/features/funnels/sanitize";
+import { richToInput } from "@/features/miniblog/sanitize";
 import { tenantDb } from "@pubcommand/db";
 import { Badge, Button, Input, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { TableScroll } from "@/components/table-scroll";
-import { loadSiteForBrand, orgTimezone, postState, statusBadge } from "@/features/funnels/data";
-import { Check, ColorField, Field, LinkBox, Section } from "@/features/funnels/fields";
-import { funnelsAccess, orgPublicUrl } from "@/features/funnels/guard";
-import { SectionTabs } from "@/features/funnels/tabs";
-import { createPost, deleteSite, saveSite, setSiteStatus } from "@/features/funnels/text-actions";
-import { checkSite } from "../../../../../../../../../../modules/funnels/checks";
-import { consentText, maskPhone } from "../../../../../../../../../../modules/funnels/sms";
-import { formatZoned } from "../../../../../../../../../../modules/funnels/time";
+import { loadSiteForBrand, orgTimezone, statusBadge } from "@/features/miniblog/data";
+import { miniBlogPath } from "../../../../../../../../../modules/miniblog/paths";
+import { Check, ColorField, Field, LinkBox, Section, SectionTabs } from "@/features/miniblog/fields";
+import { miniblogAccess, orgPublicUrl } from "@/features/miniblog/guard";
+import { createPost, deleteSite, saveSite, setSiteStatus } from "@/features/miniblog/actions";
+import { checkSite, postState } from "../../../../../../../../../modules/miniblog/site";
+import { consentText, maskPhone } from "../../../../../../../../../modules/miniblog/sms";
+import { formatZoned } from "../../../../../../../../../modules/miniblog/time";
 
 const TABS = [
   { key: "posts", label: "Posts" },
-  { key: "settings", label: "Site settings" },
+  { key: "settings", label: "Settings" },
   { key: "subscribers", label: "Subscribers" },
 ] as const;
 
-export default async function TextSitePage({ params, searchParams }: { params: Promise<{ slug: string; siteId: string }>; searchParams: Promise<{ tab?: string; error?: string; notice?: string }> }) {
+export default async function MiniBlogPage({ params, searchParams }: { params: Promise<{ slug: string; siteId: string }>; searchParams: Promise<{ tab?: string; error?: string; notice?: string }> }) {
   const { slug, siteId } = await params;
   const query = await searchParams;
-  const access = await funnelsAccess(slug);
+  const access = await miniblogAccess(slug);
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
   const { ctx, canWrite, canPublish } = access;
@@ -38,7 +38,7 @@ export default async function TextSitePage({ params, searchParams }: { params: P
     tab === "subscribers" ? db.textOptin.findMany({ where: { siteId: site.id }, orderBy: { createdAt: "desc" }, take: 20, select: { id: true, phone: true, createdAt: true } }) : [],
     ctx.subject.entitledModuleIds.includes("editorial") ? db.calendarPublication.findMany({ where: { brandId: ctx.brand.id, active: true }, orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }) : [],
   ]);
-  const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, `/t/${site.slug}`);
+  const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug));
   const badge = statusBadge(site.status);
   const checks = checkSite(site);
   const now = new Date();
@@ -47,23 +47,23 @@ export default async function TextSitePage({ params, searchParams }: { params: P
     <div>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Link href="/funnels/text" className="text-sm font-semibold text-accent">
-            ← Text-letter sites
+          <Link href="/mini-blog" className="text-sm font-semibold text-accent">
+            ← Mini-Blogs
           </Link>
           <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight">{site.name}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
             <Badge tone={badge.tone}>{badge.label}</Badge>
-            <span>/t/{site.slug}</span>
+            <span>/b/{site.slug}</span>
             <span>·</span>
             <span>{optinCount} subscribers</span>
           </p>
         </div>
         <a href={`${publicUrl}?preview=1`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
-          Preview site
+          Preview
         </a>
       </div>
       <Flash error={query.error} notice={query.notice} />
-      <SectionTabs label="Site sections" active={tab} items={TABS.map((item) => ({ key: item.key, label: item.label, href: `/funnels/text/${site.id}?tab=${item.key}` }))} />
+      <SectionTabs label="Mini-Blog sections" active={tab} items={TABS.map((item) => ({ key: item.key, label: item.label, href: `/mini-blog/${site.id}?tab=${item.key}` }))} />
 
       {tab === "posts" ? (
         <div className="space-y-4">
@@ -92,11 +92,11 @@ export default async function TextSitePage({ params, searchParams }: { params: P
                     return (
                       <tr key={post.id} className="border-b border-line last:border-0">
                         <td className="max-w-[340px] px-4 py-3">
-                          <Link href={`/funnels/text/${site.id}/posts/${post.id}`} className="font-semibold [overflow-wrap:anywhere] hover:text-accent">
+                          <Link href={`/mini-blog/${site.id}/posts/${post.id}`} className="font-semibold [overflow-wrap:anywhere] hover:text-accent">
                             {post.title}
                           </Link>
                           <span className="block truncate text-xs text-muted">
-                            /t/{site.slug}/{post.slug}
+                            /b/{site.slug}/{post.slug}
                             {post.calendarIssueId ? " · on the Marketing Calendar" : ""}
                           </span>
                         </td>
@@ -126,12 +126,12 @@ export default async function TextSitePage({ params, searchParams }: { params: P
           <form action={saveSite} encType="multipart/form-data" className="space-y-4">
             <input type="hidden" name="siteId" value={site.id} />
             <fieldset disabled={!canWrite} className="space-y-4">
-              <Section title="Site">
+              <Section title="Mini-Blog">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Name" htmlFor="name">
                     <Input id="name" name="name" defaultValue={site.name} maxLength={120} required />
                   </Field>
-                  <Field label="Link name" htmlFor="slug" hint={`Public link: /t/${site.slug}`}>
+                  <Field label="Link name" htmlFor="slug" hint={`Public link: /b/${site.slug} (old /t/${site.slug} links keep working)`}>
                     <Input id="slug" name="slug" defaultValue={site.slug} maxLength={60} required pattern="[a-z0-9-]+" />
                   </Field>
                   <Field label="Tagline" htmlFor="tagline" className="sm:col-span-2">
@@ -204,7 +204,7 @@ export default async function TextSitePage({ params, searchParams }: { params: P
                 </Field>
                 <Check name="brainSyncEnabled" label="Teach the brand Brain about published posts" defaultChecked={site.brainSyncEnabled} hint="Post text and aggregate counts only. Never phone numbers." />
               </Section>
-              {canWrite ? <Button type="submit">Save site</Button> : null}
+              {canWrite ? <Button type="submit">Save Mini-Blog</Button> : null}
             </fieldset>
           </form>
           <Section title="Go live" description="Errors block going live.">
@@ -246,7 +246,7 @@ export default async function TextSitePage({ params, searchParams }: { params: P
                   <Input id="confirm" name="confirm" autoComplete="off" />
                 </Field>
                 <Button type="submit" variant="danger" className="mb-0.5">
-                  Delete site
+                  Delete Mini-Blog
                 </Button>
               </form>
             </Section>
@@ -261,11 +261,11 @@ export default async function TextSitePage({ params, searchParams }: { params: P
           </p>
           <Section title={`${optinCount} opt-ins`} description="Numbers are masked here; the full list is in the export.">
             {canPublish ? (
-              <a href={`/funnels/text/${site.id}/optins`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
+              <a href={`/mini-blog/${site.id}/optins`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
                 Download opt-ins (CSV)
               </a>
             ) : (
-              <p className="text-sm text-muted">Exporting needs the funnels.publish permission.</p>
+              <p className="text-sm text-muted">Exporting needs the miniblog.publish permission.</p>
             )}
             <ul className="divide-y divide-line text-sm">
               {recentOptins.map((optin) => (

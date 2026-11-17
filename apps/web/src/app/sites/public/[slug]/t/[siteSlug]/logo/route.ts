@@ -1,6 +1,2 @@
-import { siteLogo } from "@/features/funnels/public-routes";
-
-export async function GET(_request: Request, { params }: { params: Promise<{ slug: string; siteSlug: string }> }) {
-  const { slug, siteSlug } = await params;
-  return siteLogo(slug, siteSlug);
-}
+// /t/<site>/logo: same handler as /b/<site>/logo.
+export { GET } from "../../../b/[siteSlug]/logo/route";

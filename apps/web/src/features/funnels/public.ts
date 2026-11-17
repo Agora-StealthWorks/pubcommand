@@ -1,13 +1,13 @@
 import { can } from "@pubcommand/core";
 import { resolveOrgBySlug, tenantDb } from "@pubcommand/db";
 import { createHash, randomBytes } from "node:crypto";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { computeDayStates, type DayState, type ViewerFacts } from "../../../../../modules/funnels/state";
 import { zonedLocalToUtc } from "../../../../../modules/funnels/time";
 import { VIEWER_COOKIE_MAX_AGE, decodeViewer, emptyViewerCookie, encodeViewer, viewerCookieName, viewerSecret, type ViewerCookie } from "../../../../../modules/funnels/viewer";
-import { dayRules, funnelRules, orgTimezone, type DayRow, type FunnelRow, type SiteRow } from "./data";
+import { dayRules, funnelRules, orgTimezone, type DayRow, type FunnelRow } from "./data";
 
 /** Is this request for the org the URL names? (A custom-domain host will extend this check.) */
 export async function publicSiteMatches(orgSlug: string): Promise<boolean> {
@@ -142,30 +142,6 @@ export function looksLikeBot(userAgent: string | null): boolean {
 export function safeBack(value: FormDataEntryValue | null, fallback: string): string {
   const text = typeof value === "string" ? value.trim() : "";
   return /^\/(?!\/)[A-Za-z0-9/_-]{0,200}$/.test(text) ? text : fallback;
-}
-
-export type LoadedSite = { organizationId: string; site: SiteRow; brandName: string; timeZone: string; preview: boolean; now: Date };
-
-export async function loadPublicSite(orgSlug: string, siteSlug: string, options: { preview?: string } = {}): Promise<LoadedSite | null> {
-  if (!/^[a-z0-9-]{1,63}$/.test(orgSlug) || !/^[a-z0-9-]{1,60}$/.test(siteSlug)) return null;
-  const org = await resolveOrgBySlug(orgSlug);
-  if (!org || org.suspendedAt || !(await moduleEnabled(org.id))) return null;
-  const db = tenantDb(org.id);
-  const site = await db.textSite.findFirst({ where: { slug: siteSlug, deletedAt: null } });
-  if (!site) return null;
-  const preview = options.preview === "1" || site.status !== "live" ? await previewer(orgSlug) : false;
-  if (site.status !== "live" && !preview) return null;
-  const [brand, timeZone] = await Promise.all([db.brand.findFirst({ where: { id: site.brandId }, select: { name: true } }), orgTimezone(org.id)]);
-  return { organizationId: org.id, site, brandName: brand?.name ?? site.name, timeZone, preview, now: new Date() };
-}
-
-/** Record a text-site page view (not for previews or obvious bots). Soft-fails. */
-export async function recordSiteView(loaded: LoadedSite, postId: string | null): Promise<void> {
-  if (loaded.preview) return;
-  if (looksLikeBot((await headers()).get("user-agent"))) return;
-  await tenantDb(loaded.organizationId)
-    .textView.create({ data: { organizationId: loaded.organizationId, siteId: loaded.site.id, postId } })
-    .catch((error: unknown) => console.warn("[funnels] view not recorded", error));
 }
 
 /**

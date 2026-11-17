@@ -109,6 +109,20 @@ describe("custom host rewrite", () => {
     }
   });
 
+  it("serves Mini-Blogs at /b/ and keeps the old /t/ path working", () => {
+    expect(normalizeTargetPath("/b/my-blog")).toEqual({ ok: true, path: "/b/my-blog" });
+    expect(normalizeTargetPath("/t/my-blog")).toEqual({ ok: true, path: "/t/my-blog" });
+    const blog = { orgSlug: "acme", targetPath: "/b/alerts" };
+    expect(decideCustomHost({ ...blog, pathname: "/" })).toEqual({ kind: "rewrite", pathname: "/sites/public/acme/b/alerts", publicPath: "/b/alerts" });
+    expect(decideCustomHost({ ...blog, pathname: "/big-news" })).toMatchObject({ pathname: "/sites/public/acme/b/alerts/big-news" });
+    expect(decideCustomHost({ ...blog, pathname: "/subscribe/submit" })).toMatchObject({ pathname: "/sites/public/acme/b/alerts/subscribe/submit" });
+    // Absolute links on either prefix are served as-is.
+    expect(decideCustomHost({ ...blog, pathname: "/b/alerts/logo" })).toMatchObject({ pathname: "/sites/public/acme/b/alerts/logo" });
+    expect(decideCustomHost({ ...blog, pathname: "/t/alerts/big-news" })).toMatchObject({ pathname: "/sites/public/acme/t/alerts/big-news" });
+    // A domain saved before the rename still points at /t/.
+    expect(decideCustomHost({ orgSlug: "acme", targetPath: "/t/alerts", pathname: "/subscribe" })).toMatchObject({ pathname: "/sites/public/acme/t/alerts/subscribe" });
+  });
+
   it("refuses a stored target that is no longer valid", () => {
     expect(decideCustomHost({ orgSlug: "acme", targetPath: "/settings", pathname: "/" })).toEqual({ kind: "not_found" });
   });

@@ -20,9 +20,6 @@ export function isValidSlug(slug: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/.test(slug);
 }
 
-/** Post slugs that would collide with a text-letter site's own routes. */
-export const RESERVED_POST_SLUGS = ["subscribe", "asset", "logo", "feed", "archive"] as const;
-
 export function isHttpUrl(value: string | null | undefined): boolean {
   if (!value) return false;
   try {
@@ -108,20 +105,6 @@ export function checkFunnel(input: FunnelCheckInput): CheckResult {
     if (input.progression === "url_key" && day.position > 1 && !day.unlockKey.trim()) errors.push(`${label}: it needs an unlock key.`);
   }
   if (!input.days.some((day) => day.title.trim())) warnings.push("None of the days has a title yet; the agenda will show “Day 1”, “Day 2”…");
-  return { errors, warnings };
-}
-
-export type SiteCheckInput = { name: string; slug: string; privacyUrl: string | null; termsUrl: string | null; programName: string; helpContact: string };
-
-export function checkSite(input: SiteCheckInput): CheckResult {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  if (!input.name.trim()) errors.push("Give the site a name.");
-  if (!isValidSlug(input.slug)) errors.push("The link name must be lowercase letters, numbers and dashes.");
-  if (!isHttpUrl(input.privacyUrl)) errors.push("Add a privacy-policy link. Carriers require it on every opt-in page.");
-  if (!isHttpUrl(input.termsUrl)) errors.push("Add a terms link (SMS terms of service).");
-  if (!input.programName.trim()) errors.push("Name the text program (for example the publication name).");
-  if (!input.helpContact.trim()) warnings.push("Add a HELP contact (email or phone) so subscribers know how to reach you.");
   return { errors, warnings };
 }
 

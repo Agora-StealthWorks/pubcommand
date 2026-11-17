@@ -12,8 +12,6 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 type Db = ReturnType<typeof tenantDb>;
 export type FunnelRow = NonNullable<Awaited<ReturnType<Db["funnel"]["findFirst"]>>>;
 export type DayRow = NonNullable<Awaited<ReturnType<Db["funnelDay"]["findFirst"]>>>;
-export type SiteRow = NonNullable<Awaited<ReturnType<Db["textSite"]["findFirst"]>>>;
-export type PostRow = NonNullable<Awaited<ReturnType<Db["textPost"]["findFirst"]>>>;
 
 function pick<T extends string>(value: string, allowed: readonly T[], fallback: T): T {
   return (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
@@ -118,26 +116,6 @@ export async function funnelBranding(organizationId: string, funnel: FunnelRow, 
   };
 }
 
-export function siteBranding(site: SiteRow, brandName: string, base: string): Branding {
-  const headerBg = safeColor(site.headerBg, "#111827");
-  const accentColor = safeColor(site.accentColor, "#1d4ed8");
-  return {
-    brandName,
-    logoSrc: site.logoAssetId ? `${base}/logo?v=${site.updatedAt.getTime()}` : isHttpUrl(site.logoUrl) ? site.logoUrl : null,
-    logoHeight: Math.max(16, Math.min(120, site.logoHeight)),
-    headerBg,
-    headerText: contrastText(headerBg),
-    pageBg: "#f5f6f8",
-    textColor: "#1f2937",
-    accentColor,
-    accentText: contrastText(accentColor),
-    companyName: (site.companyName || brandName).trim(),
-    privacyUrl: isHttpUrl(site.privacyUrl) ? site.privacyUrl : null,
-    termsUrl: isHttpUrl(site.termsUrl) ? site.termsUrl : null,
-    footerHtml: "",
-  };
-}
-
 export async function loadFunnelForBrand(organizationId: string, brandId: string, funnelId: string) {
   if (!UUID_RE.test(funnelId)) return null;
   const db = tenantDb(organizationId);
@@ -169,28 +147,6 @@ export async function funnelStats(organizationId: string, funnel: FunnelRow, day
     db.funnelOptin.count({ where: { funnelId: funnel.id } }),
   ]);
   return aggregateFunnel({ dayIds, events, watches, optins, completeAt: funnel.watchPercent });
-}
-
-export async function loadSiteForBrand(organizationId: string, brandId: string, siteId: string) {
-  if (!UUID_RE.test(siteId)) return null;
-  return tenantDb(organizationId).textSite.findFirst({ where: { id: siteId, brandId, deletedAt: null } });
-}
-
-export async function listSites(organizationId: string, brandId: string) {
-  const db = tenantDb(organizationId);
-  const sites = await db.textSite.findMany({ where: { brandId, deletedAt: null }, orderBy: { updatedAt: "desc" } });
-  return Promise.all(
-    sites.map(async (site) => ({
-      ...site,
-      postCount: await db.textPost.count({ where: { siteId: site.id, deletedAt: null } }),
-      optinCount: await db.textOptin.count({ where: { siteId: site.id } }),
-    })),
-  );
-}
-
-export function postState(post: Pick<PostRow, "status" | "publishAt">, now: Date): "draft" | "scheduled" | "published" {
-  if (post.status !== "published") return "draft";
-  return post.publishAt > now ? "scheduled" : "published";
 }
 
 /** The consent sentence under the waitlist email box. Stored with each email opt-in. */

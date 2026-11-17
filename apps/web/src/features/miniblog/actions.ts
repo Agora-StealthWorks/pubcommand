@@ -3,26 +3,27 @@
 import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
-import { RESERVED_POST_SLUGS, checkSite, isValidSlug, normalizeSlug } from "../../../../../modules/funnels/checks";
+import { miniBlogPath } from "../../../../../modules/miniblog/paths";
+import { RESERVED_POST_SLUGS, checkSite, isValidSlug, normalizeSlug } from "../../../../../modules/miniblog/site";
 import { teachPost } from "./brain";
 import { syncPostToCalendar } from "./calendar";
 import { UUID_RE, orgTimezone } from "./data";
-import { bool, color, int, optional, storeImage, text, url, zoned } from "./form-input";
-import { funnelsAction, orgPublicUrl, withMessage, type FunnelsCtx } from "./guard";
+import { bool, color, int, optional, storeLogo, text, url, zoned } from "./form-input";
+import { miniblogAction, orgPublicUrl, withMessage, type MiniBlogCtx } from "./guard";
 import { richFromInput } from "./sanitize";
 
-function audit(ctx: FunnelsCtx, action: string, targetType: string, targetId: string, metadata?: Prisma.InputJsonValue) {
+function audit(ctx: MiniBlogCtx, action: string, targetType: string, targetId: string, metadata?: Prisma.InputJsonValue) {
   return appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action, targetType, targetId, metadata });
 }
 
-async function ownSite(ctx: FunnelsCtx, siteId: string) {
+async function ownSite(ctx: MiniBlogCtx, siteId: string) {
   const site = UUID_RE.test(siteId) ? await tenantDb(ctx.resolved.id).textSite.findFirst({ where: { id: siteId, brandId: ctx.brand.id, deletedAt: null } }) : null;
-  if (!site) redirect(withMessage("/funnels/text", "error", "That site no longer exists."));
+  if (!site) redirect(withMessage("/mini-blog", "error", "That Mini-Blog no longer exists."));
   return site;
 }
 
 async function uniqueSiteSlug(organizationId: string, wanted: string, exceptId?: string): Promise<string> {
-  const base = normalizeSlug(wanted) || "texts";
+  const base = normalizeSlug(wanted) || "blog";
   const db = tenantDb(organizationId);
   let slug = base;
   for (let n = 2; await db.textSite.count({ where: { slug, ...(exceptId ? { id: { not: exceptId } } : {}) } }); n += 1) slug = `${base.slice(0, 55)}-${n}`;
@@ -39,8 +40,8 @@ async function uniquePostSlug(organizationId: string, siteId: string, wanted: st
 }
 
 export async function createSite(formData: FormData) {
-  const ctx = await funnelsAction("/funnels/text", "funnels.write");
-  const name = text(formData, "name", 120) || "Text alerts";
+  const ctx = await miniblogAction("/mini-blog", "miniblog.write");
+  const name = text(formData, "name", 120) || "Mini-Blog";
   const site = await tenantDb(ctx.resolved.id).textSite.create({
     data: {
       organizationId: ctx.resolved.id,
@@ -52,18 +53,18 @@ export async function createSite(formData: FormData) {
       createdById: ctx.actorId,
     },
   });
-  await audit(ctx, "funnels.site.created", "text_site", site.id);
-  redirect(`/funnels/text/${site.id}?tab=settings`);
+  await audit(ctx, "miniblog.site.created", "text_site", site.id);
+  redirect(`/mini-blog/${site.id}?tab=settings`);
 }
 
 export async function saveSite(formData: FormData) {
   const siteId = text(formData, "siteId", 40);
-  const back = `/funnels/text/${siteId}?tab=settings`;
-  const ctx = await funnelsAction(back, "funnels.write");
+  const back = `/mini-blog/${siteId}?tab=settings`;
+  const ctx = await miniblogAction(back, "miniblog.write");
   const site = await ownSite(ctx, siteId);
   const wanted = normalizeSlug(text(formData, "slug", 80));
   if (!isValidSlug(wanted)) redirect(withMessage(back, "error", "The link name must be lowercase letters, numbers and dashes."));
-  const logo = await storeImage(ctx.resolved.id, site.id, "logo", formData.get("logo"));
+  const logo = await storeLogo(ctx.resolved.id, site.id, formData.get("logo"));
   if (logo && "error" in logo) redirect(withMessage(back, "error", logo.error));
   await tenantDb(ctx.resolved.id).textSite.updateMany({
     where: { id: site.id },
@@ -88,14 +89,14 @@ export async function saveSite(formData: FormData) {
       ...(logo && "id" in logo ? { logoAssetId: logo.id } : bool(formData, "removeLogo") ? { logoAssetId: null } : {}),
     },
   });
-  await audit(ctx, "funnels.site.updated", "text_site", site.id);
+  await audit(ctx, "miniblog.site.updated", "text_site", site.id);
   redirect(withMessage(back, "notice", "Saved."));
 }
 
 export async function setSiteStatus(formData: FormData) {
   const siteId = text(formData, "siteId", 40);
-  const back = `/funnels/text/${siteId}?tab=settings`;
-  const ctx = await funnelsAction(back, "funnels.publish");
+  const back = `/mini-blog/${siteId}?tab=settings`;
+  const ctx = await miniblogAction(back, "miniblog.publish");
   const site = await ownSite(ctx, siteId);
   const live = text(formData, "intent", 20) === "live";
   if (live) {
@@ -103,43 +104,43 @@ export async function setSiteStatus(formData: FormData) {
     if (result.errors.length) redirect(withMessage(back, "error", `Fix ${result.errors.length === 1 ? "this" : "these"} first: ${result.errors.join(" ")}`));
   }
   await tenantDb(ctx.resolved.id).textSite.updateMany({ where: { id: site.id }, data: { status: live ? "live" : "draft" } });
-  await audit(ctx, live ? "funnels.site.published" : "funnels.site.unpublished", "text_site", site.id);
-  redirect(withMessage(back, "notice", live ? "The site is live." : "The site is offline. Its links now show “not found”."));
+  await audit(ctx, live ? "miniblog.site.published" : "miniblog.site.unpublished", "text_site", site.id);
+  redirect(withMessage(back, "notice", live ? "The Mini-Blog is live." : "The Mini-Blog is offline. Its links now show “not found”."));
 }
 
 export async function deleteSite(formData: FormData) {
   const siteId = text(formData, "siteId", 40);
-  const ctx = await funnelsAction(`/funnels/text/${siteId}?tab=settings`, "funnels.publish");
+  const ctx = await miniblogAction(`/mini-blog/${siteId}?tab=settings`, "miniblog.publish");
   const site = await ownSite(ctx, siteId);
-  if (text(formData, "confirm", 200) !== site.name) redirect(withMessage(`/funnels/text/${site.id}?tab=settings`, "error", "Type the site name exactly to delete it."));
+  if (text(formData, "confirm", 200) !== site.name) redirect(withMessage(`/mini-blog/${site.id}?tab=settings`, "error", "Type the Mini-Blog name exactly to delete it."));
   await tenantDb(ctx.resolved.id).textSite.updateMany({ where: { id: site.id }, data: { deletedAt: new Date(), status: "draft", slug: `${site.slug.slice(0, 40)}-deleted-${Date.now().toString(36)}` } });
-  await audit(ctx, "funnels.site.deleted", "text_site", site.id);
-  redirect(withMessage("/funnels/text", "notice", "Site deleted. Its opt-in records are kept."));
+  await audit(ctx, "miniblog.site.deleted", "text_site", site.id);
+  redirect(withMessage("/mini-blog", "notice", "Mini-Blog deleted. Its opt-in records are kept."));
 }
 
 export async function createPost(formData: FormData) {
   const siteId = text(formData, "siteId", 40);
-  const ctx = await funnelsAction(`/funnels/text/${siteId}`, "funnels.write");
+  const ctx = await miniblogAction(`/mini-blog/${siteId}`, "miniblog.write");
   const site = await ownSite(ctx, siteId);
   const title = text(formData, "title", 200) || "Untitled post";
   const post = await tenantDb(ctx.resolved.id).textPost.create({
     data: { organizationId: ctx.resolved.id, siteId: site.id, title, slug: await uniquePostSlug(ctx.resolved.id, site.id, title), createdById: ctx.actorId },
   });
-  await audit(ctx, "funnels.post.created", "text_post", post.id);
-  redirect(`/funnels/text/${site.id}/posts/${post.id}`);
+  await audit(ctx, "miniblog.post.created", "text_post", post.id);
+  redirect(`/mini-blog/${site.id}/posts/${post.id}`);
 }
 
 export async function savePost(formData: FormData) {
   const siteId = text(formData, "siteId", 40);
   const postId = text(formData, "postId", 40);
-  const back = `/funnels/text/${siteId}/posts/${postId}`;
+  const back = `/mini-blog/${siteId}/posts/${postId}`;
   const intent = text(formData, "intent", 20);
   const publishing = intent === "publish";
-  const ctx = await funnelsAction(back, publishing || intent === "unpublish" ? "funnels.publish" : "funnels.write");
+  const ctx = await miniblogAction(back, publishing || intent === "unpublish" ? "miniblog.publish" : "miniblog.write");
   const site = await ownSite(ctx, siteId);
   const db = tenantDb(ctx.resolved.id);
   const post = UUID_RE.test(postId) ? await db.textPost.findFirst({ where: { id: postId, siteId: site.id, deletedAt: null } }) : null;
-  if (!post) redirect(withMessage(`/funnels/text/${site.id}`, "error", "That post no longer exists."));
+  if (!post) redirect(withMessage(`/mini-blog/${site.id}`, "error", "That post no longer exists."));
   const timeZone = await orgTimezone(ctx.resolved.id);
   const title = text(formData, "title", 200) || post.title;
   const slug = await uniquePostSlug(ctx.resolved.id, site.id, text(formData, "slug", 80) || title, post.id);
@@ -160,14 +161,14 @@ export async function savePost(formData: FormData) {
       buttonUrl: buttonText && buttonUrl ? buttonUrl : null,
     },
   });
-  await audit(ctx, publishing ? "funnels.post.published" : intent === "unpublish" ? "funnels.post.unpublished" : "funnels.post.updated", "text_post", post.id);
+  await audit(ctx, publishing ? "miniblog.post.published" : intent === "unpublish" ? "miniblog.post.unpublished" : "miniblog.post.updated", "text_post", post.id);
   let notice = intent === "unpublish" ? "Moved back to draft." : "Saved.";
   if (status === "published") {
     notice = publishAt > new Date() ? (publishing ? "Scheduled. It goes live at the publish time." : "Saved. Still scheduled.") : publishing ? "Published." : "Saved.";
-    const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, `/t/${site.slug}/${slug}`);
+    const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug, slug));
     if (ctx.subject.entitledModuleIds.includes("editorial")) {
       const synced = await syncPostToCalendar({ organizationId: ctx.resolved.id, postId: post.id, actorId: ctx.actorId, publicUrl }).catch((error) => {
-        console.error("[funnels] calendar sync failed", post.id, error);
+        console.error("[miniblog] calendar sync failed", post.id, error);
         return "skipped" as const;
       });
       if (synced === "created") notice += " Added to the Marketing Calendar.";
@@ -181,10 +182,10 @@ export async function savePost(formData: FormData) {
 export async function deletePost(formData: FormData) {
   const siteId = text(formData, "siteId", 40);
   const postId = text(formData, "postId", 40);
-  const ctx = await funnelsAction(`/funnels/text/${siteId}`, "funnels.write");
+  const ctx = await miniblogAction(`/mini-blog/${siteId}`, "miniblog.write");
   const site = await ownSite(ctx, siteId);
-  if (!UUID_RE.test(postId)) redirect(`/funnels/text/${site.id}`);
+  if (!UUID_RE.test(postId)) redirect(`/mini-blog/${site.id}`);
   await tenantDb(ctx.resolved.id).textPost.updateMany({ where: { id: postId, siteId: site.id }, data: { deletedAt: new Date(), slug: `deleted-${postId.slice(0, 8)}-${Date.now().toString(36)}` } });
-  await audit(ctx, "funnels.post.deleted", "text_post", postId);
-  redirect(withMessage(`/funnels/text/${site.id}`, "notice", "Post deleted."));
+  await audit(ctx, "miniblog.post.deleted", "text_post", postId);
+  redirect(withMessage(`/mini-blog/${site.id}`, "notice", "Post deleted."));
 }

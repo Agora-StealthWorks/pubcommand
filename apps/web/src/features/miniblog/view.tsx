@@ -1,14 +1,18 @@
 import type { ReactNode } from "react";
-import { complianceLines } from "../../../../../modules/funnels/sms";
-import { formatZonedDate } from "../../../../../modules/funnels/time";
+import { complianceLines } from "../../../../../modules/miniblog/sms";
+import { formatZonedDate } from "../../../../../modules/miniblog/time";
 import type { Branding, PostRow, SiteRow } from "./data";
-import { RICH } from "./public-view";
 import { sanitizeRich } from "./sanitize";
 
-export function TextShell({ site, branding, base, children, preview }: { site: SiteRow; branding: Branding; base: string; children: ReactNode; preview?: boolean }) {
+/** Typography for sanitized rich text on public pages. */
+export const RICH =
+  "[&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-lg [&_h3]:font-bold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_ul]:list-disc [&_ul]:pl-5 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0";
+
+/** The public page frame: header with the logo, content, SMS compliance footer. */
+export function BlogShell({ site, branding, base, children, preview }: { site: SiteRow; branding: Branding; base: string; children: ReactNode; preview?: boolean }) {
   return (
     <div className="flex min-h-screen flex-col bg-[#f5f6f8] text-[#1f2937]">
-      {preview ? <div className="bg-[#fef0c7] px-4 py-2 text-center text-xs font-semibold text-[#93370d]">Preview. This site is {site.status === "live" ? "live" : "not live yet"}; visitors cannot see drafts or scheduled posts.</div> : null}
+      {preview ? <div className="bg-[#fef0c7] px-4 py-2 text-center text-xs font-semibold text-[#93370d]">Preview. This Mini-Blog is {site.status === "live" ? "live" : "not live yet"}; visitors cannot see drafts or scheduled posts.</div> : null}
       <header style={{ background: branding.headerBg, color: branding.headerText }}>
         <div className="mx-auto flex max-w-2xl items-center justify-center px-4 py-3.5">
           <a href={base || "/"} className="inline-flex max-w-full items-center" aria-label={site.name}>

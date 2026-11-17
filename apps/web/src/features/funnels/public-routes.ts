@@ -1,12 +1,11 @@
 import { tenantDb } from "@pubcommand/db";
-import { isValidEmail, captureOptin, consentText } from "../../../../../modules/funnels/sms";
+import { isValidEmail } from "../../../../../modules/funnels/sms";
 import { ensureStart, recordWatch, rememberKey } from "../../../../../modules/funnels/viewer";
 import { emailConsent, funnelBranding } from "./data";
 import {
   clientIp,
   hashIp,
   loadPublicFunnel,
-  loadPublicSite,
   looksLikeBot,
   publicSiteMatches,
   readViewer,
@@ -171,57 +170,5 @@ export async function funnelImage(orgSlug: string, funnelSlug: string, dayId: st
   }
   const day = loaded.days.find((item) => item.id === dayId);
   const asset = day?.thumbAssetId ? await db.funnelAsset.findFirst({ where: { id: day.thumbAssetId, ownerId: funnel.id } }) : null;
-  return asset ? imageResponse(asset) : new Response("Not found", { status: 404 });
-}
-
-/** POST /t/<site>/subscribe/submit: phone + consent checkbox, with the exact consent text stored. */
-export async function handleSubscribe(request: Request, orgSlug: string, siteSlug: string): Promise<Response> {
-  if (!(await publicSiteMatches(orgSlug)) || !sameOrigin(request)) return new Response("Not found", { status: 404 });
-  const loaded = await loadPublicSite(orgSlug, siteSlug);
-  if (!loaded) return new Response("Not found", { status: 404 });
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return new Response("Bad request", { status: 400 });
-  }
-  const back = safeBack(form.get("back"), "/subscribe");
-  const current = consentText(loaded.site);
-  const result = captureOptin(
-    {
-      phone: String(form.get("phone") ?? ""),
-      consentChecked: form.get("consent") === "yes",
-      shownConsent: String(form.get("consentShown") ?? ""),
-      honeypot: String(form.get("website") ?? ""),
-    },
-    current,
-  );
-  if (!result.ok) return seeOther(withQuery(back, result.spam ? { done: "1" } : { error: result.error }));
-  if (loaded.preview) return seeOther(withQuery(back, { done: "1" }));
-  const db = tenantDb(loaded.organizationId);
-  const ipHash = hashIp(clientIp(request.headers));
-  if (ipHash) {
-    const recent = await db.textOptin.count({ where: { siteId: loaded.site.id, ipHash, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
-    if (recent >= 10) return seeOther(withQuery(back, { error: "Too many sign-ups from this connection. Try again later." }));
-  }
-  await db.textOptin.create({
-    data: {
-      organizationId: loaded.organizationId,
-      siteId: loaded.site.id,
-      phone: result.record.phone,
-      consentText: result.record.consentText,
-      ipHash,
-      pageUrl: (request.headers.get("referer") ?? "").slice(0, 500) || null,
-      userAgent: (request.headers.get("user-agent") ?? "").slice(0, 300) || null,
-    },
-  });
-  return seeOther(withQuery(back, { done: "1" }));
-}
-
-export async function siteLogo(orgSlug: string, siteSlug: string): Promise<Response> {
-  if (!(await publicSiteMatches(orgSlug))) return new Response("Not found", { status: 404 });
-  const loaded = await loadPublicSite(orgSlug, siteSlug, { preview: "1" });
-  const id = loaded?.site.logoAssetId;
-  const asset = loaded && id ? await tenantDb(loaded.organizationId).funnelAsset.findFirst({ where: { id, ownerId: loaded.site.id } }) : null;
   return asset ? imageResponse(asset) : new Response("Not found", { status: 404 });
 }

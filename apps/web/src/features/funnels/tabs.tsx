@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/funnels", label: "Launch funnels" },
-  { href: "/funnels/text", label: "Text-letter sites" },
 ];
 
 export function FunnelsTabs() {

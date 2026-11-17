@@ -7,14 +7,14 @@
  * Providers:
  *   forms     /f/<slug>      published (OPEN) forms — implemented
  *   funnels   /l/<slug>      published launch funnels
- *   textsites /t/<slug>      live text-letter sites
+ *   miniblogs /b/<slug>      live Mini-Blogs (old /t/<slug> paths still work)
  *
  * To add a provider: implement `TargetProvider.list` with `tenantDb(orgId)`
  * (only published/public rows, not soft-deleted), give each target the exact
  * path its public page answers on under the org host, and add it to
  * `TARGET_PROVIDERS`. Paths must start with a prefix in
  * `TARGET_PREFIXES` (modules/settings/domains/routing.ts); the middleware
- * already rewrites `/l/…` and `/t/…` on custom hosts.
+ * already rewrites `/l/…`, `/b/…` and `/t/…` on custom hosts.
  */
 
 import { tenantDb } from "@pubcommand/db";
@@ -59,10 +59,10 @@ export const funnelTargets: TargetProvider = {
   },
 };
 
-export const textSiteTargets: TargetProvider = {
-  id: "textsites",
-  label: "Text-letter sites",
-  prefix: "/t/",
+export const miniBlogTargets: TargetProvider = {
+  id: "miniblogs",
+  label: "Mini-Blogs",
+  prefix: "/b/",
   async list(organizationId) {
     const rows = await tenantDb(organizationId).textSite.findMany({
       where: { status: "live", deletedAt: null },
@@ -70,11 +70,11 @@ export const textSiteTargets: TargetProvider = {
       select: { id: true, name: true, slug: true },
       take: 200,
     });
-    return rows.map((row) => ({ id: `textsite:${row.id}`, label: row.name, path: `/t/${row.slug}`, detail: `/t/${row.slug}` }));
+    return rows.map((row) => ({ id: `miniblog:${row.id}`, label: row.name, path: `/b/${row.slug}`, detail: `/b/${row.slug}` }));
   },
 };
 
-export const TARGET_PROVIDERS: TargetProvider[] = [formsTargets, funnelTargets, textSiteTargets];
+export const TARGET_PROVIDERS: TargetProvider[] = [formsTargets, funnelTargets, miniBlogTargets];
 
 export type TargetGroup = { id: string; label: string; targets: DomainTarget[]; error?: string };
 

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkFunnel, checkSite, csvCell, normalizeSlug, parseResources, toCsv, type FunnelCheckInput } from "./checks";
-import { captureOptin, complianceLines, consentText, formatPhone, isE164, maskPhone, normalizePhone, type ConsentSite } from "./sms";
+import { checkFunnel, csvCell, normalizeSlug, parseResources, toCsv, type FunnelCheckInput } from "./checks";
 import {
   computeDayStates,
   ctaVisibility,
@@ -12,7 +11,7 @@ import {
   type FunnelRules,
   type ViewerFacts,
 } from "./state";
-import { aggregateFunnel, excerpt, funnelBrainNote, htmlToText, postBrainNote } from "./stats";
+import { aggregateFunnel, funnelBrainNote } from "./stats";
 import { formatZoned, utcToZonedLocal, zoneOffsetMinutes, zonedDayKey, zonedLocalToUtc } from "./time";
 import { decodeViewer, emptyViewerCookie, encodeViewer, ensureStart, normalizeViewer, recordWatch, rememberKey, viewerCookieName, viewerSecret } from "./viewer";
 import { embedUrl, fallbackThumbnail, parseVideo, readOembed } from "./video";
@@ -300,59 +299,6 @@ describe("time zones", () => {
   });
 });
 
-describe("phone numbers", () => {
-  it("normalizes common US formats to E.164", () => {
-    for (const input of ["(212) 555-0142", "212-555-0142", "212.555.0142", "2125550142", "1 212 555 0142", "+1 212 555 0142"]) {
-      expect(normalizePhone(input)).toBe("+12125550142");
-    }
-    expect(normalizePhone("+44 20 7946 0958")).toBe("+442079460958");
-    expect(normalizePhone("0044 20 7946 0958")).toBe("+442079460958");
-  });
-
-  it("rejects what cannot be a mobile number", () => {
-    for (const input of ["", "555-0142", "(012) 555-0142", "212 155 0142", "+0 123 456 789", "12345", "+1234567890123456", "call me", "212-555-0142 ext 4", "++12125550142"]) {
-      expect(normalizePhone(input)).toBeNull();
-    }
-    expect(isE164("+12125550142")).toBe(true);
-    expect(isE164("12125550142")).toBe(false);
-    expect(formatPhone("+12125550142")).toBe("(212) 555-0142");
-    expect(maskPhone("+12125550142")).toBe("•••0142");
-  });
-});
-
-describe("SMS consent capture", () => {
-  const site: ConsentSite = {
-    programName: "Morning Alerts",
-    companyName: "Example Gazette",
-    messageFrequency: "Up to 5 msgs/week",
-    helpContact: "help@example.com",
-    privacyUrl: "https://example.com/privacy",
-    termsUrl: "https://example.com/sms-terms",
-  };
-  const text = consentText(site);
-
-  it("writes the consent text with the required disclosures", () => {
-    expect(text).toContain("Example Gazette (Morning Alerts)");
-    expect(text).toContain("Up to 5 msgs/week.");
-    expect(text).toContain("Msg & data rates may apply.");
-    expect(text).toContain("Reply STOP to cancel or HELP for help (or contact help@example.com).");
-    expect(text).toContain("Consent is not a condition of any purchase.");
-    expect(text).toContain("Privacy Policy: https://example.com/privacy");
-    expect(complianceLines(site).join(" ")).toContain("STOP");
-  });
-
-  it("stores the normalized phone and the exact text shown", () => {
-    expect(captureOptin({ phone: "(212) 555-0142", consentChecked: true, shownConsent: text, honeypot: "" }, text)).toEqual({ ok: true, record: { phone: "+12125550142", consentText: text } });
-  });
-
-  it("refuses without consent, with a bad number, with stale text, and quietly drops bots", () => {
-    expect(captureOptin({ phone: "2125550142", consentChecked: false, shownConsent: text, honeypot: "" }, text)).toMatchObject({ ok: false, error: expect.stringContaining("Check the box") });
-    expect(captureOptin({ phone: "555", consentChecked: true, shownConsent: text, honeypot: "" }, text)).toMatchObject({ ok: false, error: expect.stringContaining("valid mobile") });
-    expect(captureOptin({ phone: "2125550142", consentChecked: true, shownConsent: "older wording", honeypot: "" }, text)).toMatchObject({ ok: false, error: expect.stringContaining("updated") });
-    expect(captureOptin({ phone: "2125550142", consentChecked: true, shownConsent: text, honeypot: "http://spam" }, text)).toMatchObject({ ok: false, spam: true });
-  });
-});
-
 describe("videos, checks and exports", () => {
   it("parses Wistia and YouTube links and ids", () => {
     expect(parseVideo("https://youtu.be/dQw4w9WgXcQ")).toEqual({ provider: "youtube", id: "dQw4w9WgXcQ" });
@@ -402,7 +348,6 @@ describe("videos, checks and exports", () => {
     );
     const ok = checkFunnel({ ...input, mode: "evergreen", startAt: T0, endAt: at(5), closeMode: "page", privacyUrl: "https://x.example/privacy", optinMode: "none", buildMode: "as_you_go", days: [input.days[0]!] });
     expect(ok.errors).toEqual([]);
-    expect(checkSite({ name: "S", slug: "s", privacyUrl: null, termsUrl: "https://x.example/t", programName: "", helpContact: "" }).errors).toHaveLength(2);
   });
 
   it("neutralizes spreadsheet formulas but keeps phone numbers", () => {
@@ -442,13 +387,5 @@ describe("aggregates and Brain notes", () => {
     const note = funnelBrainNote({ name: "Spring", brandName: "Gazette", mode: "evergreen", progression: "watch_percent", startLabel: null, days: [{ position: 1, title: "Intro", topics: ["Why"], isLive: false }, { position: 2, title: "Deep dive", topics: [], isLive: false }], stats });
     expect(note.body).toContain("Day 1: 2 viewers, average watched 75%");
     expect(note.body).not.toMatch(/@|visitorId/);
-  });
-
-  it("builds a post note from text, not HTML", () => {
-    expect(htmlToText("<p>Hello <b>there</b></p><ul><li>One</li></ul>")).toBe("Hello there\n- One");
-    expect(excerpt("<p>" + "word ".repeat(80) + "</p>", 30).endsWith("…")).toBe(true);
-    const note = postBrainNote({ siteName: "Alerts", title: "Big news", publishLabel: "today", bodyHtml: "<p>Read this</p>", actionToTake: null, siteOptins: 12, postViews: 40 });
-    expect(note.body).toContain("Site subscribers (all time): 12.");
-    expect(note.body).not.toContain("<p>");
   });
 });
