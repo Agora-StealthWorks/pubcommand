@@ -1,28 +1,25 @@
-# Performance
+# Track Record (module `performance`)
 
-Route: `/performance`. Plan entitlement: `performance`.
+Route `/performance`, finance brands only (the nav hides it elsewhere and `trackAccess()` refuses it).
+Permissions: `performance.read` (view everything), `performance.write` (add/edit/close/import, archive, public links).
 
-Permissions:
+## Pieces
+- **Portfolios and recommendations**: symbol, direction, asset type (stock, ETF, option by OCC symbol, other),
+  entry/stop/target/exit, weight, notes. Manual add/edit/close, plus CSV import with a dry run (`planImport`).
+- **One gain engine** (`gain.ts` `computeGain`): TODAY, PEAK, EXIT (frozen), NONE. Shorts invert. Market prices
+  are split-only adjusted (`@pubcommand/market`); `splitFactor` converts them into the entry's basis. It is
+  detected from the adjusted close on the entry date (`inferSplitFactor`) unless a person sets it. With no fresh
+  quote the last stored quote, then a recorded price, is used and flagged stale (`*`).
+- **Stats** (`stats.ts`): win rate, average/weighted/median gain, best/worst, holding period. Internal only.
+- **Public-safe view** (`publicTrackRecord`): closed trades only by default, date order, honest stats over every
+  closed trade, and no loser count, worst trade or loser list (the type cannot carry them). Served at
+  `/p/track-record/<token>` when a portfolio's public link is on, and as a CSV export.
+- **Call archive** (`archive.ts`): experts, categories, documented calls with backup files in Postgres bytes,
+  gains from the same engine. Lists nothing until an expert is picked or a ticker searched.
+- **Brain**: a weekly aggregate note per portfolio, `sourceRef trackrecord:<portfolioId>:<ISO week>`.
 
-- `performance.read` — open the report
-- `performance.write` — record entries and broker imports
-
-The slice lists recommendations for one `organizationId`: symbol, direction, opened date, closed date, and a simple dollar P&L. A second table shows launch-funnel placeholders: visits, opt-ins, and revenue. Those funnel figures are not live tracking.
-
-The organization host serves `/performance` from `apps/web/src/app/sites/org/[slug]/performance/page.tsx`. That page calls `performanceHome(organizationId)` and renders both tables. The shared module placeholder is left unchanged.
-
-## Example seed
-
-`home.ts` ships an example book for two organizations so scoping can be tested. `listRecommendations` and `listLaunchFunnel` return only rows stored for the id you pass. An organization with no stored rows gets that example book projected onto its own id from `performanceHome`. The projection is not written back, and it never includes another organization's symbols.
-
-P&L is `(exit - entry) * quantity` for a long recommendation and `(entry - exit) * quantity` for a short one. An open recommendation has no closed date and no P&L yet.
-
-## Broker imports
-
-TODO: import fills from the organization's broker and upsert recommendations for that `organizationId` only. `importBrokerRecommendations` returns `not_implemented`. Do not merge books across organizations.
+Numbers never come from the AI. Server code: `apps/web/src/features/trackrecord/`.
+Quotes are cached per org in `track_quotes` (10 minutes); responses also use ChartBuilder's `market_cache`.
 
 ## Tests
-
-```bash
-pnpm --filter @pubcommand/modules test
-```
+`pnpm --filter @pubcommand/modules test`

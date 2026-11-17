@@ -6,7 +6,6 @@ import { manifest as example } from "../example/manifest";
 import { manifest as forms } from "../forms/manifest";
 import { manifest as intel } from "../intel/manifest";
 import { manifest as knowledge } from "../knowledge/manifest";
-import { performanceHome } from "../performance/home";
 import { manifest as performance } from "../performance/manifest";
 import { manifest as promoStudio } from "../promo-studio/manifest";
 import { manifest as settings } from "../settings/manifest";
@@ -50,4 +49,3 @@ export {
   settings,
 };
 
-export { performanceHome };

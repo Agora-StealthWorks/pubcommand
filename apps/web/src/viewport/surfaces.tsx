@@ -1,5 +1,4 @@
 import { Button, Card, Input, Label, Textarea } from "@pubcommand/ui";
-import { performanceHome } from "@pubcommand/modules";
 import { defaultSpec } from "@pubcommand/modules/charts";
 import { createProjectAction, fetchSeriesAction, saveChartAction, saveTemplateAction, uploadImageAction } from "@/features/charts/actions";
 import { ChartEditor } from "@/features/charts/editor";
@@ -593,37 +592,13 @@ export async function ViewportSurface({
   }
 
   if (route === "org/performance") {
-    const home = performanceHome(VIEWPORT_ORG_ID);
     return (
       <div data-surface="performance">
         {orgFrame(
           "/performance",
           <div>
-            <PageHeader title="Performance" description="Recommendations and the launch funnel." />
-            <TableScroll>
-              <table className="w-full min-w-[36rem] border-collapse text-sm">
-                <thead className="bg-canvas text-left text-xs uppercase tracking-wide text-muted">
-                  <tr>
-                    <th className="px-3 py-2">Symbol</th>
-                    <th className="px-3 py-2">Direction</th>
-                    <th className="px-3 py-2">Opened</th>
-                    <th className="px-3 py-2">Closed</th>
-                    <th className="px-3 py-2">P&L</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {home.recommendations.map((row) => (
-                    <tr key={row.id} className="border-t border-line">
-                      <td className="px-3 py-2">{row.symbol}</td>
-                      <td className="px-3 py-2">{row.direction}</td>
-                      <td className="px-3 py-2">{row.openedOn}</td>
-                      <td className="px-3 py-2">{row.closedOn}</td>
-                      <td className="px-3 py-2">{row.pnl}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableScroll>
+            <PageHeader title="Track Record" description="Portfolios, recommendations and a call archive, with gains recalculated from real prices." />
+            <p className="rounded-xl border border-line bg-white p-4 text-sm text-muted">Track Record reads live portfolios and prices; sign in to see it.</p>
           </div>,
         )}
       </div>

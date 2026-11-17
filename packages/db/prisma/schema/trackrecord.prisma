@@ -1,0 +1,185 @@
+// Track Record tables (module `performance`). Plain organization/brand columns; FKs are added in the migration.
+
+/// A publication's portfolio (a model book or a trading service) for one brand.
+model TrackPortfolio {
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @map("organization_id") @db.Uuid
+  brandId           String          @map("brand_id") @db.Uuid
+  name              String
+  publication       String          @default("")
+  description       String          @default("")
+  /// Public read-only link /p/track-record/<publicToken>. Null = never shared.
+  publicToken       String?         @unique @map("public_token")
+  publicEnabled     Boolean         @default(false) @map("public_enabled")
+  /// The public view shows open positions too (closed only by default).
+  publicIncludeOpen Boolean         @default(false) @map("public_include_open")
+  sortOrder         Int             @default(100) @map("sort_order")
+  createdById       String?         @map("created_by_id") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  deletedAt         DateTime?       @map("deleted_at")
+  positions         TrackPosition[]
+
+  @@index([organizationId, brandId, deletedAt])
+  @@map("track_portfolios")
+}
+
+/// One recommendation. Entry/exit/stop/target are as written at the time (entry basis); market prices are
+/// split-adjusted and converted with split_factor by the gain engine.
+model TrackPosition {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  brandId        String         @map("brand_id") @db.Uuid
+  portfolioId    String         @map("portfolio_id") @db.Uuid
+  symbol         String
+  name           String         @default("")
+  /// STOCK | ETF | OPTION | OTHER
+  assetType      String         @default("STOCK") @map("asset_type")
+  /// LONG | SHORT
+  direction      String         @default("LONG")
+  optionRight    String?        @map("option_right")
+  strike         Float?
+  expiry         DateTime?      @db.Date
+  /// What market data is fetched with (OCC "O:..." for options). Null = not priced automatically.
+  priceSymbol    String?        @map("price_symbol")
+  entryDate      DateTime       @map("entry_date") @db.Date
+  entryPrice     Float          @map("entry_price")
+  stopPrice      Float?         @map("stop_price")
+  targetPrice    Float?         @map("target_price")
+  exitDate       DateTime?      @map("exit_date") @db.Date
+  exitPrice      Float?         @map("exit_price")
+  /// OPEN | CLOSED
+  status         String         @default("OPEN")
+  weight         Float          @default(1)
+  notes          String         @default("")
+  /// Shares per entry share since entry (4-for-1 → 4). 1 = none.
+  splitFactor    Float          @default(1) @map("split_factor")
+  /// none | detected | manual | unknown
+  splitSource    String         @default("none") @map("split_source")
+  /// Best close since entry (to exit when closed), market basis.
+  peakPrice      Float?         @map("peak_price")
+  peakDate       DateTime?      @map("peak_date") @db.Date
+  peakCheckedAt  DateTime?      @map("peak_checked_at")
+  /// A price a person recorded, entry basis: the fallback when the symbol cannot be priced.
+  recordedPrice  Float?         @map("recorded_price")
+  recordedAt     DateTime?      @map("recorded_at")
+  importBatch    String?        @map("import_batch")
+  createdById    String?        @map("created_by_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+  portfolio      TrackPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, brandId, deletedAt])
+  @@index([portfolioId, status, deletedAt])
+  @@index([priceSymbol])
+  @@map("track_positions")
+}
+
+/// Last quote per symbol for this organization (market basis). A failed refresh keeps the last price and
+/// records the error, so a dead symbol is not re-requested on every page view.
+model TrackQuote {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  symbol         String
+  price          Float?
+  asOf           DateTime? @map("as_of")
+  source         String    @default("")
+  error          String?
+  fetchedAt      DateTime  @default(now()) @map("fetched_at")
+
+  @@unique([organizationId, symbol])
+  @@map("track_quotes")
+}
+
+/// An expert (guru) whose calls are archived.
+model TrackExpert {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  brandId        String      @map("brand_id") @db.Uuid
+  name           String
+  bio            String      @default("")
+  sortOrder      Int         @default(100) @map("sort_order")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  deletedAt      DateTime?   @map("deleted_at")
+  calls          TrackCall[]
+
+  @@index([organizationId, brandId, deletedAt])
+  @@map("track_experts")
+}
+
+/// Groupings for the call archive ("10-baggers", "Energy calls"). Managed in the app.
+model TrackCategory {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  name           String
+  color          String   @default("#2563eb")
+  description    String   @default("")
+  sortOrder      Int      @default(100) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, brandId])
+  @@map("track_categories")
+}
+
+/// A documented call, with its backup files and a gain recalculated from real prices.
+model TrackCall {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  brandId        String          @map("brand_id") @db.Uuid
+  expertId       String          @map("expert_id") @db.Uuid
+  title          String
+  ticker         String?
+  priceSymbol    String?         @map("price_symbol")
+  callType       String          @default("Recommendation") @map("call_type")
+  direction      String          @default("LONG")
+  callDate       DateTime?       @map("call_date") @db.Date
+  source         String          @default("")
+  /// TODAY | PEAK | EXIT | NONE
+  gainBasis      String          @default("TODAY") @map("gain_basis")
+  entryPrice     Float?          @map("entry_price")
+  exitPrice      Float?          @map("exit_price")
+  exitDate       DateTime?       @map("exit_date") @db.Date
+  recordedPeak   Float?          @map("recorded_peak")
+  recordedPeakAt DateTime?       @map("recorded_peak_at") @db.Date
+  recordedPrice  Float?          @map("recorded_price")
+  recordedAt     DateTime?       @map("recorded_at") @db.Date
+  splitFactor    Float           @default(1) @map("split_factor")
+  splitSource    String          @default("none") @map("split_source")
+  marketPeak     Float?          @map("market_peak")
+  marketPeakAt   DateTime?       @map("market_peak_at") @db.Date
+  peakCheckedAt  DateTime?       @map("peak_checked_at")
+  categoryIds    String[]        @default([]) @map("category_ids") @db.Uuid
+  keyQuote       String          @default("") @map("key_quote")
+  notes          String          @default("")
+  createdById    String?         @map("created_by_id") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  deletedAt      DateTime?       @map("deleted_at")
+  expert         TrackExpert     @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  files          TrackCallFile[]
+
+  @@index([organizationId, brandId, expertId, deletedAt])
+  @@index([organizationId, ticker])
+  @@map("track_calls")
+}
+
+/// A backup file (screenshot, PDF, video) stored in Postgres.
+model TrackCallFile {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  callId         String    @map("call_id") @db.Uuid
+  role           String    @default("BACKUP")
+  filename       String
+  mimeType       String    @map("mime_type")
+  size           Int
+  data           Bytes
+  uploadedById   String?   @map("uploaded_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  call           TrackCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId])
+  @@map("track_call_files")
+}
