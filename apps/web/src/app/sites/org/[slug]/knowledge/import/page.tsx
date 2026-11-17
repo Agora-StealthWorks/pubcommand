@@ -13,26 +13,21 @@ export default async function ImportPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ scope?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
-  const loaded = await loadBrain(slug, query.scope);
+  const loaded = await loadBrain(slug);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "denied") return <Denied title={loaded.title} />;
   const { ctx } = loaded;
   if (!ctx.canWrite) return <Denied title="Importing needs the knowledge.write permission" />;
-  const targets = [
-    ...(ctx.mainAllowed ? ctx.brands : ctx.brands.filter((brand) => brand.id === ctx.scopeBrand?.id)).map((brand) => ({ value: brand.id, label: `${brand.name} mini-brain` })),
-    ...(ctx.mainAllowed ? [{ value: "main", label: "Main Brain (organization-wide)" }] : []),
-  ];
-  const selected = ctx.brain.kind === "main" ? "main" : ctx.brain.brandId;
-  const recent = await tenantDb(ctx.resolved.id).knowledgeImport.findMany({
+  const visibleRecent = await tenantDb(ctx.resolved.id).knowledgeImport.findMany({
+    where: { brandId: ctx.scopeBrand.id },
     select: { id: true, filename: true, brandId: true, status: true, createdAt: true },
     orderBy: { createdAt: "desc" },
     take: 15,
   });
-  const visibleRecent = ctx.mainAllowed ? recent : recent.filter((row) => row.brandId === ctx.scopeBrand?.id);
 
   return (
     <div className="max-w-3xl">
@@ -44,7 +39,6 @@ export default async function ImportPage({
         <Flash error={query.error} notice={query.notice} />
       </div>
       <form action={uploadVault} className="space-y-5 rounded-xl border border-line bg-white p-5">
-        {ctx.brain.kind === "main" ? <input type="hidden" name="scope" value="main" /> : null}
         <div>
           <Label htmlFor="vault-file">Vault .zip</Label>
           <input
@@ -57,17 +51,9 @@ export default async function ImportPage({
           />
           <p className="mt-1 text-xs text-muted">Up to 55 MB. Folder paths are kept. Re-uploading the same vault updates notes instead of duplicating them.</p>
         </div>
-        <div>
-          <Label htmlFor="vault-target">Import into</Label>
-          <select id="vault-target" name="target" defaultValue={selected} className="pc-control mt-1 w-full">
-            {targets.map((target) => (
-              <option key={target.value} value={target.value}>
-                {target.label}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-muted">Imported notes are private to that Brain. Share generic best practices one by one afterwards.</p>
-        </div>
+        <p className="text-sm">
+          Imports into <strong>{ctx.scopeLabel}</strong>. Imported notes are private to this brand. Switch brand in the sidebar to import into another brand.
+        </p>
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-muted">
           <li>Only .md files are imported. Images, PDFs and other attachments are skipped and listed.</li>
           <li>Hidden folders such as .obsidian are skipped.</li>
@@ -83,10 +69,10 @@ export default async function ImportPage({
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
             {visibleRecent.map((row) => (
               <li key={row.id}>
-                <Link href={brainHref(`/knowledge/import/${row.id}`, ctx.brain)} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-canvas">
+                <Link href={brainHref(`/knowledge/import/${row.id}`)} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-canvas">
                   <span className="min-w-0 break-all text-sm font-medium">{row.filename}</span>
                   <span className="text-xs text-muted">
-                    {row.brandId ? ctx.brandNames.get(row.brandId) ?? "Brand" : "Main Brain"} · {STATUS[row.status]} · {row.createdAt.toISOString().slice(0, 10)}
+                    {STATUS[row.status]} · {row.createdAt.toISOString().slice(0, 10)}
                   </span>
                 </Link>
               </li>

@@ -1,12 +1,12 @@
 import { rawPrisma, withOrgContext } from "@pubcommand/db";
 import { anyWordsQuery } from "../../../../../modules/knowledge/ask";
-import type { BrainScope } from "../../../../../modules/knowledge/visibility";
+import { BEST_PRACTICE_SOURCE, type BrainScope } from "../../../../../modules/knowledge/visibility";
 
 /**
- * Full-text search over Brain notes. Every query here ALWAYS filters by the
- * organization and by the scope's visibility rule (modules/knowledge/visibility.ts):
- * main Brain = every note in the org; a brand = its own notes + SHARED notes.
- * Deleted notes never match.
+ * Full-text search over a brand's Brain. Every query here ALWAYS filters by the
+ * organization and by the visibility rule (modules/knowledge/visibility.ts): the
+ * brand's own notes + other brands' SHARED notes. Notes with no brand and deleted
+ * notes never match. This file only ever reads knowledge_pages.
  */
 
 export type NoteHit = {
@@ -36,8 +36,7 @@ class Query {
 
 /** The SQL form of canSeeNote(). Keep the two in step (the tests check both). */
 function visibilitySql(scope: BrainScope, query: Query): string {
-  if (scope.kind === "main") return "TRUE";
-  return `(p.brand_id = ${query.param(scope.brandId, "::uuid")} OR p.visibility = 'SHARED')`;
+  return `(p.brand_id = ${query.param(scope.brandId, "::uuid")} OR (p.visibility = 'SHARED' AND p.brand_id IS NOT NULL AND p.source <> ${query.param(BEST_PRACTICE_SOURCE)}))`;
 }
 
 function likeEscape(value: string): string {

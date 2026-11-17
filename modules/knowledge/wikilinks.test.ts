@@ -33,7 +33,7 @@ describe("wiki links", () => {
     expect(linksTo("`[[Jeff Brown]]`", "Jeff Brown")).toBe(false);
   });
 
-  it("prefers the scope's own brand, then the main Brain, for duplicate titles", () => {
+  it("prefers the scope's own brand, then a note without a brand, for duplicate titles", () => {
     const notes = [
       { id: "other", title: "Style guide", brandId: "b", visibility: "SHARED" as const },
       { id: "main", title: "Style Guide", brandId: null, visibility: "SHARED" as const },

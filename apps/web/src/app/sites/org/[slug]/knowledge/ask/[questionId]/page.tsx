@@ -3,7 +3,7 @@ import { tenantDb } from "@pubcommand/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied } from "@/components/ui";
-import { retryQuestion } from "@/features/brain/actions";
+import { hideQuestion, retryQuestion, toggleSavedQuestion } from "@/features/brain/actions";
 import { STALE_ASK_MS } from "@/features/brain/ask";
 import { BrainAutoRefresh } from "@/features/brain/auto-refresh";
 import { brainHref, loadBrain } from "@/features/brain/context";
@@ -11,26 +11,26 @@ import { renderAnswer } from "@/features/brain/markdown";
 import { NOTE_LIST_SELECT } from "@/features/brain/notes";
 import { NoteBadges } from "@/features/brain/parts";
 import { citationTargets, parseStoredAnswer } from "../../../../../../../../../../modules/knowledge/ask";
-import { scopeBrandId, scopeWhere } from "../../../../../../../../../../modules/knowledge/visibility";
+import { scopeWhere } from "../../../../../../../../../../modules/knowledge/visibility";
 
 export default async function QuestionPage({
   params,
   searchParams,
 }: {
   params: Promise<{ slug: string; questionId: string }>;
-  searchParams: Promise<{ scope?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { slug, questionId } = await params;
-  const query = await searchParams;
-  const loaded = await loadBrain(slug, query.scope);
+  await searchParams;
+  const loaded = await loadBrain(slug);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "denied") return <Denied title={loaded.title} />;
   const { ctx } = loaded;
   const scope = ctx.brain;
   const db = tenantDb(ctx.resolved.id);
   if (!/^[0-9a-f-]{36}$/i.test(questionId)) notFound();
-  // A question belongs to one Brain; it only opens in that Brain.
-  const row = await db.knowledgeQuestion.findFirst({ where: { id: questionId, brandId: scopeBrandId(scope) } });
+  // A question belongs to one brand's Brain and to the person who asked it.
+  const row = await db.knowledgeQuestion.findFirst({ where: { id: questionId, brandId: scope.brandId, createdById: ctx.auth.user.id, hiddenAt: null } });
   if (!row) notFound();
   const answer = parseStoredAnswer(row.answer);
   const stale = (row.status === "QUEUED" || row.status === "RUNNING") && Date.now() - row.updatedAt.getTime() > STALE_ASK_MS;
@@ -45,20 +45,33 @@ export default async function QuestionPage({
   const html = answer?.answer
     ? renderAnswer(answer.answer, (n) => {
         const id = targets.get(n);
-        return id && visibleById.has(id) ? brainHref(`/knowledge/${id}`, scope) : null;
+        return id && visibleById.has(id) ? brainHref(`/knowledge/${id}`) : null;
       })
     : "";
-  const scopeInput = scope.kind === "main" ? <input type="hidden" name="scope" value="main" /> : null;
 
   return (
     <div className="max-w-3xl">
-      <Link href={brainHref("/knowledge/ask", scope)} className="text-sm text-muted hover:text-ink">
+      <Link href={brainHref("/knowledge/ask")} className="text-sm text-muted hover:text-ink">
         ← Ask the Brain
       </Link>
       <h1 className="mt-2 break-words text-xl font-semibold tracking-tight">{row.question}</h1>
-      <p className="mt-1 text-xs text-muted">
-        Asked {row.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC · {ctx.scopeLabel}
-      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+        <span>
+          Asked {row.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC · {ctx.scopeLabel}
+        </span>
+        <form action={toggleSavedQuestion}>
+          <input type="hidden" name="questionId" value={row.id} />
+          <button type="submit" className="min-h-9 font-semibold text-accent">
+            {row.savedAt ? "★ Starred" : "☆ Star"}
+          </button>
+        </form>
+        <form action={hideQuestion}>
+          <input type="hidden" name="questionId" value={row.id} />
+          <button type="submit" className="min-h-9 text-muted hover:text-ink">
+            Remove from history
+          </button>
+        </form>
+      </div>
 
       {working ? (
         <p className="mt-4 rounded-xl border border-line bg-white px-4 py-5 text-sm text-muted">
@@ -71,7 +84,6 @@ export default async function QuestionPage({
           <p className="font-semibold">No answer yet</p>
           <p className="mt-1">{stale ? "The answer was interrupted (the server restarted). Try again." : row.error}</p>
           <form action={retryQuestion} className="mt-3">
-            {scopeInput}
             <input type="hidden" name="questionId" value={row.id} />
             <Button type="submit" variant="secondary">
               Try again
@@ -100,7 +112,7 @@ export default async function QuestionPage({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold text-muted">[{n}]</span>
                     {note ? (
-                      <Link href={brainHref(`/knowledge/${note.id}`, scope)} className="break-words text-sm font-semibold text-accent hover:underline">
+                      <Link href={brainHref(`/knowledge/${note.id}`)} className="break-words text-sm font-semibold text-accent hover:underline">
                         {note.title}
                       </Link>
                     ) : (
@@ -125,7 +137,7 @@ export default async function QuestionPage({
               return note
                 ? [
                     <li key={id}>
-                      <Link href={brainHref(`/knowledge/${id}`, scope)} className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-canvas">
+                      <Link href={brainHref(`/knowledge/${id}`)} className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-canvas">
                         <span className="break-words">{note.title}</span>
                         <NoteBadges note={note} scope={scope} brandNames={ctx.brandNames} />
                       </Link>

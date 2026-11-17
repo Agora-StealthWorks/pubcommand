@@ -98,7 +98,7 @@ export function askPrompt(input: { question: string; scopeLabel: string; brandCo
     .join("\n\n");
   return [
     `Brain: ${input.scopeLabel}`,
-    input.brandContext ? `Brand context:\n${input.brandContext}` : "Brand context: none (this is the organization-wide main Brain).",
+    input.brandContext ? `Brand context:\n${input.brandContext}` : "Brand context: none.",
     "",
     `Question: ${input.question}`,
     "",

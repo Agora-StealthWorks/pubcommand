@@ -10,11 +10,11 @@ export default async function NewNotePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ scope?: string; folder?: string; error?: string }>;
+  searchParams: Promise<{ folder?: string; error?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
-  const loaded = await loadBrain(slug, query.scope);
+  const loaded = await loadBrain(slug);
   if (loaded.kind === "missing") notFound();
   if (loaded.kind === "denied") return <Denied title={loaded.title} />;
   const { ctx } = loaded;
@@ -23,15 +23,12 @@ export default async function NewNotePage({
     <div className="max-w-3xl">
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">New note</h1>
       <p className="mb-4 text-sm text-muted">
-        {ctx.brain.kind === "main"
-          ? "Main Brain notes are organization-wide and stay out of brand mini-brains unless shared."
-          : "Private to this brand. An admin can share it with every brand later if it is a generic best practice."}
+        Private to this brand. An admin can share it with your other brands later if it is generic know-how.
       </p>
       <Flash error={query.error} />
       <NoteForm
         action={createNote}
-        scopeMain={ctx.brain.kind === "main"}
-        cancelHref={brainHref("/knowledge", ctx.brain)}
+        cancelHref={brainHref("/knowledge")}
         folder={normalizeFolder(query.folder)}
         targetLabel={ctx.scopeLabel}
       />

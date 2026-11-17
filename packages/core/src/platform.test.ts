@@ -101,3 +101,13 @@ describe("platform staff", () => {
     ).toEqual({ type: "allow" });
   });
 });
+
+describe("main Brain permission", () => {
+  it("is held by SUPER_ADMIN and OPS only", () => {
+    expect(platformCan("SUPER_ADMIN", "platform.brain.manage")).toBe(true);
+    expect(platformCan("OPS", "platform.brain.manage")).toBe(true);
+    expect(platformCan("SUPPORT", "platform.brain.manage")).toBe(false);
+    expect(platformCan("BILLING", "platform.brain.manage")).toBe(false);
+    expect(platformCan(null, "platform.brain.manage")).toBe(false);
+  });
+});

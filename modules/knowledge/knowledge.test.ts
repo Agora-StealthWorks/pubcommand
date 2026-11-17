@@ -1,11 +1,11 @@
 import type { AccessSubject } from "@pubcommand/core";
 import { describe, expect, it } from "vitest";
-import { canReadKnowledge, canShareKnowledge, canUseMainBrain, canWriteKnowledge } from "./access";
+import { canReadKnowledge, canShareKnowledge, canWriteKnowledge } from "./access";
 import { anyWordsQuery, askPrompt, normalizeAskAnswer, parseStoredAnswer, promptExcerpt } from "./ask";
 import { buildFolderTree, folderAncestors, normalizeFolder } from "./folders";
 import { manifest } from "./manifest";
 import {
-  MAIN_SCOPE,
+  BEST_PRACTICE_SOURCE,
   brandScope,
   canEditNoteInScope,
   canSeeNote,
@@ -48,11 +48,6 @@ describe("manifest and permissions", () => {
     expect(canShareKnowledge(subject(["knowledge.write", "knowledge.share"]), scope)).toBe(true);
   });
 
-  it("keeps brand-bound members out of the main Brain", () => {
-    expect(canUseMainBrain(subject([]))).toBe(true);
-    expect(canUseMainBrain(subject([], { membershipBrandId: "b1" }))).toBe(false);
-    expect(canUseMainBrain(subject([], { membershipWorkspaceId: "w1" }))).toBe(false);
-  });
 });
 
 describe("visibility rule", () => {
@@ -61,50 +56,52 @@ describe("visibility rule", () => {
     aPrivate: { brandId: "brand-a", visibility: "PRIVATE" as const },
     bPrivate: { brandId: "brand-b", visibility: "PRIVATE" as const },
     bShared: { brandId: "brand-b", visibility: "SHARED" as const },
-    mainPrivate: { brandId: null, visibility: "PRIVATE" as const },
-    mainShared: { brandId: null, visibility: "SHARED" as const },
+    legacyPrivate: { brandId: null, visibility: "PRIVATE" as const },
+    legacyShared: { brandId: null, visibility: "SHARED" as const },
+    aBestPractice: { brandId: "brand-a", visibility: "PRIVATE" as const, source: BEST_PRACTICE_SOURCE },
+    bBestPracticeShared: { brandId: "brand-b", visibility: "SHARED" as const, source: BEST_PRACTICE_SOURCE },
   };
 
-  it("lets a brand see its own notes and Shared notes only", () => {
+  it("lets a brand see its own notes and other brands' Shared notes only", () => {
     expect(canSeeNote(a, notes.aPrivate)).toBe(true);
     expect(canSeeNote(a, notes.bShared)).toBe(true);
-    expect(canSeeNote(a, notes.mainShared)).toBe(true);
+    expect(canSeeNote(a, notes.aBestPractice)).toBe(true);
     expect(canSeeNote(a, notes.bPrivate)).toBe(false);
-    expect(canSeeNote(a, notes.mainPrivate)).toBe(false);
+    expect(canSeeNote(a, notes.bBestPracticeShared)).toBe(false);
   });
 
-  it("lets the main Brain see everything, but never deleted notes", () => {
-    for (const note of Object.values(notes)) expect(canSeeNote(MAIN_SCOPE, note)).toBe(true);
-    expect(canSeeNote(MAIN_SCOPE, { ...notes.aPrivate, deletedAt: new Date() })).toBe(false);
+  it("never shows notes without a brand (the old organization-level Brain) or deleted notes", () => {
+    expect(canSeeNote(a, notes.legacyPrivate)).toBe(false);
+    expect(canSeeNote(a, notes.legacyShared)).toBe(false);
     expect(canSeeNote(a, { ...notes.aPrivate, deletedAt: new Date() })).toBe(false);
   });
 
   it("builds the matching Prisma where", () => {
-    expect(scopeWhere(MAIN_SCOPE)).toEqual({ deletedAt: null });
-    expect(scopeWhere(a)).toEqual({ deletedAt: null, OR: [{ brandId: "brand-a" }, { visibility: "SHARED" }] });
+    expect(scopeWhere(a)).toEqual({
+      deletedAt: null,
+      OR: [{ brandId: "brand-a" }, { AND: [{ visibility: "SHARED" }, { brandId: { not: null } }, { source: { not: BEST_PRACTICE_SOURCE } }] }],
+    });
   });
 
-  it("edits only inside the note's own Brain", () => {
+  it("edits only inside the note's own brand, and never a best practice", () => {
     expect(canEditNoteInScope(a, notes.aPrivate)).toBe(true);
     expect(canEditNoteInScope(a, notes.bShared)).toBe(false);
-    expect(canEditNoteInScope(a, notes.mainShared)).toBe(false);
-    expect(canEditNoteInScope(MAIN_SCOPE, notes.bPrivate)).toBe(true);
+    expect(canEditNoteInScope(a, notes.legacyShared)).toBe(false);
+    expect(canEditNoteInScope(a, notes.aBestPractice)).toBe(false);
   });
 
-  it("resolves the requested scope safely", () => {
-    expect(resolveScope({ requested: "main", brandId: "brand-a", mainAllowed: true })).toEqual(MAIN_SCOPE);
-    expect(resolveScope({ requested: "main", brandId: "brand-a", mainAllowed: false })).toEqual(a);
-    expect(resolveScope({ requested: undefined, brandId: "brand-a", mainAllowed: true })).toEqual(a);
-    expect(resolveScope({ requested: undefined, brandId: null, mainAllowed: true })).toEqual(MAIN_SCOPE);
-    expect(resolveScope({ requested: "main", brandId: null, mainAllowed: false })).toBeNull();
+  it("always resolves to the brand (there is no other Brain in an organization)", () => {
+    expect(resolveScope({ brandId: "brand-a" })).toEqual(a);
+    expect(resolveScope({ brandId: null })).toBeNull();
   });
 
-  it("labels origin and source", () => {
+  it("labels origin and source without naming any platform Brain", () => {
     const names = new Map([["brand-b", "Brand B"]]);
     expect(originLabel(notes.bShared, names)).toBe("Brand B");
-    expect(originLabel(notes.mainShared, names)).toBe("Main Brain");
+    expect(originLabel(notes.legacyShared, names)).not.toMatch(/main|master/i);
     expect(sourceLabel("promo-analyzer")).toBe("Promo Analyzer");
     expect(sourceLabel("member")).toBe("Written by a member");
+    expect(sourceLabel(BEST_PRACTICE_SOURCE)).toBe("Best practice");
   });
 });
 
@@ -128,7 +125,7 @@ describe("folders", () => {
 
 describe("Ask the Brain", () => {
   const sources = [
-    { id: "n1", title: "Headlines", folder: "Copy", origin: "Main Brain", body: "---\ntags: [x]\n---\nUse the 4 U's." },
+    { id: "n1", title: "Headlines", folder: "Copy", origin: "Brand A", body: "---\ntags: [x]\n---\nUse the 4 U's." },
     { id: "n2", title: "Offers", folder: null, origin: "Brand A", body: "Lead with the guarantee." },
   ];
 
@@ -142,6 +139,7 @@ describe("Ask the Brain", () => {
     expect(prompt).toContain('number="1" title="Headlines"');
     expect(prompt).toContain("Reader: busy parents");
     expect(prompt).not.toContain("tags: [x]");
+    expect(askPrompt({ question: "q", scopeLabel: "Brand A", brandContext: null, sources })).not.toMatch(/main brain|master/i);
     expect(promptExcerpt("x".repeat(20), 5)).toContain("[…note continues]");
   });
 
