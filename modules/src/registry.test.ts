@@ -19,6 +19,7 @@ describe("module registry", () => {
       "pubsetup",
       "wiki",
       "testimonials",
+      "support",
       "billing",
       "settings",
     ]);
@@ -33,6 +34,8 @@ describe("module registry", () => {
     expect(moduleRegistry.permissionModules()["wiki.read"]).toBe("wiki");
     expect(moduleRegistry.permissionModules()["testimonials.approve"]).toBe("testimonials");
     expect(moduleRegistry.getById("wiki")?.nav[0]?.href).toBe("/wiki");
+    expect(moduleRegistry.permissionModules()["support.publish"]).toBe("support");
+    expect(moduleRegistry.getById("support")?.nav[0]?.href).toBe("/support");
     expect(moduleRegistry.getById("pubsetup")?.nav[0]?.href).toBe("/publication-setup");
     expect(moduleRegistry.getById("miniblog")?.nav[0]?.href).toBe("/mini-blog");
     expect(moduleRegistry.jobs().some((job) => job.name === "example.ping")).toBe(true);

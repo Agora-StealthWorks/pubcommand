@@ -57,6 +57,13 @@ const CARDS: AppCard[] = [
     category: "Research & Knowledge",
   },
   {
+    moduleId: "support",
+    name: "Support Knowledge",
+    description: "What your support agents may say: customer-safe answers, agent keys, ElevenLabs sync and unanswered questions.",
+    icon: "🎧",
+    category: "Research & Knowledge",
+  },
+  {
     moduleId: "intel",
     name: "Intel",
     description: "Competitor emails and promos in your market.",

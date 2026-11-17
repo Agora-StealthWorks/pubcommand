@@ -15,6 +15,7 @@ import { manifest as research } from "../research/manifest";
 import { manifest as settings } from "../settings/manifest";
 import { manifest as testimonials } from "../testimonials/manifest";
 import { manifest as wiki } from "../wiki/manifest";
+import { manifest as support } from "../support/manifest";
 
 export const moduleManifests = [
   example,
@@ -31,6 +32,7 @@ export const moduleManifests = [
   pubsetup,
   wiki,
   testimonials,
+  support,
   billing,
   settings,
 ] as const;
@@ -51,6 +53,7 @@ export const PRODUCT_MODULE_IDS = [
   "pubsetup",
   "wiki",
   "testimonials",
+  "support",
   "billing",
 ] as const;
 
@@ -71,5 +74,6 @@ export {
   settings,
   testimonials,
   wiki,
+  support,
 };
 
