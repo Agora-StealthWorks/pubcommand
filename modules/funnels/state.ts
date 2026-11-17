@@ -20,12 +20,19 @@ export const TIMING_MODES = ["fixed", "per_viewer"] as const;
 export const PROGRESSIONS = ["all_open", "scheduled", "watch_percent", "url_key"] as const;
 export const CLOSE_MODES = ["page", "redirect", "never"] as const;
 export const LIVE_OVERRIDES = ["auto", "on", "off"] as const;
+export const SITE_TYPES = ["launch", "microsite"] as const;
 
 export type FunnelMode = (typeof FUNNEL_MODES)[number];
 export type TimingMode = (typeof TIMING_MODES)[number];
 export type Progression = (typeof PROGRESSIONS)[number];
 export type CloseMode = (typeof CLOSE_MODES)[number];
 export type LiveOverride = (typeof LIVE_OVERRIDES)[number];
+export type SiteType = (typeof SITE_TYPES)[number];
+
+export const SITE_TYPE_LABELS: Record<SiteType, string> = {
+  launch: "Launch funnel",
+  microsite: "Microsite",
+};
 
 export const PROGRESSION_LABELS: Record<Progression, string> = {
   all_open: "All open",
@@ -46,6 +53,8 @@ export type FunnelRules = {
   watchPercent: number;
   livestreamUrl: string | null;
   waitlistEnabled: boolean;
+  /** Microsite: the front door is the block-built home page. Default launch. */
+  siteType?: SiteType;
 };
 
 export type DayRules = {
@@ -217,12 +226,14 @@ export function isOpen(state: DayState): boolean {
 
 export type EntryDecision =
   | { kind: "closed" }
+  | { kind: "home" }
   | { kind: "waitlist"; startAt: Date }
   | { kind: "day"; position: number };
 
 /**
  * Where the funnel's front door sends someone right now:
- *   closed -> close page (or redirect); a live session running -> that day;
+ *   closed -> close page (or redirect); a microsite -> its home page (always,
+ *   until it closes; the modules sit around it); a live session running -> that day;
  *   before the start with a waitlist -> the waitlist countdown;
  *   live funnel -> the most recent day that has opened, else the next session;
  *   evergreen -> day 1.
@@ -230,6 +241,7 @@ export type EntryDecision =
 export function entryDecision(funnel: FunnelRules, days: readonly DayRules[], viewer: ViewerFacts, now: Date): EntryDecision {
   const ordered = orderDays(days);
   if (isClosed(funnel, viewer, now)) return { kind: "closed" };
+  if (funnel.siteType === "microsite") return { kind: "home" };
   const states = computeDayStates(funnel, ordered, viewer, now);
   const liveIndex = states.findIndex((state) => state.kind === "live");
   if (liveIndex >= 0) return { kind: "day", position: ordered[liveIndex]!.position };

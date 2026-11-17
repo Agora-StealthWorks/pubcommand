@@ -19,16 +19,23 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
 
   return (
     <div>
-      <PageHeader title="Launch funnels" description={`Video-series launches for ${ctx.brand.name}: a waitlist with a countdown, day-by-day videos, then a close or order page.`} />
+      <PageHeader title="Launch funnels" description={`Video-series launches and microsites for ${ctx.brand.name}: a waitlist with a countdown or a block-built home page, day-by-day videos, then a close or order page.`} />
       <Flash error={query.error} notice={query.notice} />
       <div className="space-y-4">
         {canWrite ? (
           <details className="rounded-xl border border-line bg-white" open={funnels.length === 0}>
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-accent">+ New launch funnel</summary>
-            <form action={createFunnel} className="grid gap-4 border-t border-line p-4 sm:grid-cols-[minmax(0,1fr)_200px_120px]">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-accent">+ New launch funnel or microsite</summary>
+            <form action={createFunnel} className="grid gap-4 border-t border-line p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_200px_200px_110px]">
               <div>
                 <Label htmlFor="funnel-name">Name</Label>
                 <Input id="funnel-name" name="name" required maxLength={120} placeholder="e.g. Spring masterclass" />
+              </div>
+              <div>
+                <Label htmlFor="funnel-type">Type</Label>
+                <select id="funnel-type" name="siteType" className="pc-control w-full text-sm" defaultValue="launch">
+                  <option value="launch">Launch funnel (waitlist)</option>
+                  <option value="microsite">Microsite (home page)</option>
+                </select>
               </div>
               <div>
                 <Label htmlFor="funnel-mode">Kind</Label>
@@ -39,9 +46,9 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
               </div>
               <div>
                 <Label htmlFor="funnel-days">Days</Label>
-                <Input id="funnel-days" name="days" type="number" min={1} max={10} defaultValue={3} />
+                <Input id="funnel-days" name="days" type="number" min={0} max={10} defaultValue={3} />
               </div>
-              <div className="sm:col-span-3">
+              <div className="sm:col-span-2 lg:col-span-4">
                 <Button type="submit" className="w-full sm:w-auto">
                   Create and open the builder
                 </Button>
@@ -70,7 +77,7 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
                         {funnel.name}
                       </Link>
                       <span className="block truncate text-xs text-muted">
-                        /l/{funnel.slug} · {funnel.mode === "live" ? "Live" : "Evergreen"}
+                        /l/{funnel.slug} · {funnel.siteType === "microsite" ? "Microsite" : "Launch"} · {funnel.mode === "live" ? "Live" : "Evergreen"}
                       </span>
                     </td>
                     <td className="px-4 py-3">

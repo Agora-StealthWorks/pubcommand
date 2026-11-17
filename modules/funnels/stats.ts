@@ -77,11 +77,21 @@ export function funnelBrainNote(input: {
   startLabel: string | null;
   days: { position: number; title: string; topics: string[]; isLive: boolean }[];
   stats: FunnelStats;
+  /** Microsites get a different headline and list their home page sections and extra pages. */
+  siteType?: "launch" | "microsite";
+  homeSections?: string[];
+  pages?: string[];
 }): { title: string; body: string } {
+  const microsite = input.siteType === "microsite";
+  const kind = microsite ? "Microsite" : "Launch funnel";
   const lines = [
-    `# Launch funnel: ${input.name}`,
+    `# ${kind}: ${input.name}`,
     "",
-    `A ${input.days.length}-day ${input.mode === "live" ? "live" : "evergreen (pre-recorded)"} video launch for ${input.brandName}.`,
+    microsite
+      ? `A microsite for ${input.brandName}: a home page built from blocks, with ${input.days.length} ${input.mode === "live" ? "live" : "pre-recorded"} module${input.days.length === 1 ? "" : "s"} around it.`
+      : `A ${input.days.length}-day ${input.mode === "live" ? "live" : "evergreen (pre-recorded)"} video launch for ${input.brandName}.`,
+    ...(microsite && input.homeSections?.length ? [`Home page sections: ${input.homeSections.join(", ")}.`] : []),
+    ...(input.pages?.length ? [`Extra pages: ${input.pages.join(", ")}.`] : []),
     `Progression: ${PROGRESSION_LABELS[input.progression]}.${input.startLabel ? ` Starts ${input.startLabel}.` : ""}`,
     "",
     "## Agenda",
@@ -99,5 +109,5 @@ export function funnelBrainNote(input: {
     "",
     "Use this to plan the next launch: which topics held attention (watch %), and where people dropped off between days.",
   ];
-  return { title: `Launch funnel: ${input.name}`, body: lines.join("\n") };
+  return { title: `${kind}: ${input.name}`, body: lines.join("\n") };
 }

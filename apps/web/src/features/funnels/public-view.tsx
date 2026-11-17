@@ -60,15 +60,16 @@ export function PreviewBar({ asOf, label, timeZone, editHref }: { asOf: Date; la
   );
 }
 
-function Rich({ html, className = "" }: { html: string; className?: string }) {
+export function Rich({ html, className = "" }: { html: string; className?: string }) {
   const clean = sanitizeRich(html);
   if (!clean) return null;
   return <div className={`${RICH} [overflow-wrap:anywhere] ${className}`} dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
-function Button({ href, branding, children, syncUrl, dayId }: { href: string; branding: Branding; children: ReactNode; syncUrl?: string | null; dayId?: string | null }) {
-  const className = "inline-flex min-h-12 max-w-full items-center justify-center rounded-lg px-6 py-3 text-center text-base font-bold shadow-sm transition hover:opacity-90";
-  const style = { background: branding.accentColor, color: branding.accentText };
+export function Button({ href, branding, children, syncUrl, dayId }: { href: string; branding: Branding; children: ReactNode; syncUrl?: string | null; dayId?: string | null }) {
+  // .pcf-btn comes from the design CSS (radius, fill or outline); the inline colours cover pages outside a funnel shell.
+  const className = "pcf-btn text-base shadow-sm transition";
+  const style = { background: branding.accentColor, color: branding.accentText, borderColor: branding.accentColor };
   if (syncUrl !== undefined) {
     return (
       <TrackedLink href={href} syncUrl={syncUrl} dayId={dayId ?? null} className={className} style={style}>
@@ -91,16 +92,32 @@ export function dayWhen(funnel: FunnelRow, day: DayRow): Date | null {
   return null;
 }
 
-export function Agenda({ funnel, days, timeZone, current }: { funnel: FunnelRow; days: DayRow[]; timeZone: string; current?: string }) {
+export type AgendaPlaceholder = { id: string; label: string; title: string; agendaWhen: string; agendaDesc: string; faded: boolean };
+
+/** The agenda: modules in order, with "coming soon" placeholders placed among them. */
+export function Agenda({ funnel, days, timeZone, current, title }: { funnel: FunnelRow; days: (DayRow | AgendaPlaceholder)[]; timeZone: string; current?: string; title?: string }) {
   if (!days.length) return null;
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-10">
-      <h2 className="mb-5 text-center text-2xl font-bold tracking-tight">{funnel.agendaTitle}</h2>
+      <h2 className="mb-5 text-center text-2xl font-bold tracking-tight">{title ?? funnel.agendaTitle}</h2>
       <ol className="space-y-3">
-        {days.map((day) => {
+        {days.map((entry) => {
+          if (!("position" in entry)) {
+            return (
+              <li key={entry.id} className="pcf-content shadow-sm" style={entry.faded ? { opacity: 0.6 } : undefined}>
+                <p className="text-xs font-bold uppercase tracking-wider opacity-70">
+                  {entry.label || "Coming soon"}
+                  {entry.agendaWhen ? ` · ${entry.agendaWhen}` : ""}
+                </p>
+                <p className="mt-1 text-lg font-semibold [overflow-wrap:anywhere]">{entry.title || entry.label || "Coming soon"}</p>
+                {entry.agendaDesc ? <p className="mt-1 text-sm [overflow-wrap:anywhere]">{entry.agendaDesc}</p> : null}
+              </li>
+            );
+          }
+          const day = entry;
           const when = dayWhen(funnel, day);
           return (
-            <li key={day.id} className={`rounded-xl border bg-white p-4 shadow-sm ${current === day.id ? "border-current" : "border-black/10"}`}>
+            <li key={day.id} className={`pcf-content shadow-sm ${current === day.id ? "ring-2 ring-current" : ""}`}>
               <p className="text-xs font-bold uppercase tracking-wider opacity-70">
                 {dayLabel(day)}
                 {funnel.mode === "live" && day.isLive ? " · Live" : ""}
@@ -124,13 +141,35 @@ export function Agenda({ funnel, days, timeZone, current }: { funnel: FunnelRow;
   );
 }
 
-export function EmailOptin({ funnel, branding, action, back, joined, error }: { funnel: FunnelRow; branding: Branding; action: string; back: string; joined: boolean; error?: string }) {
+export function EmailOptin({
+  funnel,
+  branding,
+  action,
+  back,
+  joined,
+  error,
+  headline,
+  buttonText,
+  idSuffix = "",
+}: {
+  funnel: FunnelRow;
+  branding: Branding;
+  action: string;
+  back: string;
+  joined: boolean;
+  error?: string;
+  headline?: string;
+  buttonText?: string;
+  idSuffix?: string;
+}) {
   if (joined) {
-    return <p className="rounded-lg bg-white/15 px-4 py-3 text-center text-sm font-semibold">You're on the list. We'll send a reminder before it starts.</p>;
+    return <p className="rounded-lg bg-black/5 px-4 py-3 text-center text-sm font-semibold">You're on the list. We'll be in touch.</p>;
   }
+  const inputId = `optin-email${idSuffix}`;
+  const heading = headline ?? funnel.optinHeadline;
   return (
     <form action={action} method="post" className="mx-auto w-full max-w-md space-y-2 text-left">
-      <p className="text-center text-base font-semibold">{funnel.optinHeadline}</p>
+      {heading ? <p className="text-center text-base font-semibold">{heading}</p> : null}
       {error ? <p className="rounded-md bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">{error}</p> : null}
       <input type="hidden" name="back" value={back} />
       <div aria-hidden="true" className="hidden">
@@ -139,12 +178,12 @@ export function EmailOptin({ funnel, branding, action, back, joined, error }: { 
         </label>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <label htmlFor="optin-email" className="sr-only">
+        <label htmlFor={inputId} className="sr-only">
           Email address
         </label>
-        <input id="optin-email" name="email" type="email" required autoComplete="email" placeholder="Your email address" className="h-12 min-w-0 flex-1 rounded-lg border border-black/10 bg-white px-3 text-base text-[#111827]" />
-        <button type="submit" className="h-12 rounded-lg px-5 text-base font-bold" style={{ background: branding.accentColor, color: branding.accentText }}>
-          {funnel.optinButtonText}
+        <input id={inputId} name="email" type="email" required autoComplete="email" placeholder="Your email address" className="h-12 min-w-0 flex-1 rounded-lg border border-black/10 bg-white px-3 text-base text-[#111827]" />
+        <button type="submit" className="pcf-btn h-12 text-base" style={{ background: branding.accentColor, color: branding.accentText, borderColor: branding.accentColor }}>
+          {buttonText ?? funnel.optinButtonText}
         </button>
       </div>
       <p className="text-center text-xs opacity-80">
@@ -169,26 +208,32 @@ export function WaitlistView({
   timeZone,
   startAt,
   optin,
+  hosts,
+  calendar,
 }: {
   funnel: FunnelRow;
-  days: DayRow[];
+  days: (DayRow | AgendaPlaceholder)[];
   branding: Branding;
   timeZone: string;
   startAt: Date;
   optin: ReactNode;
+  hosts?: ReactNode;
+  calendar?: ReactNode;
 }) {
   return (
     <>
-      <section className="px-4 py-12 text-center sm:py-16" style={{ background: branding.headerBg, color: branding.headerText }}>
+      <section className="pcf-header px-4 py-12 text-center sm:py-16">
         <div className="mx-auto max-w-3xl space-y-6">
           <h1 className="text-3xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-5xl">{funnel.waitlistHeadline || funnel.name}</h1>
           <Countdown target={startAt.getTime()} labelColor={branding.headerText} boxColor="#ffffff" digitColor="#111827" />
           <p className="text-sm font-semibold opacity-90">{formatZoned(startAt, timeZone)}</p>
           {funnel.waitlistSubheadline ? <p className="mx-auto max-w-xl text-base opacity-90 [overflow-wrap:anywhere]">{funnel.waitlistSubheadline}</p> : null}
+          {calendar}
           {optin}
         </div>
       </section>
       <Agenda funnel={funnel} days={days} timeZone={timeZone} />
+      {hosts}
     </>
   );
 }
@@ -264,11 +309,17 @@ export function DayView({
   presentedKey,
   now,
   preview,
+  nav,
+  calendar,
 }: {
   funnel: FunnelRow;
   days: DayRow[];
   states: DayState[];
   day: DayRow;
+  /** The navigation strip (rendered by the page, so pages and links sit among the modules). */
+  nav?: ReactNode;
+  /** Add-to-calendar for an upcoming live session. */
+  calendar?: ReactNode;
   branding: Branding;
   timeZone: string;
   base: string;
@@ -341,6 +392,7 @@ export function DayView({
             <Countdown target={state.unlockAt.getTime()} labelColor="#ffffff" boxColor="#ffffff" digitColor="#111827" reloadAtZero={!preview} />
           </div>
         ) : null}
+        {calendar ? <div className="mt-6">{calendar}</div> : null}
       </div>
     );
   } else if (state.kind === "replay_pending" || state.kind === "coming_soon") {
@@ -356,21 +408,21 @@ export function DayView({
   return (
     <>
       {syncUrl ? <ViewerSync syncUrl={syncUrl} dayId={day.id} unlockKey={presentedKey} refreshOnUnlock={Boolean(presentedKey)} /> : null}
-      <DayNav days={days} states={states} base={base} carry={carry} currentId={day.id} />
+      {nav === undefined ? <DayNav days={days} states={states} base={base} carry={carry} currentId={day.id} /> : nav}
       <main className="mx-auto max-w-4xl px-4 py-6">
         <p className="text-xs font-bold uppercase tracking-wider opacity-70">{label}</p>
         <h1 className="mb-4 mt-1 text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">{title}</h1>
         {box}
         {open ? (
           <div className="mt-6 space-y-6">
-            <Rich html={day.bodyHtml} className="rounded-xl border border-black/10 bg-white p-5 text-base" />
+            <Rich html={day.bodyHtml} className="pcf-content text-base" />
             {resources.length ? (
-              <section className="rounded-xl border border-black/10 bg-white p-5">
+              <section className="pcf-content">
                 <h2 className="mb-3 text-lg font-bold">{day.resourcesHeading}</h2>
                 <ul className="flex flex-wrap gap-2">
                   {resources.map((resource, position) => (
                     <li key={position} className="max-w-full">
-                      <a href={resource.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 max-w-full items-center rounded-md border-2 px-4 text-sm font-semibold [overflow-wrap:anywhere]" style={{ borderColor: branding.accentColor, color: branding.accentColor }}>
+                      <a href={resource.url} target="_blank" rel="noopener noreferrer" className="pcf-btn-quiet max-w-full text-sm [overflow-wrap:anywhere]" style={{ borderColor: branding.accentColor, color: branding.accentColor }}>
                         {resource.label || resource.url}
                       </a>
                     </li>
@@ -382,7 +434,7 @@ export function DayView({
         ) : null}
         {next && nextState && nextState.kind !== "locked" && nextState.kind !== "closed" ? (
           <div className="mt-8 text-center">
-            <a href={`${base}/day-${next.position}${carry}`} className="inline-flex min-h-11 items-center rounded-lg border-2 px-5 text-sm font-bold" style={{ borderColor: branding.accentColor, color: branding.accentColor }}>
+            <a href={`${base}/day-${next.position}${carry}`} className="pcf-btn-quiet text-sm" style={{ borderColor: branding.accentColor, color: branding.accentColor }}>
               {funnel.nextButtonText} →
             </a>
           </div>

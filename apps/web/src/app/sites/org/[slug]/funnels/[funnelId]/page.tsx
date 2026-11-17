@@ -5,20 +5,26 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { addDay, deleteDay, deleteFunnel, moveDay, publishFunnel, saveDay, saveFunnel } from "@/features/funnels/actions";
+import { DeadlineTab, DesignTab, HomeTab, HostsTab, PagesTab } from "@/features/funnels/builder-tabs";
 import { dayLabel, dayThumb, dayVideo, loadFunnelForBrand, orgTimezone, statusBadge, type DayRow, type FunnelRow } from "@/features/funnels/data";
-import { Check, ColorField, Field, LinkBox, Section } from "@/features/funnels/fields";
+import { Check, Field, LinkBox, Section } from "@/features/funnels/fields";
+import { funnelCheckInput } from "@/features/funnels/site-data";
 import { funnelsAccess, orgPublicUrl } from "@/features/funnels/guard";
 import { SectionTabs } from "@/features/funnels/tabs";
 import { checkFunnel, resourcesText } from "../../../../../../../../../modules/funnels/checks";
-import { CLOSE_MODES, PROGRESSIONS, PROGRESSION_LABELS, type CloseMode, type Progression } from "../../../../../../../../../modules/funnels/state";
+import { PROGRESSIONS, PROGRESSION_LABELS, SITE_TYPE_LABELS, type Progression } from "../../../../../../../../../modules/funnels/state";
 import { utcToZonedLocal, zoneLabel } from "../../../../../../../../../modules/funnels/time";
 import { watchUrl } from "../../../../../../../../../modules/funnels/video";
 
 const TABS = [
   { key: "setup", label: "Setup" },
   { key: "days", label: "Days" },
+  { key: "home", label: "Home page" },
   { key: "waitlist", label: "Waitlist" },
-  { key: "branding", label: "Branding" },
+  { key: "hosts", label: "Hosts" },
+  { key: "pages", label: "Pages & links" },
+  { key: "deadline", label: "Deadline bar" },
+  { key: "design", label: "Design" },
   { key: "close", label: "Close & messages" },
   { key: "publish", label: "Publish" },
 ] as const;
@@ -38,7 +44,7 @@ export default async function FunnelBuilderPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; funnelId: string }>;
-  searchParams: Promise<{ tab?: string; day?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ tab?: string; day?: string; host?: string; item?: string; error?: string; notice?: string }>;
 }) {
   const { slug, funnelId } = await params;
   const query = await searchParams;
@@ -48,30 +54,25 @@ export default async function FunnelBuilderPage({
   const { ctx, canWrite, canPublish } = access;
   const loaded = await loadFunnelForBrand(ctx.resolved.id, ctx.brand.id, funnelId);
   if (!loaded) notFound();
-  const { funnel, days } = loaded;
+  const { funnel, days, hosts, navItems } = loaded;
   const db = tenantDb(ctx.resolved.id);
-  const [timeZone, themes, forms] = await Promise.all([
+  const [timeZone, themes, forms, otherFunnels] = await Promise.all([
     orgTimezone(ctx.resolved.id),
     db.formTheme.findMany({ where: { brandId: ctx.brand.id, deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.form.findMany({ where: { brandId: ctx.brand.id, deletedAt: null, status: "OPEN" }, orderBy: { title: "asc" }, select: { slug: true, title: true } }),
+    db.funnel.findMany({ where: { brandId: ctx.brand.id, deletedAt: null, id: { not: funnel.id } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
-  const tab: Tab = (TABS.map((item) => item.key) as readonly string[]).includes(query.tab ?? "") ? (query.tab as Tab) : "setup";
+  const microsite = funnel.siteType === "microsite";
+  // A microsite's front door is the home page; a launch funnel's is the waitlist.
+  const tabs = TABS.filter((item) => (microsite ? item.key !== "waitlist" : item.key !== "home"));
+  const wanted = query.tab === "branding" ? "design" : query.tab === "home" && !microsite ? "waitlist" : query.tab === "waitlist" && microsite ? "home" : query.tab ?? "";
+  const tab: Tab = (tabs.map((item) => item.key) as readonly string[]).includes(wanted) ? (wanted as Tab) : "setup";
   const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, `/l/${funnel.slug}`);
   const zone = zoneLabel(new Date(), timeZone);
   const local = (date: Date | null) => utcToZonedLocal(date, timeZone);
   const badge = statusBadge(funnel.status);
   const theme = funnel.formThemeId ? await db.formTheme.findFirst({ where: { id: funnel.formThemeId, deletedAt: null }, select: { privacyPolicyUrl: true } }) : null;
-  const checks = checkFunnel({
-    ...funnel,
-    mode: funnel.mode === "live" ? "live" : "evergreen",
-    timing: funnel.timing === "per_viewer" ? "per_viewer" : "fixed",
-    closeMode: (CLOSE_MODES as readonly string[]).includes(funnel.closeMode) ? (funnel.closeMode as CloseMode) : "page",
-    progression: (PROGRESSIONS as readonly string[]).includes(funnel.progression) ? (funnel.progression as Progression) : "all_open",
-    buildMode: funnel.buildMode === "prebuilt" ? "prebuilt" : "as_you_go",
-    privacyUrl: theme?.privacyPolicyUrl ?? funnel.privacyUrl,
-    optinMode: funnel.optinMode === "email" || funnel.optinMode === "form" ? funnel.optinMode : "none",
-    days,
-  });
+  const checks = checkFunnel(funnelCheckInput(funnel, days, navItems, theme?.privacyPolicyUrl ?? null));
 
   return (
     <div>
@@ -83,6 +84,7 @@ export default async function FunnelBuilderPage({
           <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight">{funnel.name}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
             <Badge tone={badge.tone}>{badge.label}</Badge>
+            <Badge tone="accent">{SITE_TYPE_LABELS[microsite ? "microsite" : "launch"]}</Badge>
             <span>{funnel.mode === "live" ? "Live sessions" : "Evergreen"}</span>
             <span>·</span>
             <span>{PROGRESSION_LABELS[(PROGRESSIONS as readonly string[]).includes(funnel.progression) ? (funnel.progression as Progression) : "all_open"]}</span>
@@ -98,7 +100,7 @@ export default async function FunnelBuilderPage({
         </div>
       </div>
       <Flash error={query.error} notice={query.notice} />
-      <SectionTabs label="Builder sections" active={tab} items={TABS.map((item) => ({ key: item.key, label: item.label, href: `/funnels/${funnel.id}?tab=${item.key}` }))} />
+      <SectionTabs label="Builder sections" active={tab} items={tabs.map((item) => ({ key: item.key, label: item.label, href: `/funnels/${funnel.id}?tab=${item.key}` }))} />
 
       {tab === "setup" ? (
         <form action={saveFunnel} className="space-y-4">
@@ -111,6 +113,12 @@ export default async function FunnelBuilderPage({
                 </Field>
                 <Field label="Link name" htmlFor="slug" hint={`Public link: /l/${funnel.slug}`}>
                   <Input id="slug" name="slug" defaultValue={funnel.slug} maxLength={60} required pattern="[a-z0-9-]+" />
+                </Field>
+                <Field label="Type" htmlFor="siteType" hint="Launch: the front door is the waitlist, then day 1. Microsite: a home page you build from blocks is the front door, with the modules and pages around it. The close page takes over for both once it closes." className="sm:col-span-2">
+                  <select id="siteType" name="siteType" defaultValue={microsite ? "microsite" : "launch"} className="pc-control w-full text-sm">
+                    <option value="launch">Launch funnel (waitlist → day-by-day videos → close)</option>
+                    <option value="microsite">Microsite (block-built home page)</option>
+                  </select>
                 </Field>
                 <Field label="Kind" htmlFor="mode" hint="Live days send people to your livestream room while the session runs, then show the replay.">
                   <select id="mode" name="mode" defaultValue={funnel.mode} className="pc-control w-full text-sm">
@@ -241,60 +249,11 @@ export default async function FunnelBuilderPage({
         </form>
       ) : null}
 
-      {tab === "branding" ? (
-        <form action={saveFunnel} className="space-y-4" encType="multipart/form-data">
-          <Hidden funnel={funnel} section="branding" />
-          <fieldset disabled={!canWrite} className="space-y-4">
-            <Section title="Look" description="Use a Forms theme (logo, colours, privacy link) or set this funnel's own.">
-              <Field label="Forms theme" htmlFor="formThemeId" hint={themes.length ? "A theme wins over the logo, header and accent colours below." : "No Forms themes yet for this brand."}>
-                <select id="formThemeId" name="formThemeId" defaultValue={funnel.formThemeId ?? ""} className="pc-control w-full text-sm">
-                  <option value="">None: use this funnel's own branding</option>
-                  {themes.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Logo upload" htmlFor="logo" hint={funnel.logoAssetId ? "A logo is uploaded. Upload another to replace it." : "PNG, JPG, WebP or GIF up to 3 MB."}>
-                  <input id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="block w-full text-sm" />
-                </Field>
-                <Field label="…or logo link" htmlFor="logoUrl">
-                  <Input id="logoUrl" name="logoUrl" type="url" defaultValue={funnel.logoUrl ?? ""} placeholder="https://" />
-                </Field>
-                <Field label="Logo height (px)" htmlFor="logoHeight">
-                  <Input id="logoHeight" name="logoHeight" type="number" min={16} max={120} defaultValue={funnel.logoHeight} />
-                </Field>
-                <Field label="Company name (footer)" htmlFor="companyName">
-                  <Input id="companyName" name="companyName" defaultValue={funnel.companyName} maxLength={120} />
-                </Field>
-              </div>
-              {funnel.logoAssetId ? <Check name="removeLogo" label="Remove the uploaded logo" defaultChecked={false} /> : null}
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <ColorField name="headerBg" label="Header" value={funnel.headerBg} />
-                <ColorField name="accentColor" label="Buttons" value={funnel.accentColor} />
-                <ColorField name="pageBg" label="Page" value={funnel.pageBg} />
-                <ColorField name="textColor" label="Text" value={funnel.textColor} />
-              </div>
-            </Section>
-            <Section title="Footer and legal" description="Every public page shows the privacy link. Footer text is sanitized; links and bold are kept.">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Privacy-policy link" htmlFor="privacyUrl" hint="Required to publish (unless the Forms theme has one).">
-                  <Input id="privacyUrl" name="privacyUrl" type="url" defaultValue={funnel.privacyUrl ?? ""} placeholder="https://" />
-                </Field>
-                <Field label="Terms link" htmlFor="termsUrl">
-                  <Input id="termsUrl" name="termsUrl" type="url" defaultValue={funnel.termsUrl ?? ""} placeholder="https://" />
-                </Field>
-              </div>
-              <Field label="Footer text" htmlFor="footerHtml" hint="Disclaimers and legal text. Plain text or simple HTML.">
-                <Textarea id="footerHtml" name="footerHtml" defaultValue={richToInput(funnel.footerHtml)} className="min-h-28" />
-              </Field>
-            </Section>
-            {canWrite ? <Button type="submit">Save branding</Button> : null}
-          </fieldset>
-        </form>
-      ) : null}
+      {tab === "home" ? <HomeTab funnel={funnel} days={days} navItems={navItems} hosts={hosts} forms={forms} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
+      {tab === "hosts" ? <HostsTab funnel={funnel} hosts={hosts} openId={query.host} canWrite={canWrite} /> : null}
+      {tab === "pages" ? <PagesTab funnel={funnel} days={days} navItems={navItems} forms={forms} openId={query.item} canWrite={canWrite} publicUrl={publicUrl} /> : null}
+      {tab === "deadline" ? <DeadlineTab funnel={funnel} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
+      {tab === "design" ? <DesignTab funnel={funnel} days={days} navItems={navItems} themes={themes} otherFunnels={otherFunnels} canWrite={canWrite} /> : null}
 
       {tab === "close" ? (
         <form action={saveFunnel} className="space-y-4">
