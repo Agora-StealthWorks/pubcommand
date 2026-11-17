@@ -63,6 +63,9 @@ export async function middleware(request: NextRequest) {
   else if (site.kind === "marketing") url.pathname = `/sites/marketing${suffix}`;
   else if (site.kind === "app") url.pathname = `/sites/app${suffix}`;
   else if (site.kind === "admin") url.pathname = `/sites/admin${suffix}`;
+  // Public form links (/f/<form>, /embed/<form>) work without sign-in, so they
+  // live outside the org layout that sends anonymous visitors to the login page.
+  else if (/^\/(f|embed)\/[a-z0-9-]/.test(pathname)) url.pathname = `/sites/public/${site.slug}${pathname}`;
   else url.pathname = `/sites/org/${site.slug}${suffix}`;
 
   return NextResponse.rewrite(url, { request: { headers: requestHeaders } });

@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@pubcommand/core": "workspace:*",
+    "fflate": "^0.8.3",
     "react": "^19.0.0"
   },
   "devDependencies": {

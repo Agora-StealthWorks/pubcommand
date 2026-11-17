@@ -20,7 +20,6 @@ import { PlansConsole } from "@/components/plans-console";
 import { UserDetail, UsersList } from "@/components/users-console";
 import { TableScroll } from "@/components/table-scroll";
 import { PageHeader } from "@/components/ui";
-import { FormsBuilder } from "@/app/sites/org/[slug]/forms/builder";
 import { VIEWPORT_ORG_ID, viewportSubject } from "./subject";
 
 const EMAIL = "stephen.operator.with.a.very.long.mailbox@onenationfinancial.example";
@@ -658,8 +657,7 @@ export async function ViewportSurface({
         {orgFrame(
           "/forms",
           <div>
-            <PageHeader title="Forms" description="Build a form, preview it, and count responses." />
-            <FormsBuilder organizationId={VIEWPORT_ORG_ID} canWrite canExport />
+            <PageHeader title="Forms" description="Surveys and forms with branching, public links, results and exports." />
           </div>,
         )}
       </div>
