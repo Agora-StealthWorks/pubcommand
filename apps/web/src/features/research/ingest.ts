@@ -1,7 +1,10 @@
 import {
+  checkFetchUrl,
   deriveTitle,
   htmlTitle,
   htmlToText,
+  isBlockedAddress,
+  isIpLiteral,
   MIN_SOURCE_CHARS,
   normalizeText,
   parseCaptionTracks,
@@ -10,6 +13,9 @@ import {
   youtubeVideoId,
   type SourceKind,
 } from "../../../../../modules/research/ingest";
+import { lookup } from "node:dns/promises";
+import { GOOD_PROSE, fallbackReaders, jinaUrl, pickBest, proseScore, readerTitle, waybackLookupUrl, waybackSnapshot, type ReadAttempt, type ReadVia, type Reader } from "../../../../../modules/research/readers";
+import { X_BLOCKED, parsePostUrl, postFromSyndication, postSourceText, postTitle, syndicationUrl, threadPosts } from "../../../../../modules/research/x";
 import { FetchRefused, safeFetch } from "./fetch";
 
 /** Below this many characters of text, a PDF is treated as scanned and sent to the AI as a document. */
@@ -25,6 +31,8 @@ export type IngestedSource = {
   sourceRef: string | null;
   text: string;
   file?: { filename: string; mimeType: string; data: Buffer };
+  /** How a web page was read: direct | jina | wayback | capture | x. */
+  readVia?: string;
 };
 
 export type IngestOutcome = IngestedSource | { error: string };
@@ -99,26 +107,130 @@ export async function ingestFile(file: File, title: string): Promise<IngestOutco
   return { error: "Upload a .pdf, .docx, .txt or .md file." };
 }
 
+const BLOCKED = "That address points inside a private network, so it cannot be read.";
+
+/**
+ * Before a third-party reader is asked to fetch a URL, the URL itself must
+ * pass the same SSRF rules as our own fetch: public scheme, port and host,
+ * and every DNS answer public.
+ */
+export async function assertPublicTarget(raw: string): Promise<URL> {
+  const checked = checkFetchUrl(raw);
+  if (!checked.ok) throw new FetchRefused(checked.reason);
+  const host = checked.url.hostname.replace(/^\[|\]$/g, "");
+  if (isIpLiteral(host)) {
+    if (isBlockedAddress(host)) throw new FetchRefused(BLOCKED);
+    return checked.url;
+  }
+  let answers: { address: string }[] = [];
+  try {
+    answers = await lookup(host, { all: true });
+  } catch {
+    throw new FetchRefused("That site could not be found.");
+  }
+  if (!answers.length || answers.some((answer) => isBlockedAddress(answer.address))) throw new FetchRefused(BLOCKED);
+  return checked.url;
+}
+
+/** Read a page through one fallback reader. Null when it has nothing. */
+async function readVia(reader: Reader, target: string): Promise<ReadAttempt | null> {
+  try {
+    if (reader === "jina") {
+      const headers: Record<string, string> = { accept: "text/plain", "x-return-format": "markdown" };
+      if (process.env.JINA_API_KEY) headers.authorization = `Bearer ${process.env.JINA_API_KEY}`;
+      const page = await safeFetch(jinaUrl(target), headers);
+      const text = normalizeText(page.body.toString("utf8"));
+      return { via: "jina", text, title: readerTitle(text) };
+    }
+    const lookupPage = await safeFetch(waybackLookupUrl(target), { accept: "application/json" });
+    const snapshot = waybackSnapshot(JSON.parse(lookupPage.body.toString("utf8")));
+    if (!snapshot) return null;
+    const page = await safeFetch(snapshot);
+    const html = page.body.toString("utf8");
+    return { via: "wayback", text: htmlToText(html), title: htmlTitle(html) };
+  } catch {
+    return null;
+  }
+}
+
 export async function ingestUrl(raw: string, title: string): Promise<IngestOutcome> {
   if (youtubeVideoId(raw)) return ingestYoutube(raw, title, "");
+  if (parsePostUrl(raw)) return ingestX(raw, title, "");
+  let target: string;
   try {
-    const page = await safeFetch(raw);
+    target = (await assertPublicTarget(raw)).toString();
+  } catch (error) {
+    return { error: error instanceof FetchRefused ? error.message : "That link could not be read. Paste the text instead." };
+  }
+  const attempts: ReadAttempt[] = [];
+  let directError: string | null = null;
+  let finalUrl = target;
+  try {
+    const page = await safeFetch(target);
+    finalUrl = page.url;
     const type = page.contentType.toLowerCase();
     if (type.includes("application/pdf") || page.body.subarray(0, 5).toString("latin1") === "%PDF-") {
       const filename = decodeURIComponent(new URL(page.url).pathname.split("/").pop() || "document.pdf").slice(0, 200);
-      return pdfOutcome({ data: page.body, filename, title: deriveTitle({ title, url: page.url, fallback: filename }), kind: "url", sourceRef: page.url, text: await pdfText(page.body) });
+      const pdf = pdfOutcome({ data: page.body, filename, title: deriveTitle({ title, url: page.url, fallback: filename }), kind: "url", sourceRef: page.url, text: await pdfText(page.body) });
+      return "error" in pdf ? pdf : { ...pdf, readVia: "direct" };
     }
     if (!type.includes("html") && !type.startsWith("text/") && type !== "") {
       return { error: "That link is not a web page or PDF we can read. Download it and upload the file instead." };
     }
     const html = page.body.toString("utf8");
     const text = type.includes("html") || /<html|<body|<p[\s>]/i.test(html.slice(0, 5000)) ? htmlToText(html) : normalizeText(html);
-    if (text.length < MIN_SOURCE_CHARS * 3) {
-      return { error: "That page had almost no readable text (it may need a login or load its story with scripts). Paste the article text instead." };
-    }
-    return { kind: "url", inputType: "html", title: deriveTitle({ title: title || htmlTitle(html), url: page.url, fallback: "Web page" }), sourceRef: page.url, text };
+    attempts.push({ via: "direct", text, title: htmlTitle(html) });
   } catch (error) {
-    return { error: error instanceof FetchRefused ? error.message : "That link could not be read. Paste the text instead." };
+    directError = error instanceof FetchRefused ? error.message : "That link could not be read.";
+  }
+
+  // Blocked or thin? Try the fallback readers the server allows, in order.
+  const direct = attempts[0];
+  if (!direct || proseScore(direct.text) < GOOD_PROSE) {
+    for (const reader of fallbackReaders(process.env)) {
+      const attempt = await readVia(reader, target);
+      if (!attempt) continue;
+      attempts.push(attempt);
+      if (proseScore(attempt.text) >= GOOD_PROSE) break;
+    }
+  }
+  const best = pickBest(attempts) ?? (direct && direct.text.length >= MIN_SOURCE_CHARS * 3 ? { ...direct, score: 0 } : null);
+  if (!best) {
+    const tried = attempts.length > 1 ? " We also tried the reader and archive copies." : "";
+    if (directError) return { error: `${directError}${tried} Paste the article text instead, or use the bookmarklet on the page.` };
+    return { error: `That page had almost no readable text (it may need a login or load its story with scripts).${tried} Paste the article text instead, or use the bookmarklet on the page.` };
+  }
+  return {
+    kind: "url",
+    inputType: "html",
+    title: deriveTitle({ title: title || best.title, url: finalUrl, fallback: "Web page" }),
+    sourceRef: best.via === "direct" ? finalUrl : target,
+    text: best.text,
+    readVia: best.via satisfies ReadVia,
+  };
+}
+
+/**
+ * An X post or thread. Pasted text wins; otherwise X's public embed data is
+ * read and the author's own thread above the post is included. When X
+ * blocks the request, we ask for the text instead.
+ */
+export async function ingestX(raw: string, title: string, pasted: string): Promise<IngestOutcome> {
+  const parsed = parsePostUrl(raw);
+  if (!parsed) return { error: "That is not a link to an X post (x.com/<name>/status/<id>)." };
+  if (pasted.trim()) {
+    const text = normalizeText(pasted);
+    if (text.length < 20) return { error: "Paste the whole post or thread." };
+    return { kind: "x", inputType: "text", title: deriveTitle({ title, fallback: `@${parsed.handle} on X` }), sourceRef: parsed.canonical, text: `Author: @${parsed.handle}\n\n${text}`, readVia: "x" };
+  }
+  try {
+    const page = await safeFetch(syndicationUrl(parsed.id), { accept: "application/json" });
+    const post = postFromSyndication(JSON.parse(page.body.toString("utf8")));
+    if (!post) return { error: X_BLOCKED };
+    const thread = threadPosts(post);
+    return { kind: "x", inputType: "text", title: deriveTitle({ title: title || postTitle(post, thread.length), fallback: `@${parsed.handle} on X` }), sourceRef: parsed.canonical, text: postSourceText(thread), readVia: "x" };
+  } catch {
+    return { error: X_BLOCKED };
   }
 }
 

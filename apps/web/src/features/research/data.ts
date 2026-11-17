@@ -85,7 +85,7 @@ export async function loadProjectContents(organizationId: string, projectId: str
     db.researchSource.findMany({
       where: { projectId },
       orderBy: { createdAt: "desc" },
-      select: { id: true, kind: true, inputType: true, title: true, sourceRef: true, summary: true, status: true, error: true, cardCount: true, createdAt: true, updatedAt: true },
+      select: { id: true, kind: true, inputType: true, title: true, sourceRef: true, summary: true, status: true, error: true, cardCount: true, readVia: true, createdAt: true, updatedAt: true },
     }),
     db.researchCard.findMany({ where: { projectId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] }),
     db.researchSection.findMany({ where: { projectId }, select: { id: true, title: true, position: true } }),

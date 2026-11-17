@@ -1,5 +1,6 @@
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
-import { COMPONENT_STATUS_LABEL, markdownBlocks, type MdBlock, type PackageDirection } from "../../../../../modules/promo-studio/packager";
+import { strToU8, zipSync } from "fflate";
+import { COMPONENT_STATUS_LABEL, componentFileNames, markdownBlocks, packageMarkdown, type MdBlock, type PackageDirection } from "../../../../../modules/promo-studio/packager";
 
 const HEADINGS = { h1: HeadingLevel.HEADING_2, h2: HeadingLevel.HEADING_2, h3: HeadingLevel.HEADING_3 } as const;
 
@@ -64,4 +65,45 @@ export async function packageDocx(input: {
 
 export function fileSafe(name: string): string {
   return name.replace(/[^\w\- ]+/g, "").trim().slice(0, 120) || "package";
+}
+
+type ComponentDoc = { kind: string; label: string; quantity: number; status: string; content: string };
+
+/** One component as its own Word file: a short header (promo, brand, status), then the copy. */
+export async function componentDocx(input: { promoTitle: string; brandName: string; packageTitle: string; component: ComponentDoc }): Promise<Buffer> {
+  const c = input.component;
+  const children: Paragraph[] = [
+    new Paragraph({ text: c.label, heading: HeadingLevel.TITLE }),
+    label("Promo", input.promoTitle),
+    label("Brand", input.brandName),
+    label("Package", input.packageTitle),
+    label("Status", COMPONENT_STATUS_LABEL[c.status] ?? c.status),
+    new Paragraph({ text: "", spacing: { after: 120 } }),
+    ...(c.content.trim() ? markdownBlocks(c.content).map(blockParagraph) : [new Paragraph({ children: [new TextRun({ text: "Not written yet.", italics: true })] })]),
+  ];
+  return Packer.toBuffer(new Document({ sections: [{ children }] }));
+}
+
+/**
+ * The whole package as a zip: one Word file per component (numbered in
+ * package order), plus the combined Word file and the Markdown version.
+ */
+export async function packageZip(input: {
+  title: string;
+  promoTitle: string;
+  brandName: string;
+  status: string;
+  direction: PackageDirection;
+  components: ComponentDoc[];
+}): Promise<Uint8Array> {
+  const names = componentFileNames(input.components);
+  const files: Record<string, Uint8Array> = {};
+  for (const [index, component] of input.components.entries()) {
+    files[names[index]!] = new Uint8Array(await componentDocx({ promoTitle: input.promoTitle, brandName: input.brandName, packageTitle: input.title, component }));
+  }
+  const base = fileSafe(input.title);
+  files[`${base} (all components).docx`] = new Uint8Array(await packageDocx(input));
+  files[`${base}.md`] = strToU8(packageMarkdown(input));
+  // Word files are already compressed; store them as-is.
+  return zipSync(files, { level: 0 });
 }

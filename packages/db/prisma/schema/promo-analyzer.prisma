@@ -105,6 +105,16 @@ model PromoPerformanceImport {
   rowCount       Int      @default(0) @map("row_count")
   codeCount      Int      @default(0) @map("code_count")
   matchedCount   Int      @default(0) @map("matched_count")
+  /// upload (a file someone chose) or sheet (the Google Sheets sync).
+  source         String   @default("upload")
+  /// SHA-256 of the imported table; a sheet sync with the same hash is skipped.
+  contentHash    String?  @map("content_hash")
+  /// The rows this import replaced, as they were before it ran: [{ codeKey, data }]. Undo puts them back.
+  previous       Json?
+  /// Codes this import created (no row existed before). Undo deletes them.
+  createdCodes   String[] @default([]) @map("created_codes")
+  undoneAt       DateTime? @map("undone_at")
+  undoneById     String?  @map("undone_by_id") @db.Uuid
   createdById    String?  @map("created_by_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -141,7 +151,17 @@ model PromoPerformance {
   metricValue    Float?    @map("metric_value")
   percentile     Float?
   tierScheme     String?   @map("tier_scheme")
+  /// The tier shown everywhere: the override when a person set one, else computedTier.
   tier           String?
+  /// The tier the data gives, before any override.
+  computedTier   String?   @map("computed_tier")
+  /// A person's tier (a TierKey, or "none" to show no tier). Survives every re-tier.
+  tierOverride   String?   @map("tier_override")
+  tierOverrideReason String? @map("tier_override_reason")
+  tierOverrideById String? @map("tier_override_by_id") @db.Uuid
+  tierOverrideAt DateTime? @map("tier_override_at")
+  /// Linked to promoId by a person; re-matching by code never changes it.
+  linkedManually Boolean   @default(false) @map("linked_manually")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -212,4 +232,57 @@ model PromoEntityOverride {
   @@unique([brandId, kind, fromKey])
   @@index([organizationId, brandId])
   @@map("promo_entity_overrides")
+}
+
+/// One brand's Google Sheets sync of performance results. The service-account key is encrypted with AUTH_SECRET.
+model PromoSheetSync {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  spreadsheetId  String    @map("spreadsheet_id")
+  /// A1 range or tab name, e.g. "Results" or "Results!A1:Z".
+  range          String    @default("Sheet1")
+  /// AES-256-GCM encrypted service-account JSON. Never shown again after saving.
+  credentials    String?
+  clientEmail    String?   @map("client_email")
+  headers        String[]  @default([])
+  /// { field: header name }: survives columns moving around in the sheet.
+  mapping        Json?
+  enabled        Boolean   @default(false)
+  everyHours     Int       @default(6) @map("every_hours")
+  /// IDLE | RUNNING | OK | FAILED
+  status         String    @default("IDLE")
+  lastError      String?   @map("last_error")
+  lastSyncAt     DateTime? @map("last_sync_at")
+  lastHash       String?   @map("last_hash")
+  lastImportId   String?   @map("last_import_id") @db.Uuid
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([brandId])
+  @@index([organizationId])
+  @@map("promo_sheet_syncs")
+}
+
+/// One promo waiting in (or done with) the bulk re-analysis queue. Survives restarts; a job drains it, two at a time.
+model PromoBulkJob {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  promoId        String    @map("promo_id") @db.Uuid
+  actorId        String?   @map("actor_id") @db.Uuid
+  /// QUEUED | RUNNING | DONE | FAILED | CANCELLED
+  status         String    @default("QUEUED")
+  attempts       Int       @default(0)
+  error          String?
+  lockedAt       DateTime? @map("locked_at")
+  finishedAt     DateTime? @map("finished_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@index([organizationId, brandId, status])
+  @@index([promoId])
+  @@map("promo_bulk_jobs")
 }

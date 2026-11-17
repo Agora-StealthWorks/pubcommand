@@ -1,7 +1,7 @@
 "use server";
 
 import { brandProfile, can } from "@pubcommand/core";
-import { appendOrgAudit, tenantDb } from "@pubcommand/db";
+import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { getOrgContext } from "@/lib/org";
@@ -9,7 +9,9 @@ import { currentRequest } from "@/lib/request";
 import { PACKAGE_COMPONENTS, checkClaims, clampQuantity, componentSpec, parseDirection } from "../../../../../modules/promo-studio/packager";
 import type { PromoAnalysisResult } from "../../../../../modules/promo-studio/analysis";
 import { isUuid, loadPackage } from "./data";
-import { allowedText, reopenIfApproved, runPackageGeneration, saveVersion, teachApprovedPackage, type GenerationRequest } from "./server";
+import { parseFindings } from "../../../../../modules/promo-studio/timely";
+import { allowedText, reopenIfApproved, runPackageGeneration, runPackageResearch, saveVersion, teachApprovedPackage, type GenerationRequest } from "./server";
+import { learnFromComponent } from "./training";
 
 type Permission = "promo.write" | "promo.approve";
 
@@ -220,7 +222,11 @@ export async function saveComponent(formData: FormData) {
     if (next !== "APPROVED") await reopenIfApproved(db, loaded.pkg.id);
   }
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "package.component.saved", targetType: "promo_package_component", targetId: component.id });
-  redirect(`${here}?notice=Saved.`);
+  // Approved copy becomes a training example for future packages.
+  if (next === "APPROVED") {
+    await learnFromComponent({ organizationId: ctx.resolved.id, brand: ctx.brand, actorId: ctx.auth.user.id, component: { id: component.id, kind: component.kind, content }, promo: loaded.promo }).catch(() => undefined);
+  }
+  redirect(`${here}?notice=${enc(next === "APPROVED" ? "Saved. Approved copy joins the training library." : "Saved.")}`);
 }
 
 export async function restoreVersion(formData: FormData) {
@@ -263,6 +269,9 @@ export async function approvePackage(formData: FormData) {
   const db = tenantDb(ctx.resolved.id);
   await db.promoPackage.updateMany({ where: { id: loaded.pkg.id }, data: { status: "APPROVED", approvedAt: new Date(), approvedById: ctx.auth.user.id } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "package.approved", targetType: "promo_package", targetId: loaded.pkg.id });
+  for (const component of loaded.components) {
+    await learnFromComponent({ organizationId: ctx.resolved.id, brand: ctx.brand, actorId: ctx.auth.user.id, component, promo: loaded.promo }).catch(() => undefined);
+  }
   await teachApprovedPackage({
     organizationId: ctx.resolved.id,
     brandId: ctx.brand.id,
@@ -287,4 +296,30 @@ export async function deletePackage(formData: FormData) {
   await tenantDb(ctx.resolved.id).promoPackage.updateMany({ where: { id: loaded.pkg.id }, data: { deletedAt: new Date() } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "package.deleted", targetType: "promo_package", targetId: loaded.pkg.id });
   redirect(`/promo-studio/${loaded.promo.id}?tab=package&notice=${enc("Package deleted.")}`);
+}
+
+// ---------------------------------------------------------------------------
+// Web research for timely hooks
+
+export async function refreshResearch(formData: FormData) {
+  const { ctx, loaded, back } = await target(formData, "promo.write");
+  await tenantDb(ctx.resolved.id).promoPackage.updateMany({ where: { id: loaded.pkg.id }, data: { researchStatus: "QUEUED", researchError: null } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "package.research.run", targetType: "promo_package", targetId: loaded.pkg.id });
+  after(() => runPackageResearch({ organizationId: ctx.resolved.id, packageId: loaded.pkg.id, brand: ctx.brand, actorId: ctx.auth.user.id }));
+  redirect(`${back}?notice=${enc("Searching the web for timely hooks…")}#research`);
+}
+
+/** An editor confirms (or un-confirms) a finding after opening its source. Only checked findings reach reader-facing copy. */
+export async function toggleFinding(formData: FormData) {
+  const { ctx, loaded, back } = await target(formData, "promo.write");
+  const id = field(formData, "findingId", 10);
+  const db = tenantDb(ctx.resolved.id);
+  const row = await db.promoPackage.findFirst({ where: { id: loaded.pkg.id }, select: { research: true } });
+  const findings = parseFindings(row?.research);
+  const hit = findings.find((f) => f.id === id);
+  if (!hit) redirect(`${back}#research`);
+  const next = findings.map((f) => (f.id === id ? { ...f, checked: !f.checked } : f));
+  await db.promoPackage.updateMany({ where: { id: loaded.pkg.id }, data: { research: next as unknown as Prisma.InputJsonValue } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: hit.checked ? "package.research.unchecked" : "package.research.checked", targetType: "promo_package", targetId: loaded.pkg.id, metadata: { url: hit.sourceUrl } });
+  redirect(`${back}#research`);
 }

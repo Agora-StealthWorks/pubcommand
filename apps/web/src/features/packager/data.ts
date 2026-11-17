@@ -1,5 +1,6 @@
 import { tenantDb } from "@pubcommand/db";
 import { componentSpec, parseDirection, type ClaimFlag } from "../../../../../modules/promo-studio/packager";
+import { parseFindings } from "../../../../../modules/promo-studio/timely";
 import { isGenStale } from "./server";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,6 +54,7 @@ export type LoadedComponent = {
   genStatus: "NONE" | "QUEUED" | "RUNNING" | "DONE" | "FAILED";
   genError: string | null;
   flags: ClaimFlag[];
+  examplesUsed: { id: string; title: string }[];
   currentVersion: number;
   updatedAt: Date;
 };
@@ -63,7 +65,7 @@ export async function loadPackage(organizationId: string, brandId: string, promo
   const db = tenantDb(organizationId);
   const pkg = await db.promoPackage.findFirst({ where: { id: packageId, promoId, brandId, deletedAt: null } });
   if (!pkg) return null;
-  const promo = await db.promo.findFirst({ where: { id: promoId, brandId, deletedAt: null }, select: { id: true, title: true, sourceText: true } });
+  const promo = await db.promo.findFirst({ where: { id: promoId, brandId, deletedAt: null }, select: { id: true, title: true, sourceText: true, publisher: true } });
   if (!promo) return null;
   const rows = await db.promoPackageComponent.findMany({ where: { packageId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
   const components: LoadedComponent[] = rows.map((row) => {
@@ -80,11 +82,17 @@ export async function loadPackage(organizationId: string, brandId: string, promo
       genStatus: stale ? "FAILED" : row.genStatus,
       genError: stale ? "Interrupted (the server restarted). Write it again." : row.genError,
       flags: Array.isArray(row.flags) ? (row.flags as unknown as ClaimFlag[]) : [],
+      examplesUsed: Array.isArray(row.examplesUsed) ? (row.examplesUsed as unknown as { id: string; title: string }[]) : [],
       currentVersion: row.currentVersion,
       updatedAt: row.updatedAt,
     };
   });
-  return { pkg: { ...pkg, direction: parseDirection(pkg.direction) }, promo, components };
+  const researchStale = (pkg.researchStatus === "RUNNING" || pkg.researchStatus === "QUEUED") && isGenStale("RUNNING", pkg.updatedAt);
+  return {
+    pkg: { ...pkg, direction: parseDirection(pkg.direction), research: parseFindings(pkg.research), researchStatus: researchStale ? "FAILED" : pkg.researchStatus, researchError: researchStale ? "Interrupted (the server restarted). Run it again." : pkg.researchError },
+    promo,
+    components,
+  };
 }
 
 export type LoadedPackage = NonNullable<Awaited<ReturnType<typeof loadPackage>>>;

@@ -12,6 +12,7 @@ export const manifest = defineModule({
     { path: "/promo-studio/lessons", title: "Lessons learned" },
     { path: "/promo-studio/directory", title: "Promo directory" },
     { path: "/promo-studio/bulk", title: "Bulk re-analyze" },
+    { path: "/promo-studio/training", title: "Packager training library" },
   ],
   permissions: [
     { key: "promo.read", description: "Read promotions" },
@@ -19,7 +20,11 @@ export const manifest = defineModule({
     { key: "promo.approve", description: "Approve promotions" },
   ],
   events: [{ name: "promo.approved", description: "A promotion was approved" }],
-  jobs: [{ name: "promo.publish", description: "Publish an approved promotion" }],
+  jobs: [
+    { name: "promo.publish", description: "Publish an approved promotion" },
+    { name: "promo-studio.bulk-reanalyze", description: "Run queued promo re-analyses, two at a time" },
+    { name: "promo-studio.sheets-sync", description: "Sync promo performance from Google Sheets" },
+  ],
   settingsSchema: {
     type: "object",
     additionalProperties: false,

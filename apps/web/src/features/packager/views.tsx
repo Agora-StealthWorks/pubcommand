@@ -1,5 +1,9 @@
 import { Badge, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
+import type { ReactNode } from "react";
+import type { Finding } from "../../../../../modules/promo-studio/timely";
+import { AutoRefresh } from "../promos/auto-refresh";
+import { refreshResearch, toggleFinding } from "./actions";
 import {
   COMPONENT_GROUPS,
   COMPONENT_STATUS_LABEL,
@@ -218,5 +222,102 @@ export function DirectionFields({ values, eventToggle }: { values?: PackageDirec
         </div>
       </fieldset>
     </div>
+  );
+}
+
+/**
+ * The package's live web research: each finding with its source link. An
+ * editor opens the source and ticks it; only ticked findings reach
+ * reader-facing copy, while the editorial guide lists them all as leads.
+ */
+export function ResearchPanel({
+  findings,
+  status,
+  error,
+  researchedAt,
+  writable,
+  hidden,
+  used,
+  aiReady,
+}: {
+  findings: readonly Finding[];
+  status: string;
+  error: string | null;
+  researchedAt: Date | null;
+  writable: boolean;
+  hidden: ReactNode;
+  used: boolean;
+  aiReady: boolean;
+}) {
+  const busy = status === "QUEUED" || status === "RUNNING";
+  if (!used && !findings.length && status === "NONE") return null;
+  const checked = findings.filter((f) => f.checked).length;
+  return (
+    <section id="research" className="space-y-3 rounded-xl border border-line bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-semibold">Timely hooks (web research)</h2>
+          <p className="text-sm text-muted">
+            Found by searching the web for this promo&apos;s subject. Open each source and tick it once you have checked it: only ticked hooks reach reader-facing copy (lift notes, ads). The
+            editorial guide lists them all, with their links, as leads.
+          </p>
+        </div>
+        {writable ? (
+          <form action={refreshResearch}>
+            {hidden}
+            <button type="submit" disabled={busy || !aiReady} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold hover:bg-canvas disabled:opacity-50">
+              {findings.length || status !== "NONE" ? "Search again" : "Search the web"}
+            </button>
+          </form>
+        ) : null}
+      </div>
+      {busy ? (
+        <p className="flex items-center gap-2 text-sm text-[#1e3a8a]">
+          <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[#1e3a8a] border-t-transparent" aria-hidden />
+          Searching the web… <AutoRefresh />
+        </p>
+      ) : null}
+      {status === "FAILED" && error ? <p className="[overflow-wrap:anywhere] rounded-md border border-[#fecdca] bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">{error}</p> : null}
+      {!aiReady && !findings.length ? <p className="text-sm text-muted">Web research needs the AI key (ANTHROPIC_API_KEY).</p> : null}
+      {status === "DONE" && !findings.length ? <p className="text-sm text-muted">Nothing current and clearly related turned up. The copy uses evergreen angles.</p> : null}
+      {findings.length ? (
+        <>
+          <p className="text-xs text-muted">
+            {checked} of {findings.length} checked{researchedAt ? ` · searched ${researchedAt.toISOString().slice(0, 10)}` : ""}
+          </p>
+          <ul className="divide-y divide-line">
+            {findings.map((f) => (
+              <li key={f.id} className="flex flex-wrap items-start gap-3 py-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm font-semibold [overflow-wrap:anywhere]">
+                    {f.headline} {f.when ? <span className="font-normal text-muted">· {f.when}</span> : null}
+                  </p>
+                  {f.summary ? <p className="text-sm [overflow-wrap:anywhere]">{f.summary}</p> : null}
+                  {f.whyItMatters ? <p className="text-xs text-muted [overflow-wrap:anywhere]">Why it matters: {f.whyItMatters}</p> : null}
+                  <a href={f.sourceUrl} target="_blank" rel="noopener noreferrer nofollow" className="block text-xs text-accent [overflow-wrap:anywhere] hover:underline">
+                    Source: {f.sourceTitle || f.sourceUrl}
+                  </a>
+                </div>
+                {writable ? (
+                  <form action={toggleFinding}>
+                    {hidden}
+                    <input type="hidden" name="findingId" value={f.id} />
+                    <button
+                      type="submit"
+                      className={`inline-flex min-h-11 items-center rounded-md border px-3 text-sm font-semibold ${f.checked ? "border-[#abefc6] bg-[#ecfdf3] text-[#067647]" : "border-line bg-white hover:bg-canvas"}`}
+                      aria-pressed={f.checked}
+                    >
+                      {f.checked ? "Checked ✓" : "Mark checked"}
+                    </button>
+                  </form>
+                ) : (
+                  <Badge tone={f.checked ? "ok" : "warn"}>{f.checked ? "Checked" : "Not checked"}</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </section>
   );
 }

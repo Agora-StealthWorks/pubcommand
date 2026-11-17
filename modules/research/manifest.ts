@@ -6,7 +6,11 @@ export const manifest = defineModule({
   name: "Research Extractor",
   description: "Turn articles, PDFs and videos into index cards, group them, and build an outline from them.",
   nav: [{ label: "Research Extractor", href: "/research", permission: "research.read" }],
-  routes: [{ path: "/research", title: "Research Extractor" }],
+  routes: [
+    { path: "/research", title: "Research Extractor" },
+    { path: "/research/capture", title: "Capture a page" },
+    { path: "/research/bookmarklet", title: "Capture bookmarklet" },
+  ],
   permissions: [
     { key: "research.read", description: "Open research projects you own or that are shared with you" },
     { key: "research.write", description: "Create research projects, add sources, and edit cards and outlines" },
@@ -15,6 +19,7 @@ export const manifest = defineModule({
   jobs: [
     { name: "research.extract", description: "Extract index cards from one source" },
     { name: "research.group", description: "Suggest topic groups for a project's cards" },
+    { name: "research.condense", description: "Condense a set of cards into fewer, denser cards" },
   ],
   settingsSchema: {
     type: "object",

@@ -1,6 +1,6 @@
 import { packagerAccess } from "@/features/packager/access";
 import { loadPackage } from "@/features/packager/data";
-import { fileSafe, packageDocx } from "@/features/packager/export-docx";
+import { fileSafe, packageDocx, packageZip } from "@/features/packager/export-docx";
 import { packageMarkdown } from "../../../../../../../../../../../../modules/promo-studio/packager";
 
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string; promoId: string; packageId: string }> }) {
@@ -26,6 +26,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   });
   if (format === "md") {
     return new Response(packageMarkdown(input), { headers: headers("text/markdown; charset=utf-8", "md") });
+  }
+  if (format === "zip") {
+    return new Response(new Uint8Array(await packageZip(input)), { headers: headers("application/zip", "zip") });
   }
   const buffer = await packageDocx(input);
   return new Response(new Uint8Array(buffer), { headers: headers("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx") });

@@ -16,6 +16,9 @@ model ResearchProject {
   /// "Suggest topic groups" run: NONE | QUEUED | RUNNING | DONE | FAILED.
   groupStatus    String    @default("NONE") @map("group_status")
   groupError     String?   @map("group_error")
+  /// "Condense" run: NONE | QUEUED | RUNNING | DONE | FAILED.
+  condenseStatus String    @default("NONE") @map("condense_status")
+  condenseError  String?   @map("condense_error")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
@@ -64,6 +67,8 @@ model ResearchSource {
   status         String          @default("QUEUED")
   error          String?
   cardCount      Int             @default(0) @map("card_count")
+  /// How a web page was read: direct | jina | wayback | capture | x.
+  readVia        String?         @map("read_via")
   createdById    String?         @map("created_by_id") @db.Uuid
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
@@ -111,6 +116,8 @@ model ResearchCard {
   position       Int                @default(0)
   /// ai | manual
   origin         String             @default("ai")
+  /// For condensed cards: the cards it was made from (those may be gone).
+  condensedFrom  String[]           @default([]) @map("condensed_from")
   createdById    String?            @map("created_by_id") @db.Uuid
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")

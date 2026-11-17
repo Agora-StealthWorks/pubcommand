@@ -9,6 +9,7 @@ const KINDS = [
   ["url", "Web link"],
   ["file", "PDF / Word"],
   ["youtube", "YouTube"],
+  ["x", "X post"],
 ] as const;
 type Kind = (typeof KINDS)[number][0];
 
@@ -21,14 +22,14 @@ function Submit() {
   );
 }
 
-/** One form for all four ways in; the server action picks the reader from `kind`. */
+/** One form for every way in; the server action picks the reader from `kind`. */
 export function IngestForm({ projectId, action, initialKind }: { projectId: string; action: (formData: FormData) => Promise<void>; initialKind?: string }) {
   const [kind, setKind] = useState<Kind>(KINDS.some(([key]) => key === initialKind) ? (initialKind as Kind) : "text");
   return (
     <form action={action} className="space-y-4 rounded-xl border border-line bg-white p-4">
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="kind" value={kind} />
-      <div role="radiogroup" aria-label="Source type" className="grid grid-cols-2 gap-1 rounded-lg bg-canvas p-1 sm:grid-cols-4">
+      <div role="radiogroup" aria-label="Source type" className="grid grid-cols-2 gap-1 rounded-lg bg-canvas p-1 sm:grid-cols-5">
         {KINDS.map(([key, label]) => (
           <button
             key={key}
@@ -60,7 +61,7 @@ export function IngestForm({ projectId, action, initialKind }: { projectId: stri
         <div>
           <Label htmlFor="ingest-url">Article or PDF link</Label>
           <Input id="ingest-url" name="url" type="url" required placeholder="https://" />
-          <p className="mt-1 text-xs text-muted">Public pages only. If a site blocks readers or needs a login, paste the text instead.</p>
+          <p className="mt-1 text-xs text-muted">Public pages only. If a site blocks readers or needs a login, paste the text instead, or send the page with the bookmarklet.</p>
         </div>
       ) : null}
       {kind === "file" ? (
@@ -86,6 +87,19 @@ export function IngestForm({ projectId, action, initialKind }: { projectId: stri
           <div>
             <Label htmlFor="ingest-transcript">Transcript (optional)</Label>
             <Textarea id="ingest-transcript" name="transcript" rows={4} placeholder="Leave empty to use the video's captions. Paste one if the video has none." />
+          </div>
+        </>
+      ) : null}
+      {kind === "x" ? (
+        <>
+          <div>
+            <Label htmlFor="ingest-x">Link to the post</Label>
+            <Input id="ingest-x" name="xUrl" type="url" required placeholder="https://x.com/name/status/…" />
+            <p className="mt-1 text-xs text-muted">For a thread, link the last post: the author&apos;s earlier posts above it come along.</p>
+          </div>
+          <div>
+            <Label htmlFor="ingest-x-text">Post or thread text (optional)</Label>
+            <Textarea id="ingest-x-text" name="xText" rows={4} placeholder="Leave empty to read it from X. Paste it here if X blocks the request." />
           </div>
         </>
       ) : null}

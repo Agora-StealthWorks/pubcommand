@@ -18,7 +18,7 @@ import {
   schemeFor,
   tierFor,
 } from "./performance";
-import { createQueue } from "./queue";
+import { BULK_MAX_ATTEMPTS, BULK_STALE_MS, pickClaims, planRecovery, queueSummary } from "./queue";
 import { calibrationStats, leaveOneOut, scoreVector, similarOutcomes, type TrainingPair } from "./similar";
 
 describe("CSV and XLSX reading", () => {
@@ -334,40 +334,36 @@ describe("directory overrides", () => {
   });
 });
 
-describe("bulk queue", () => {
-  it("never runs more than the limit at once and runs every job", async () => {
-    let running = 0;
-    let peak = 0;
-    const done: string[] = [];
-    const seenWaiting: number[] = [];
-    const queue = createQueue(
-      2,
-      async (id) => {
-        running += 1;
-        peak = Math.max(peak, running);
-        await new Promise((r) => setTimeout(r, 5));
-        running -= 1;
-        done.push(id);
-      },
-      (waiting) => {
-        seenWaiting.push(waiting.length);
-      },
-    );
-    queue.add(["a", "b", "c", "d", "e", "a"]);
-    await queue.idle();
-    expect(peak).toBe(2);
-    expect(done.sort()).toEqual(["a", "b", "c", "d", "e"]);
-    expect(seenWaiting[0]).toBe(3);
+describe("durable bulk queue", () => {
+  const now = new Date("2026-11-17T12:00:00Z");
+  const at = (minutesAgo: number) => new Date(now.getTime() - minutesAgo * 60_000);
+  const row = (id: string, status: string, extra: Partial<{ attempts: number; lockedAt: Date | null; createdAt: Date }> = {}) => ({
+    id,
+    status,
+    attempts: extra.attempts ?? 0,
+    lockedAt: extra.lockedAt ?? null,
+    createdAt: extra.createdAt ?? at(30),
   });
 
-  it("keeps going after a failing job", async () => {
-    const done: string[] = [];
-    const queue = createQueue(2, async (id) => {
-      if (id === "bad") throw new Error("x");
-      done.push(id);
-    });
-    queue.add(["bad", "ok1", "ok2"]);
-    await queue.idle();
-    expect(done.sort()).toEqual(["ok1", "ok2"]);
+  it("starts the oldest queued promos, never more than two running", () => {
+    const rows = [row("c", "QUEUED", { createdAt: at(1) }), row("a", "QUEUED", { createdAt: at(5) }), row("b", "QUEUED", { createdAt: at(3) })];
+    expect(pickClaims(rows, now)).toEqual(["a", "b"]);
+    expect(pickClaims([...rows, row("r", "RUNNING", { lockedAt: at(1) })], now)).toEqual(["a"]);
+    expect(pickClaims([...rows, row("r1", "RUNNING", { lockedAt: at(1) }), row("r2", "RUNNING", { lockedAt: at(2) })], now)).toEqual([]);
+  });
+
+  it("does not let a dead server's run hold a slot, and requeues it", () => {
+    const stale = row("dead", "RUNNING", { lockedAt: new Date(now.getTime() - BULK_STALE_MS - 1000), attempts: 1 });
+    expect(pickClaims([stale, row("q", "QUEUED")], now)).toEqual(["q"]);
+    expect(planRecovery([stale, row("live", "RUNNING", { lockedAt: at(1) })], now)).toEqual({ requeue: ["dead"], fail: [] });
+  });
+
+  it("fails a promo that keeps crashing the server instead of retrying forever", () => {
+    const stale = row("loop", "RUNNING", { lockedAt: at(60), attempts: BULK_MAX_ATTEMPTS });
+    expect(planRecovery([stale], now)).toEqual({ requeue: [], fail: ["loop"] });
+  });
+
+  it("counts statuses for the banner", () => {
+    expect(queueSummary([row("a", "QUEUED"), row("b", "RUNNING"), row("c", "DONE"), row("d", "QUEUED")])).toMatchObject({ QUEUED: 2, RUNNING: 1, DONE: 1, FAILED: 0 });
   });
 });

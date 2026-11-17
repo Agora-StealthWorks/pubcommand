@@ -1,3 +1,4 @@
+import { aiConfigured } from "@pubcommand/ai";
 import { Badge, Button, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -5,9 +6,9 @@ import { Denied, Flash } from "@/components/ui";
 import { packagerAccess } from "@/features/packager/access";
 import { addComponents, approvePackage, deletePackage, reopenPackage, retryFailed, updatePackage } from "@/features/packager/actions";
 import { loadPackage } from "@/features/packager/data";
-import { ComponentPicker, DirectionFields, FlagSummary, GenBadge, StatusBadge } from "@/features/packager/views";
+import { ComponentPicker, DirectionFields, FlagSummary, GenBadge, ResearchPanel, StatusBadge } from "@/features/packager/views";
 import { AutoRefresh } from "@/features/promos/auto-refresh";
-import { preview } from "../../../../../../../../../../../modules/promo-studio/packager";
+import { componentSpec, preview } from "../../../../../../../../../../../modules/promo-studio/packager";
 
 export default async function PackagePage({
   params,
@@ -55,6 +56,9 @@ export default async function PackagePage({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <a href={`${base}/export?format=zip`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold hover:bg-canvas" title="One Word file per component, plus the combined file">
+              Zip (all files)
+            </a>
             <a href={`${base}/export?format=docx`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold hover:bg-canvas">
               Word
             </a>
@@ -130,6 +134,17 @@ export default async function PackagePage({
         ))}
         {components.length === 0 ? <li className="rounded-xl border border-line bg-white p-4 text-sm text-muted">No components. Add some below.</li> : null}
       </ul>
+
+      <ResearchPanel
+        findings={pkg.research}
+        status={pkg.researchStatus}
+        error={pkg.researchError}
+        researchedAt={pkg.researchedAt}
+        writable={writable}
+        hidden={hidden}
+        used={components.some((c) => componentSpec(c.kind)?.research)}
+        aiReady={aiConfigured()}
+      />
 
       {writable ? (
         <div className="space-y-3">

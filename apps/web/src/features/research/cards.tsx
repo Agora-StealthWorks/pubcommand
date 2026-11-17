@@ -85,7 +85,7 @@ export function CardItem({ card, projectId, groups, editable, sourceTitle }: { c
         <h4 className="pc-break font-semibold leading-snug">{card.topic}</h4>
         <div className="flex shrink-0 gap-1">
           <Badge tone={TYPE_TONE[card.cardType] ?? "neutral"}>{CARD_TYPE_LABELS[card.cardType] ?? "Note"}</Badge>
-          {card.origin === "manual" ? <Badge>Manual</Badge> : null}
+          {card.origin === "manual" ? <Badge>Manual</Badge> : card.origin === "condensed" ? <Badge tone="accent">Condensed</Badge> : null}
         </div>
       </header>
       <p className="pc-break mt-2 text-sm">{card.summary}</p>
