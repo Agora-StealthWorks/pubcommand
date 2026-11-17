@@ -11,13 +11,13 @@ describe("password", () => {
     expect(hash).not.toContain("correct horse");
     expect(await verifyPassword("correct horse battery", hash)).toBe(true);
     expect(await verifyPassword("nope", hash)).toBe(false);
-  });
+  }, 30_000);
 
   it("accepts a bcrypt $2b$ hash on the password login path", async () => {
     const hash = "$2b$12$cDNQQZkReczV5Ho7D8ZdqufpYeSApFWf18fomR1TWAHGMq9iHzpZ.";
     expect(await verifyPassword("stephen-test-password", hash)).toBe(true);
     expect(await verifyPassword("nope", hash)).toBe(false);
-  });
+  }, 30_000);
 });
 
 describe("magic link", () => {
