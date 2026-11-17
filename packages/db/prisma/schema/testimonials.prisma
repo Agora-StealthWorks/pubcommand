@@ -1,0 +1,125 @@
+// Testimonials (module id "testimonials"). Per brand, each one optionally tied to a
+// publication and an editor from Publication Setup (plain columns; FKs added by hand
+// with ON DELETE SET NULL so archiving or deleting a publication never loses a testimonial).
+// Only status "approved" ever leaves this app (wiki pages, Brain).
+
+/// One reader/member testimonial with its compliance review and consent record.
+model Testimonial {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  publicationId  String?   @map("publication_id") @db.Uuid
+  editorId       String?   @map("editor_id") @db.Uuid
+  /// Name or initials as it may be shown ("Mark T.", "J.R.").
+  displayName    String    @map("display_name")
+  location       String?
+  /// The short quotable line.
+  quote          String
+  /// The full text as the person wrote or said it.
+  body           String?
+  /// The result the person claims, in their words ("Made back the subscription in a week").
+  resultClaimed  String?   @map("result_claimed")
+  /// When the person gave it (not when it was entered).
+  givenOn        DateTime? @map("given_on") @db.Date
+  /// email | survey | chatroom | social | phone | review-site | event | public-form | other
+  channel        String    @default("email")
+  rating         Int?
+  tags           String[]  @default([])
+  videoUrl       String?   @map("video_url")
+  /// Private contact for verification. Never shown in the wiki, never sent to the Brain.
+  contactEmail   String?   @map("contact_email")
+  /// "manual" (staff entered) | "public-form"
+  source         String    @default("manual")
+
+  /// "pending" | "approved" | "rejected"
+  status        String    @default("pending")
+  reviewedById  String?   @map("reviewed_by_id") @db.Uuid
+  reviewedAt    DateTime? @map("reviewed_at")
+  reviewReason  String?   @map("review_reason")
+  /// The "results not typical" disclosure shown with it (required for health brands).
+  disclosure    String?
+  /// Rule-based flags from the brand's compliance rules, recomputed on every save.
+  flags         Json?
+  /// How many rule-based flags it has (for the "flagged" filter).
+  flagCount     Int       @default(0) @map("flag_count")
+  /// AI pre-review: "none" | "running" | "done" | "unavailable" | "failed"
+  aiStatus      String    @default("none") @map("ai_status")
+  aiReason      String?   @map("ai_reason")
+  aiFlags       Json?     @map("ai_flags")
+
+  consentGiven Boolean   @default(false) @map("consent_given")
+  /// The exact consent wording the person agreed to.
+  consentText  String?   @map("consent_text")
+  consentAt    DateTime? @map("consent_at")
+  /// "public-form" | "staff-attested"
+  consentMethod String?  @map("consent_method")
+  /// Salted hash of the submitter's IP (public form only); never the raw address.
+  consentIpHash String?  @map("consent_ip_hash")
+  captureLinkId String?  @map("capture_link_id") @db.Uuid
+
+  createdById String?           @map("created_by_id") @db.Uuid
+  updatedById String?           @map("updated_by_id") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  deletedAt   DateTime?         @map("deleted_at")
+  files       TestimonialFile[]
+
+  @@index([organizationId, brandId, status])
+  @@index([brandId, publicationId])
+  @@index([brandId, editorId])
+  @@map("testimonials")
+}
+
+/// A photo or screenshot attached to a testimonial (bytes in Postgres; there is no volume).
+model TestimonialFile {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  testimonialId  String      @map("testimonial_id") @db.Uuid
+  testimonial    Testimonial @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+  /// "photo" | "screenshot"
+  kind           String      @default("screenshot")
+  filename       String
+  mime           String
+  size           Int
+  data           Bytes
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  @@index([organizationId, testimonialId])
+  @@map("testimonial_files")
+}
+
+/// A saved filter set on the testimonials table, shared with the brand's team.
+model TestimonialView {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String   @map("brand_id") @db.Uuid
+  name           String
+  /// The table's query string (status, pub, editor, channel, tag, q, from, to, flagged).
+  query          String
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, brandId])
+  @@map("testimonial_views")
+}
+
+/// A public "share your story" link. Anyone with the link can submit; every submission lands as pending.
+model TestimonialCaptureLink {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  /// Pre-selects the publication; null lets the person pick one.
+  publicationId  String?   @map("publication_id") @db.Uuid
+  token          String    @unique
+  title          String
+  intro          String?
+  /// The exact wording of the consent checkbox. Copied onto every testimonial submitted.
+  consentText    String    @map("consent_text")
+  active         Boolean   @default(true)
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId, brandId])
+  @@map("testimonial_capture_links")
+}

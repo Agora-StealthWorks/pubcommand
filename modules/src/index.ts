@@ -13,6 +13,8 @@ import { manifest as promoStudio } from "../promo-studio/manifest";
 import { manifest as pubsetup } from "../pubsetup/manifest";
 import { manifest as research } from "../research/manifest";
 import { manifest as settings } from "../settings/manifest";
+import { manifest as testimonials } from "../testimonials/manifest";
+import { manifest as wiki } from "../wiki/manifest";
 
 export const moduleManifests = [
   example,
@@ -27,6 +29,8 @@ export const moduleManifests = [
   funnels,
   miniblog,
   pubsetup,
+  wiki,
+  testimonials,
   billing,
   settings,
 ] as const;
@@ -45,6 +49,8 @@ export const PRODUCT_MODULE_IDS = [
   "funnels",
   "miniblog",
   "pubsetup",
+  "wiki",
+  "testimonials",
   "billing",
 ] as const;
 
@@ -63,5 +69,7 @@ export {
   pubsetup,
   research,
   settings,
+  testimonials,
+  wiki,
 };
 
