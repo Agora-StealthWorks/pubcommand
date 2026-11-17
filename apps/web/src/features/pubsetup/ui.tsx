@@ -150,11 +150,12 @@ export function StatusBadge({ status, archived }: { status: string; archived?: b
   return <Badge tone={tone}>{status === "inactive" ? "Inactive" : status.charAt(0).toUpperCase() + status.slice(1)}</Badge>;
 }
 
-export function SubNav({ active }: { active: "publications" | "editors" | "brand" }) {
+export function SubNav({ active }: { active: "publications" | "editors" | "brand" | "import" }) {
   const tabs = [
     ["publications", "/publication-setup", "Publications"],
     ["editors", "/publication-setup/editors", "Editors"],
     ["brand", "/publication-setup/brand", "Brand defaults"],
+    ["import", "/publication-setup/import", "Import"],
   ] as const;
   return (
     <nav className="-mx-1 mb-5 flex gap-1 overflow-x-auto border-b border-line" aria-label="Publication Setup sections">

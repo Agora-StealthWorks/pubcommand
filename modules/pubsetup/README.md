@@ -85,3 +85,28 @@ getPickerOptions(orgId, brandId): Promise<{ publications: { code, name }[]; edit
 ```
 
 Used today by Promo Analyzer (publisher/product/guru pickers) and Packager (publication block in prompts). `Editor.email` is internal: never show it on public or wiki pages.
+
+## Import (`/publication-setup/import`)
+
+Admins can bring publications, editors and images in from a JSON file. The rules live
+in `import.ts` (pure, tested in `import.test.ts`):
+
+```json
+{
+  "format": "pubcommand.publication-setup/v1",
+  "brand": { "logo": "data:image/png;base64,…" },
+  "publications": [
+    { "code": "WAR", "name": "…", "slug": "…", "tagline": "…", "deliverables": ["…"],
+      "offers": [{ "label": "…", "price": "…", "term": "…" }], "logo": "data:image/png;base64,…",
+      "editors": [{ "editor": "Editor Name", "role": "lead" }] }
+  ],
+  "editors": [{ "name": "…", "title": "…", "shortBio": "…", "longBio": "…", "specialties": ["…"], "photo": "data:image/jpeg;base64,…" }]
+}
+```
+
+- Field keys are the ones in `fields.ts`, and each record is validated exactly like the form.
+  Bad records are skipped with a warning; the rest still import.
+- Publications match on code, editors on URL name or name. A match only gets the fields it
+  has left blank (and a logo/photo if it has none). Nothing typed in the app is overwritten,
+  so re-running a file is a no-op.
+- The dry run changes nothing. Each saved publication and editor teaches the Brain, as a form save does.
