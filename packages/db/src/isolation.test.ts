@@ -8,6 +8,13 @@ import { PlatformAuditImmutableError, getPrisma } from "./client";
 import { createTenantClient, withOrgContext } from "./tenant";
 
 const databaseUrl = process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:5432/pubcommand";
+
+function appUrl(base: string, password: string): string {
+  const url = new URL(base);
+  url.username = "pubcommand_app";
+  url.password = password;
+  return url.toString();
+}
 process.env.DATABASE_URL = databaseUrl;
 
 describe("tenant isolation", () => {
@@ -57,7 +64,8 @@ describe("tenant isolation", () => {
     ).id;
     app = new PrismaClient({
       datasources: {
-        db: { url: `postgresql://pubcommand_app:${password}@127.0.0.1:5432/pubcommand` },
+        // Same server and database as DATABASE_URL, but as the restricted role.
+        db: { url: appUrl(databaseUrl, password) },
       },
     });
   });
@@ -66,7 +74,7 @@ describe("tenant isolation", () => {
     if (orgA && orgB) {
       await admin.organization.deleteMany({ where: { id: { in: [orgA, orgB] } } });
     }
-    await admin.plan.deleteMany({ where: { key: { startsWith: "plan-" } } });
+    await admin.plan.deleteMany({ where: { key: `plan-${password.slice(0, 8)}` } });
     await admin.$disconnect();
     await app?.$disconnect();
   });
