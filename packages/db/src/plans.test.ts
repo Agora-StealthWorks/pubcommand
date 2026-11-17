@@ -19,7 +19,7 @@ describe("default plans", () => {
   const organizationIds: string[] = [];
 
   beforeAll(async () => {
-    execSync("pnpm exec prisma migrate deploy --schema prisma/schema.prisma", {
+    execSync("pnpm exec prisma migrate deploy --schema prisma/schema", {
       cwd: new URL("..", import.meta.url).pathname,
       env: process.env,
       stdio: "inherit",

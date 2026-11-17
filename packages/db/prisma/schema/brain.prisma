@@ -1,0 +1,29 @@
+// Brain (knowledge) tables.
+enum KnowledgeVisibility {
+  PRIVATE
+  SHARED
+}
+
+/// Brain notes. brandId null = the main Brain. SHARED notes are visible to every brand.
+model KnowledgePage {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  brandId        String?             @map("brand_id") @db.Uuid
+  title          String
+  slug           String
+  body           String
+  visibility     KnowledgeVisibility @default(PRIVATE)
+  folder         String?
+  source         String              @default("member")
+  sourceRef      String?             @map("source_ref")
+  createdById    String?             @map("created_by_id") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  brand          Brand?              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, slug])
+  @@unique([organizationId, sourceRef])
+  @@index([organizationId, brandId])
+  @@map("knowledge_pages")
+}

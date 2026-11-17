@@ -25,4 +25,4 @@ export {
 } from "./accounts";
 export { createCatalogPlan, ensureDefaultPlans, insertPlanIfAbsent, setPlanArchived, updateCatalogPlan } from "./plans";
 export { ensureSuperadmin } from "./superadmin";
-export { TenantIsolationError, createTenantClient, tenantDb, withOrgContext } from "./tenant";
+export { TenantIsolationError, createTenantClient, tenantDb, tenantModelNames, withOrgContext } from "./tenant";

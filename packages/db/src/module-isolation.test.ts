@@ -16,7 +16,7 @@ describe("module data stays inside its organization", () => {
   let planId = "";
 
   beforeAll(async () => {
-    execSync("pnpm exec prisma migrate deploy --schema prisma/schema.prisma", {
+    execSync("pnpm exec prisma migrate deploy --schema prisma/schema", {
       cwd: new URL("..", import.meta.url).pathname,
       env: process.env,
       stdio: "inherit",
@@ -63,5 +63,16 @@ describe("module data stays inside its organization", () => {
     await expect(
       tenantDb(a.id).promo.create({ data: { organizationId: b.id, brandId: b.brandId, title: "cross" } }),
     ).rejects.toBeInstanceOf(TenantIsolationError);
+  });
+});
+
+describe("tenant model registry", () => {
+  it("includes every table that has an organization id", async () => {
+    const { tenantModelNames } = await import("./tenant");
+    expect(tenantModelNames()).toEqual(
+      expect.arrayContaining(["Organization", "Brand", "Membership", "Promo", "PromoAnalysis", "PromoFile", "KnowledgePage", "AiUsageLog"]),
+    );
+    expect(tenantModelNames()).not.toContain("User");
+    expect(tenantModelNames()).not.toContain("Plan");
   });
 });

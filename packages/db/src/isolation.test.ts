@@ -20,7 +20,7 @@ describe("tenant isolation", () => {
   const password = randomBytes(18).toString("hex");
 
   beforeAll(async () => {
-    execSync("pnpm exec prisma migrate deploy --schema prisma/schema.prisma", {
+    execSync("pnpm exec prisma migrate deploy --schema prisma/schema", {
       cwd: new URL("..", import.meta.url).pathname,
       env: process.env,
       stdio: "inherit",
@@ -107,7 +107,7 @@ describe("tenant isolation", () => {
   });
 
   it("keeps the reserved slug list in the database migration", () => {
-    const sql = readFileSync(new URL("../prisma/migrations/20251115120100_rls/migration.sql", import.meta.url), "utf8");
+    const sql = readFileSync(new URL("../prisma/schema/migrations/20251115120100_rls/migration.sql", import.meta.url), "utf8");
     for (const slug of RESERVED_SLUGS) expect(sql).toContain(`'${slug}'`);
   });
 });

@@ -1,0 +1,63 @@
+import { slugifyName } from "@pubcommand/core";
+import { appendOrgAudit, tenantDb } from "@pubcommand/db";
+
+/**
+ * Write or refresh one note in a Brain. Any app calls this to teach the Brain.
+ *
+ * - brandId set: the brand's mini-brain (private to that brand by default).
+ * - brandId null: the main Brain.
+ * - sourceRef is the idempotency key, e.g. "promo:<id>". The same sourceRef
+ *   updates the existing note instead of adding a duplicate.
+ * - visibility "SHARED" makes the note visible to every brand (best practices
+ *   only; never a brand's private data).
+ *
+ * Soft-fails: a Brain problem never breaks the app that called it.
+ */
+export async function teachBrain(input: {
+  organizationId: string;
+  brandId: string | null;
+  sourceRef: string;
+  title: string;
+  body: string;
+  folder?: string;
+  source: string;
+  visibility?: "PRIVATE" | "SHARED";
+  actorId: string | null;
+}): Promise<void> {
+  try {
+    const db = tenantDb(input.organizationId);
+    const existing = await db.knowledgePage.findFirst({ where: { sourceRef: input.sourceRef } });
+    if (existing) {
+      await db.knowledgePage.updateMany({
+        where: { id: existing.id },
+        data: { title: input.title, body: input.body, ...(input.folder ? { folder: input.folder } : {}) },
+      });
+      return;
+    }
+    const base = (slugifyName(input.title) || "note").slice(0, 60);
+    let slug = base;
+    for (let n = 2; await db.knowledgePage.count({ where: { slug } }); n += 1) slug = `${base}-${n}`;
+    await db.knowledgePage.create({
+      data: {
+        organizationId: input.organizationId,
+        brandId: input.brandId,
+        title: input.title,
+        slug,
+        body: input.body,
+        folder: input.folder ?? null,
+        source: input.source,
+        sourceRef: input.sourceRef,
+        visibility: input.visibility ?? "PRIVATE",
+        createdById: input.actorId,
+      },
+    });
+    await appendOrgAudit(input.organizationId, {
+      actorId: input.actorId,
+      action: "brain.taught",
+      targetType: "knowledge_page",
+      targetId: input.sourceRef,
+    });
+  } catch (error) {
+    console.error("[brain] teach failed", input.sourceRef, error);
+  }
+}

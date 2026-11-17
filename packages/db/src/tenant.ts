@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { rawPrisma } from "./client";
 
 export class TenantIsolationError extends Error {
@@ -8,24 +8,20 @@ export class TenantIsolationError extends Error {
   }
 }
 
+/**
+ * Every model with an organizationId column is a tenant table, plus Organization
+ * itself. New module tables are picked up automatically.
+ */
 const TENANT_MODELS = new Set([
   "Organization",
-  "OrganizationSlugHistory",
-  "Brand",
-  "Workspace",
-  "Membership",
-  "Role",
-  "RolePermission",
-  "Exclusion",
-  "AuditLog",
-  "OrganizationModule",
-  "OrgSettings",
-  "Promo",
-  "PromoAnalysis",
-  "PromoFile",
-  "KnowledgePage",
-  "AiUsageLog",
+  ...Prisma.dmmf.datamodel.models
+    .filter((model) => model.fields.some((field) => field.name === "organizationId"))
+    .map((model) => model.name),
 ]);
+
+export function tenantModelNames(): string[] {
+  return [...TENANT_MODELS].sort();
+}
 
 const SCOPED_BY_ID = new Set(["Organization"]);
 

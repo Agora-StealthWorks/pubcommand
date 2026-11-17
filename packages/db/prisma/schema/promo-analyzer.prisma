@@ -1,0 +1,89 @@
+// Promo Analyzer tables.
+enum AnalysisStatus {
+  NONE
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+
+/// A sales letter / promo for one brand. The copy lives here; each AI pass is a PromoAnalysis.
+model Promo {
+  id                 String         @id @default(uuid()) @db.Uuid
+  organizationId     String         @map("organization_id") @db.Uuid
+  brandId            String         @map("brand_id") @db.Uuid
+  title              String
+  filename           String?
+  inputType          String         @default("text") @map("input_type")
+  sourceText         String         @default("") @map("source_text")
+  publisher          String?
+  gurus              String[]       @default([])
+  product            String?
+  promoType          String?        @map("promo_type")
+  promoStatus        String?        @map("promo_status")
+  promoCode          String?        @map("promo_code")
+  runStartDate       DateTime?      @map("run_start_date") @db.Date
+  pricePoint         Decimal?       @map("price_point") @db.Decimal(10, 2)
+  analysisStatus     AnalysisStatus @default(NONE) @map("analysis_status")
+  analysisError      String?        @map("analysis_error")
+  effectivenessScore Float?         @map("effectiveness_score")
+  fkReadingEase      Float?         @map("fk_reading_ease")
+  fkGradeLevel       Float?         @map("fk_grade_level")
+  myScore            Float?         @map("my_score")
+  performanceScore   Float?         @map("performance_score")
+  trainingNotes      String?        @map("training_notes")
+  isBestPerformer    Boolean        @default(false) @map("is_best_performer")
+  source             String?
+  uploadedById       String?        @map("uploaded_by_id") @db.Uuid
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  deletedAt          DateTime?      @map("deleted_at")
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  brand              Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  analyses           PromoAnalysis[]
+  files              PromoFile[]
+
+  @@index([organizationId, brandId, createdAt])
+  @@map("promos")
+}
+
+/// One AI analysis run. Kept as history; the newest DONE row is the current one.
+model PromoAnalysis {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  promoId        String       @map("promo_id") @db.Uuid
+  version        Int
+  model          String
+  result         Json
+  score          Float?
+  inputTokens    Int          @default(0) @map("input_tokens")
+  outputTokens   Int          @default(0) @map("output_tokens")
+  createdById    String?      @map("created_by_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  promo          Promo        @relation(fields: [promoId], references: [id], onDelete: Cascade)
+
+  @@unique([promoId, version])
+  @@index([organizationId])
+  @@map("promo_analyses")
+}
+
+/// The original upload and supporting files, stored in Postgres (no volume needed).
+model PromoFile {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  promoId        String       @map("promo_id") @db.Uuid
+  kind           String       @default("supplemental")
+  category       String?
+  filename       String
+  mimeType       String       @map("mime_type")
+  size           Int
+  data           Bytes
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  promo          Promo        @relation(fields: [promoId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, promoId])
+  @@map("promo_files")
+}

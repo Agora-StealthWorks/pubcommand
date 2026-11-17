@@ -1,6 +1,7 @@
 import { runStructured } from "@pubcommand/ai";
-import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
-import { slugifyName } from "@pubcommand/core";
+import { tenantDb, type Prisma } from "@pubcommand/db";
+import { logAiUsage } from "../ai/usage";
+import { teachBrain } from "../brain/teach";
 import {
   ANALYSIS_SCHEMA,
   ANALYSIS_SYSTEM,
@@ -109,11 +110,11 @@ export async function runPromoAnalysis(input: {
       maxTokens: 48000,
     });
     if (answer.status !== "ok") {
-      if ("usage" in answer && answer.usage) await logUsage(input.organizationId, input.actorId, answer.usage);
+      if ("usage" in answer && answer.usage) await logAiUsage({ organizationId: input.organizationId, moduleId: "promo-studio", feature: "promo.analyze", actorId: input.actorId, usage: answer.usage });
       await db.promo.updateMany({ where: { id: promo.id }, data: { analysisStatus: "FAILED", analysisError: answer.reason } });
       return;
     }
-    await logUsage(input.organizationId, input.actorId, answer.usage);
+    await logAiUsage({ organizationId: input.organizationId, moduleId: "promo-studio", feature: "promo.analyze", actorId: input.actorId, usage: answer.usage });
 
     const result = normalizeAnalysis(answer.data);
     const score = overallScore(result);
@@ -150,69 +151,22 @@ export async function runPromoAnalysis(input: {
         pricePoint: promo.pricePoint ?? (price != null && Number.isFinite(price) ? price : null),
       },
     });
-    await teachBrain({ organizationId: input.organizationId, brandId: promo.brandId, brandName: input.brandName, promoId: promo.id, title: promo.title, score, result, actorId: input.actorId });
+    const note = brainNote({ title: promo.title, brandName: input.brandName, score, result });
+    await teachBrain({
+      organizationId: input.organizationId,
+      brandId: promo.brandId,
+      sourceRef: `promo:${promo.id}`,
+      title: note.title,
+      body: note.body,
+      folder: "Promo reviews",
+      source: "promo-analyzer",
+      actorId: input.actorId,
+    });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "The analysis failed.";
     await db.promo.updateMany({ where: { id: input.promoId }, data: { analysisStatus: "FAILED", analysisError: reason } }).catch(() => undefined);
   } finally {
     running.delete(key);
-  }
-}
-
-async function logUsage(organizationId: string, actorId: string | null, usage: { model: string; inputTokens: number; outputTokens: number }) {
-  await tenantDb(organizationId)
-    .aiUsageLog.create({
-      data: {
-        organizationId,
-        moduleId: "promo-studio",
-        feature: "promo.analyze",
-        model: usage.model,
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        createdById: actorId,
-      },
-    })
-    .catch((error) => console.error("[ai-usage] could not log usage", error));
-}
-
-/** Write or refresh this promo's note in the brand's mini-brain. Soft-fails. */
-async function teachBrain(input: {
-  organizationId: string;
-  brandId: string;
-  brandName: string;
-  promoId: string;
-  title: string;
-  score: number | null;
-  result: PromoAnalysisResult;
-  actorId: string | null;
-}) {
-  try {
-    const db = tenantDb(input.organizationId);
-    const note = brainNote({ title: input.title, brandName: input.brandName, score: input.score, result: input.result });
-    const sourceRef = `promo:${input.promoId}`;
-    const existing = await db.knowledgePage.findFirst({ where: { sourceRef } });
-    if (existing) {
-      await db.knowledgePage.updateMany({ where: { id: existing.id }, data: { title: note.title, body: note.body } });
-      return;
-    }
-    const base = (slugifyName(note.title) || "promo-review").slice(0, 60);
-    const taken = await db.knowledgePage.count({ where: { slug: { startsWith: base } } });
-    await db.knowledgePage.create({
-      data: {
-        organizationId: input.organizationId,
-        brandId: input.brandId,
-        title: note.title,
-        slug: taken ? `${base}-${input.promoId.slice(0, 8)}` : base,
-        body: note.body,
-        folder: "Promo reviews",
-        source: "promo-analyzer",
-        sourceRef,
-        createdById: input.actorId,
-      },
-    });
-    await appendOrgAudit(input.organizationId, { actorId: input.actorId, action: "brain.taught", targetType: "promo", targetId: input.promoId });
-  } catch (error) {
-    console.error("[brain] promo note failed", error);
   }
 }
 
