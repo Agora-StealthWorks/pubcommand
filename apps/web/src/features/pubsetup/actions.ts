@@ -5,10 +5,16 @@ import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { BRANDING_FIELDS, EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, firstError, parseFields, uniqueSlug, type FieldValues } from "../../../../../modules/pubsetup/fields";
 import { UUID, pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
+import { logoColumns, storedLogos } from "./logo-upload";
 import { refreshAllPublications, refreshEditor, refreshPublication } from "./teach";
 
 const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp|svg\+xml)$/;
 const PUB_BRANDING_FIELDS = BRANDING_FIELDS.filter((def) => def.key !== "tagline");
+const LOGO_SELECT = { logoData: true, logoMime: true, logoFilename: true, logoOnDarkData: true, logoOnDarkMime: true, logoOnDarkFilename: true } as const;
+
+function withNote(text: string, note: string | null): string {
+  return note ? `${text} ${note}` : text;
+}
 
 function audit(ctx: PubsetupCtx, action: string, targetType: string, targetId: string, metadata?: Prisma.InputJsonValue) {
   return appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action, targetType, targetId, ...(metadata ? { metadata } : {}) });
@@ -103,6 +109,10 @@ export async function savePublication(formData: FormData) {
     positioning: str(v, "positioning"),
     audience: str(v, "audience"),
     deliverables: (v.deliverables as string[]) ?? [],
+    retailPrice: str(v, "retailPrice"),
+    lifetimePrice: str(v, "lifetimePrice"),
+    salePrice: str(v, "salePrice"),
+    pricingNotes: str(v, "pricingNotes"),
     offers: json(v.offers),
     websiteUrl: str(v, "websiteUrl"),
     signupUrl: str(v, "signupUrl"),
@@ -112,8 +122,9 @@ export async function savePublication(formData: FormData) {
     complianceNotes: str(v, "complianceNotes"),
     updatedById: ctx.actorId,
   };
+  const logos = await logoColumns(formData, back, async () => storedLogos(id ? await db.calendarPublication.findFirst({ where: { id, brandId: ctx.brand.id }, select: LOGO_SELECT }) : null));
   const images = {
-    ...(await imageColumns(formData, "logo", "logo", back, 2)),
+    ...logos.data,
     ...(await imageColumns(formData, "cover", "cover", back, 5)),
   };
 
@@ -134,7 +145,7 @@ export async function savePublication(formData: FormData) {
     await audit(ctx, "pubsetup.publication.created", "calendar_publication", created.id, { code });
   }
   scheduleRefresh(ctx, [publicationId], await linkedEditorIds(ctx, publicationId));
-  redirect(withMessage(`/publication-setup/publications/${publicationId}`, "notice", `${data.name} saved.`));
+  redirect(withMessage(`/publication-setup/publications/${publicationId}`, "notice", withNote(`${data.name} saved.`, logos.note)));
 }
 
 export async function setPublicationArchived(formData: FormData) {
@@ -165,14 +176,11 @@ export async function savePublicationBranding(formData: FormData) {
   if (!parsed.ok) redirect(withMessage(back, "error", firstError(PUB_BRANDING_FIELDS, parsed.errors)));
   const v = parsed.values;
   const data = Object.fromEntries(PUB_BRANDING_FIELDS.map((def) => [def.key, str(v, def.key)]));
-  const images = {
-    ...(await imageColumns(formData, "logo", "logo", back, 2)),
-    ...(await imageColumns(formData, "emailHeader", "emailHeader", back, 5)),
-  };
-  await db.calendarPublication.updateMany({ where: { id: pub.id }, data: { ...data, ...images, updatedById: ctx.actorId } });
+  const logos = await logoColumns(formData, back, async () => storedLogos(await db.calendarPublication.findFirst({ where: { id: pub.id }, select: LOGO_SELECT })));
+  await db.calendarPublication.updateMany({ where: { id: pub.id }, data: { ...data, ...logos.data, updatedById: ctx.actorId } });
   await audit(ctx, "pubsetup.publication.branding", "calendar_publication", pub.id);
   scheduleRefresh(ctx, [pub.id], []);
-  redirect(withMessage(back, "notice", "Branding saved."));
+  redirect(withMessage(back, "notice", withNote("Branding saved.", logos.note)));
 }
 
 export async function saveBrandDefaults(formData: FormData) {
@@ -182,10 +190,10 @@ export async function saveBrandDefaults(formData: FormData) {
   const parsed = parseFields(BRANDING_FIELDS, formData);
   if (!parsed.ok) redirect(withMessage(back, "error", firstError(BRANDING_FIELDS, parsed.errors)));
   const v = parsed.values;
+  const logos = await logoColumns(formData, back, async () => storedLogos(await db.pubBrandBranding.findFirst({ where: { brandId: ctx.brand.id }, select: LOGO_SELECT })));
   const data = {
     ...Object.fromEntries(BRANDING_FIELDS.map((def) => [def.key, str(v, def.key)])),
-    ...(await imageColumns(formData, "logo", "logo", back, 2)),
-    ...(await imageColumns(formData, "emailHeader", "emailHeader", back, 5)),
+    ...logos.data,
     updatedById: ctx.actorId,
   };
   const existing = await db.pubBrandBranding.findFirst({ where: { brandId: ctx.brand.id }, select: { id: true } });
@@ -194,7 +202,7 @@ export async function saveBrandDefaults(formData: FormData) {
   await audit(ctx, "pubsetup.brand.branding", "brand", ctx.brand.id);
   const base = { organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.actorId };
   after(() => refreshAllPublications(base));
-  redirect(withMessage(back, "notice", "Brand defaults saved. Publications that leave a field blank use these."));
+  redirect(withMessage(back, "notice", withNote("Brand defaults saved. Publications that leave a field blank use these.", logos.note)));
 }
 
 // ── Editors ────────────────────────────────────────────────────────────────

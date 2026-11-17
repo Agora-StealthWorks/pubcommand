@@ -2,7 +2,7 @@
 // owner of a brand's publications, editors and branding; every other app reads them.
 //
 // CalendarPublication keeps its model name, its table (calendar_publications) and
-// every column it had in the Marketing Calendar, so issues, send stats and Mini-Blog
+// every column it had in the Calendar, so issues, send stats and Mini-Blog
 // keep working unchanged. Everything below the "Publication Setup" line was added
 // additively. Branding columns left null inherit the brand defaults (PubBrandBranding).
 
@@ -16,6 +16,7 @@ model CalendarPublication {
   color          String   @default("#7f77dd")
   /// The short description.
   description    String?
+  /// The logo for LIGHT backgrounds (dark artwork). See logoOnDark* for the other slot.
   logoFilename   String?  @map("logo_filename")
   logoMime       String?  @map("logo_mime")
   logoData       Bytes?   @map("logo_data")
@@ -48,6 +49,17 @@ model CalendarPublication {
   sampleIssues        Json?                  @map("sample_issues")
   complianceNotes     String?                @map("compliance_notes")
   voiceNotes          String?                @map("voice_notes")
+  /// Retail pricing as people type it ("$7,500/yr"). Never computed.
+  retailPrice         String?                @map("retail_price")
+  lifetimePrice       String?                @map("lifetime_price")
+  salePrice           String?                @map("sale_price")
+  pricingNotes        String?                @map("pricing_notes")
+  /// The logo for DARK backgrounds (light artwork).
+  logoOnDarkFilename  String?                @map("logo_on_dark_filename")
+  logoOnDarkMime      String?                @map("logo_on_dark_mime")
+  logoOnDarkData      Bytes?                 @map("logo_on_dark_data")
+  /// False until the logo in logo_* has had its artwork checked (and moved to the dark slot if light).
+  logoSorted          Boolean                @default(false) @map("logo_sorted")
   coverFilename       String?                @map("cover_filename")
   coverMime           String?                @map("cover_mime")
   coverData           Bytes?                 @map("cover_data")
@@ -58,6 +70,7 @@ model CalendarPublication {
   backgroundColor     String?                @map("background_color")
   headingFont         String?                @map("heading_font")
   bodyFont            String?                @map("body_font")
+  // Email branding: no longer edited in Publication Setup (kept, additive-only policy).
   emailHeaderFilename String?                @map("email_header_filename")
   emailHeaderMime     String?                @map("email_header_mime")
   emailHeaderData     Bytes?                 @map("email_header_data")
@@ -145,6 +158,12 @@ model PubBrandBranding {
   logoFilename        String?  @map("logo_filename")
   logoMime            String?  @map("logo_mime")
   logoData            Bytes?   @map("logo_data")
+  /// Logo for dark backgrounds (light artwork); logo_* is for light backgrounds.
+  logoOnDarkFilename  String?  @map("logo_on_dark_filename")
+  logoOnDarkMime      String?  @map("logo_on_dark_mime")
+  logoOnDarkData      Bytes?   @map("logo_on_dark_data")
+  logoSorted          Boolean  @default(false) @map("logo_sorted")
+  // Email branding: no longer edited in Publication Setup (kept, additive-only policy).
   emailHeaderFilename String?  @map("email_header_filename")
   emailHeaderMime     String?  @map("email_header_mime")
   emailHeaderData     Bytes?   @map("email_header_data")

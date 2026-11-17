@@ -5,7 +5,7 @@ import { syncConnection } from "@/features/calendar/airtable-sync";
 /** Optional two-way Airtable sync: pull each connected brand's base, then push local edits. */
 export const editorialAirtableSync = defineJob({
   name: "editorial.airtable-sync",
-  description: "Pull connected Airtable bases into the Marketing Calendar and push local edits back.",
+  description: "Pull connected Airtable bases into the Calendar and push local edits back.",
   schedule: "23 * * * *",
   timeoutMs: 30 * 60 * 1000,
   async run() {

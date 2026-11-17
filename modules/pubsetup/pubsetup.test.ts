@@ -95,23 +95,23 @@ describe("slugs", () => {
 
 describe("branding inheritance", () => {
   it("uses the publication's own value, then the brand default, then the platform default", () => {
-    const brand = { primaryColor: "#112233", headingFont: "Lato", senderName: "Brand Desk", hasLogo: true };
-    const pub = { primaryColor: "#abcdef", senderName: " ", hasEmailHeader: true };
+    const brand = { primaryColor: "#112233", headingFont: "Lato", tagline: "Brand line", logos: { light: false, dark: true } };
+    const pub = { primaryColor: "#abcdef", tagline: " " };
     const resolved = resolveBranding(pub, brand, "Acme Media");
     expect(resolved.values.primaryColor).toBe("#abcdef");
     expect(resolved.sources.primaryColor).toBe("publication");
     expect(resolved.values.headingFont).toBe("Lato");
     expect(resolved.sources.headingFont).toBe("brand");
-    expect(resolved.values.senderName).toBe("Brand Desk");
+    expect(resolved.values.tagline).toBe("Brand line");
     expect(resolved.values.bodyFont).toBe("Arial");
     expect(resolved.sources.bodyFont).toBe("default");
     expect(resolved.logo).toBe("brand");
-    expect(resolved.emailHeader).toBe("publication");
+    expect(resolved.logos.brand).toEqual({ light: false, dark: true });
   });
 
-  it("falls back to the brand name as sender when nothing is set", () => {
+  it("has no logo when neither level has one", () => {
     const resolved = resolveBranding(null, null, "Acme Media");
-    expect(resolved.values.senderName).toBe("Acme Media");
+    expect(resolved.values.tagline).toBe("");
     expect(resolved.logo).toBeNull();
   });
 
@@ -158,6 +158,14 @@ describe("facts and Brain notes", () => {
     expect(note.body).toContain("## Positioning");
     expect(note.body).toContain("- Ada Lee (Lead editor)");
     expect(note.body).not.toContain("\n\n\n");
+  });
+
+  it("includes retail pricing as typed", () => {
+    const facts = publicationFacts({ id: "p2", brandName: "Acme", record: { ...record, retailPrice: "$7,500/yr", lifetimePrice: "$25,000 one-time", salePrice: "$4,995", pricingNotes: "Renews at list." }, editors: [] });
+    expect(facts.fields).toMatchObject({ retailPrice: "$7,500/yr", lifetimePrice: "$25,000 one-time", salePrice: "$4,995", pricingNotes: "Renews at list." });
+    const body = publicationNote(facts).body;
+    expect(body).toContain("## Pricing\n- Retail price: $7,500/yr\n- Unlimited / lifetime price: $25,000 one-time\n- Typical sale price: $4,995");
+    expect(body).toContain("## Pricing notes\nRenews at list.");
   });
 
   it("keeps an editor's email out of the Brain", () => {

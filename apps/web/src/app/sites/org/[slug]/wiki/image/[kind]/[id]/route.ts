@@ -2,7 +2,7 @@ import { getImage } from "@/features/pubsetup/read";
 import { getFile } from "@/features/testimonials/server";
 import { wikiPage } from "@/features/wiki/guard";
 
-const PUB_KINDS = ["pub-logo", "pub-cover", "editor-photo", "brand-logo"] as const;
+const PUB_KINDS = ["pub-logo", "pub-logo-dark", "pub-cover", "editor-photo", "brand-logo", "brand-logo-dark"] as const;
 
 /** Wiki images: Publication Setup images and approved testimonials' photos, for wiki readers only. */
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string; kind: string; id: string }> }) {

@@ -1,7 +1,9 @@
+import type { LogoSlots } from "./logos";
+
 /**
  * Branding inheritance. A publication's branding field is its own value when set,
- * else the brand default, else the platform default. Logos and email headers
- * follow the same rule. Every app that renders a publication's look calls this.
+ * else the brand default, else the platform default. Logos follow the same rule
+ * (pick one with logoFor() in logos.ts). Every app that renders a publication's look calls this.
  */
 
 export const BRANDING_KEYS = [
@@ -12,26 +14,24 @@ export const BRANDING_KEYS = [
   "headingFont",
   "bodyFont",
   "tagline",
-  "senderName",
-  "senderEmail",
-  "footerText",
 ] as const;
 
 export type BrandingKey = (typeof BRANDING_KEYS)[number];
 export type BrandingValues = Partial<Record<BrandingKey, string | null>>;
 export type BrandingSource = "publication" | "brand" | "default";
 
-export type BrandingInput = BrandingValues & { hasLogo?: boolean; hasEmailHeader?: boolean };
+export type BrandingInput = BrandingValues & { logos?: LogoSlots };
 
 export type ResolvedBranding = {
   values: Record<BrandingKey, string>;
   sources: Record<BrandingKey, BrandingSource>;
   /** Whose logo to show, or null for none (fall back to a text wordmark). */
   logo: "publication" | "brand" | null;
-  emailHeader: "publication" | "brand" | null;
+  /** Which logo slots each level fills. Pass these to logoFor(). */
+  logos: { publication: LogoSlots; brand: LogoSlots };
 };
 
-export function platformDefaults(brandName: string): Record<BrandingKey, string> {
+export function platformDefaults(_brandName: string): Record<BrandingKey, string> {
   return {
     primaryColor: "#1f2a44",
     accentColor: "#1d4ed8",
@@ -40,9 +40,6 @@ export function platformDefaults(brandName: string): Record<BrandingKey, string>
     headingFont: "Georgia",
     bodyFont: "Arial",
     tagline: "",
-    senderName: brandName,
-    senderEmail: "",
-    footerText: "",
   };
 }
 
@@ -69,11 +66,15 @@ export function resolveBranding(publication: BrandingInput | null, brand: Brandi
       sources[key] = "default";
     }
   }
+  const none: LogoSlots = { light: false, dark: false };
+  const pubLogos = publication?.logos ?? none;
+  const brandLogos = brand?.logos ?? none;
+  const any = (l: LogoSlots) => l.light || l.dark;
   return {
     values,
     sources,
-    logo: publication?.hasLogo ? "publication" : brand?.hasLogo ? "brand" : null,
-    emailHeader: publication?.hasEmailHeader ? "publication" : brand?.hasEmailHeader ? "brand" : null,
+    logo: any(pubLogos) ? "publication" : any(brandLogos) ? "brand" : null,
+    logos: { publication: pubLogos, brand: brandLogos },
   };
 }
 

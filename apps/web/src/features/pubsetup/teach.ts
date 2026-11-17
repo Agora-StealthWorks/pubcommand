@@ -58,7 +58,7 @@ export async function refreshEditor(input: { organizationId: string; brandId: st
   }
 }
 
-/** Brand defaults changed: every publication's resolved branding (sender name) may have too. */
+/** Brand defaults changed: every publication's resolved branding may have too. */
 export async function refreshAllPublications(input: { organizationId: string; brandId: string; actorId: string | null }): Promise<void> {
   const rows = await tenantDb(input.organizationId).calendarPublication.findMany({ where: { brandId: input.brandId }, select: { id: true } });
   for (const row of rows) await refreshPublication({ ...input, publicationId: row.id });

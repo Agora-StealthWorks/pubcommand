@@ -1,4 +1,4 @@
-# Marketing Calendar
+# Calendar
 
 Module id and route stay `editorial` / `/editorial`. One calendar per brand: live events, editorial issues, send stats, What's Working and the CUB Collector.
 

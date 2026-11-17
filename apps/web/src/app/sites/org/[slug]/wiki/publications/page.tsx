@@ -7,6 +7,7 @@ import { wikiPage } from "@/features/wiki/guard";
 import { PubLogo, SearchBox } from "@/features/wiki/ui";
 import { EDITOR_ROLE_LABELS } from "../../../../../../../../../modules/pubsetup/fields";
 import { asPubFilter, filterPublications, isCurrent, priceSummary, type PubFilter } from "../../../../../../../../../modules/wiki/wiki";
+import { groupByFunnel } from "../../../../../../../../../modules/pubsetup/groups";
 
 const TABS: [PubFilter, string][] = [
   ["active", "Active"],
@@ -25,6 +26,7 @@ export default async function WikiPublicationsPage({ params, searchParams }: { p
   const status = asPubFilter(query.status);
   const { publications, counts } = await wikiLists(ctx.resolved.id, ctx.brand.id);
   const shown = filterPublications(publications, { q, status });
+  const groups = groupByFunnel(shown);
   const tally = { active: publications.filter(isCurrent).length, retired: publications.filter((p) => p.status === "retired").length, all: publications.length };
   const href = (s: PubFilter) => `/wiki/publications?${new URLSearchParams({ ...(q ? { q } : {}), ...(s !== "active" ? { status: s } : {}) }).toString()}`;
 
@@ -51,35 +53,44 @@ export default async function WikiPublicationsPage({ params, searchParams }: { p
       {shown.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line bg-white p-6 text-center text-sm text-muted">{q ? "No publication matches that search." : "No publications here."}</p>
       ) : (
-        <ul className="grid gap-3 md:grid-cols-2">
-          {shown.map((pub) => {
-            const price = priceSummary(pub.offers);
-            const n = counts.get(pub.id) ?? 0;
-            return (
-              <li key={pub.id} className="min-w-0">
-                <Link href={`/wiki/publications/${pub.slug}`} className="flex h-full min-w-0 gap-3 rounded-xl border border-line bg-white p-4 hover:border-accent">
-                  <PubLogo pub={pub} />
-                  <span className="min-w-0 flex-1 space-y-1">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold [overflow-wrap:anywhere]">{pub.name}</span>
-                      <span className="rounded border border-line px-1.5 text-xs font-semibold text-muted">{pub.code}</span>
-                      {pub.status !== "active" ? <StatusBadge status={pub.status} /> : null}
-                    </span>
-                    {pub.tagline || pub.description ? <span className="line-clamp-2 block text-sm text-muted">{pub.tagline || pub.description}</span> : null}
-                    <span className="block text-xs text-muted [overflow-wrap:anywhere]">{[pub.pubType, pub.tier, pub.frequency].filter(Boolean).join(" · ")}</span>
-                    {pub.editors.length ? (
-                      <span className="block text-xs [overflow-wrap:anywhere]">
-                        {pub.editors.map((e) => `${e.name}${e.role !== "lead" ? ` (${EDITOR_ROLE_LABELS[e.role] ?? e.role})` : ""}`).join(", ")}
-                      </span>
-                    ) : null}
-                    {price || pub.positioning ? <span className="line-clamp-2 block text-xs text-muted">{[price, pub.positioning].filter(Boolean).join(" — ")}</span> : null}
-                    {n ? <span className="block text-xs font-medium text-[#067647]">{n} approved testimonial{n === 1 ? "" : "s"}</span> : null}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="space-y-5">
+          {groups.map((group) => (
+            <section key={group.key} aria-labelledby={`wiki-group-${group.key}`} className="space-y-2">
+              <h2 id={`wiki-group-${group.key}`} className="text-xs font-semibold uppercase tracking-wider text-muted">
+                {group.label} · {group.items.length}
+              </h2>
+              <ul className="grid gap-3 md:grid-cols-2">
+                {group.items.map((pub) => {
+                  const price = pub.retailPrice ? `${pub.retailPrice} retail` : priceSummary(pub.offers);
+                  const n = counts.get(pub.id) ?? 0;
+                  return (
+                    <li key={pub.id} className="min-w-0">
+                      <Link href={`/wiki/publications/${pub.slug}`} className="flex h-full min-w-0 gap-3 rounded-xl border border-line bg-white p-4 hover:border-accent">
+                        <PubLogo pub={pub} />
+                        <span className="min-w-0 flex-1 space-y-1">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold [overflow-wrap:anywhere]">{pub.name}</span>
+                            <span className="rounded border border-line px-1.5 text-xs font-semibold text-muted">{pub.code}</span>
+                            {pub.status !== "active" ? <StatusBadge status={pub.status} /> : null}
+                          </span>
+                          {pub.tagline || pub.description ? <span className="line-clamp-2 block text-sm text-muted">{pub.tagline || pub.description}</span> : null}
+                          <span className="block text-xs text-muted [overflow-wrap:anywhere]">{[pub.pubType, pub.tier, pub.frequency].filter(Boolean).join(" · ")}</span>
+                          {pub.editors.length ? (
+                            <span className="block text-xs [overflow-wrap:anywhere]">
+                              {pub.editors.map((e) => `${e.name}${e.role !== "lead" ? ` (${EDITOR_ROLE_LABELS[e.role] ?? e.role})` : ""}`).join(", ")}
+                            </span>
+                          ) : null}
+                          {price || pub.positioning ? <span className="line-clamp-2 block text-xs text-muted">{[price, pub.positioning].filter(Boolean).join(" — ")}</span> : null}
+                          {n ? <span className="block text-xs font-medium text-[#067647]">{n} approved testimonial{n === 1 ? "" : "s"}</span> : null}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
       )}
     </div>
   );

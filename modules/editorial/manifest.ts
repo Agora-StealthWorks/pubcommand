@@ -3,9 +3,9 @@ import { defineModule } from "@pubcommand/core";
 export const manifest = defineModule({
   id: "editorial",
   slug: "editorial",
-  name: "Marketing Calendar",
+  name: "Calendar",
   description: "Live events, editorial issues and send stats for every publication, on one calendar.",
-  nav: [{ label: "Marketing Calendar", href: "/editorial", permission: "editorial.read" }],
+  nav: [{ label: "Calendar", href: "/editorial", permission: "editorial.read" }],
   routes: [
     { path: "/editorial", title: "Running list" },
     { path: "/editorial/calendar", title: "Calendar" },
@@ -21,7 +21,7 @@ export const manifest = defineModule({
     { path: "/editorial/setup", title: "Setup: channels, field options, emails, trash, Airtable" },
   ],
   permissions: [
-    { key: "editorial.read", description: "See the marketing calendar, issues, events and send stats" },
+    { key: "editorial.read", description: "See the calendar, issues, events and send stats" },
     { key: "editorial.write", description: "Add and edit events, issues, publications, stats and CUB rounds" },
     { key: "editorial.publish", description: "Publish editorial items" },
   ],

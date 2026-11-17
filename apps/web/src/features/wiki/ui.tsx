@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { CHANNEL_LABELS, type Channel } from "../../../../../modules/testimonials/testimonials";
 import { initials, safeHref } from "../../../../../modules/wiki/wiki";
+import { logoFor, type LogoBackground, type LogoOwner, type LogoSlots } from "../../../../../modules/pubsetup/logos";
 import type { PublicTestimonial } from "../testimonials/read";
 
-export type WikiImageKind = "pub-logo" | "pub-cover" | "editor-photo" | "brand-logo" | "testimonial-photo";
+export type WikiImageKind = "pub-logo" | "pub-logo-dark" | "pub-cover" | "editor-photo" | "brand-logo" | "brand-logo-dark" | "testimonial-photo";
+
+/** The wiki URL of the best logo for a background (publication, then brand fallback), and the slot used. */
+export function wikiLogo(owner: LogoOwner | null, background: LogoBackground, brand?: LogoOwner | null): { src: string; slot: LogoBackground } | null {
+  const choice = logoFor(owner, background, brand);
+  return choice ? { src: wikiImage(choice.kind, choice.id, choice.version ?? undefined), slot: choice.slot } : null;
+}
 
 export function wikiImage(kind: WikiImageKind, id: string, version?: Date | string | number): string {
   const v = version instanceof Date ? version.getTime() : version;
@@ -42,10 +49,12 @@ export function SearchBox({ action, q, placeholder, children }: { action: string
   );
 }
 
-export function PubLogo({ pub, size = "md" }: { pub: { id: string; code: string; color: string; hasLogo: boolean; updatedAt: Date }; size?: "sm" | "md" | "lg" }) {
+/** A publication's logo on a white tile (the logo for light backgrounds; a dark tile when only the other exists). */
+export function PubLogo({ pub, size = "md" }: { pub: { id: string; code: string; color: string; logos: LogoSlots; updatedAt: Date }; size?: "sm" | "md" | "lg" }) {
   const box = size === "lg" ? "h-24 w-24 sm:h-28 sm:w-28" : size === "sm" ? "h-9 w-9" : "h-14 w-14";
-  if (pub.hasLogo) {
-    return <img src={wikiImage("pub-logo", pub.id, pub.updatedAt)} alt="" className={`${box} shrink-0 rounded-lg border border-line bg-white object-contain p-1`} />;
+  const logo = wikiLogo(pub, "light");
+  if (logo) {
+    return <img src={logo.src} alt="" className={`${box} shrink-0 rounded-lg border border-line object-contain p-1`} style={{ background: logo.slot === "dark" ? "#111827" : "#ffffff" }} />;
   }
   return (
     <span className={`${box} flex shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white`} style={{ background: pub.color }} aria-hidden>

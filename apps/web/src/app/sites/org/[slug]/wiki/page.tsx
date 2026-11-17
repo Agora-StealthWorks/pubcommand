@@ -5,6 +5,7 @@ import { wikiHome } from "@/features/wiki/data";
 import { wikiPage } from "@/features/wiki/guard";
 import { Avatar, PubLogo, SearchBox, Section, TestimonialGrid } from "@/features/wiki/ui";
 import { filterPublications, wikiSearch } from "../../../../../../../../modules/wiki/wiki";
+import { groupByFunnel } from "../../../../../../../../modules/pubsetup/groups";
 
 export default async function WikiHomePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string }> }) {
   const { slug } = await params;
@@ -15,6 +16,7 @@ export default async function WikiHomePage({ params, searchParams }: { params: P
   const { ctx, can } = access;
   const data = await wikiHome(ctx.resolved.id, ctx.brand.id, { testimonials: true });
   const current = filterPublications(data.publications, { status: "active" });
+  const groups = groupByFunnel(current);
   const found = wikiSearch(data.publications, data.editors, q);
   const pubMap = new Map(data.publications.map((p) => [p.id, { slug: p.slug, name: p.name }]));
   const editorMap = new Map(data.editors.map((e) => [e.id, { slug: e.slug, name: e.name }]));
@@ -81,19 +83,26 @@ export default async function WikiHomePage({ params, searchParams }: { params: P
         {current.length === 0 ? (
           <p className="text-sm text-muted">No publications yet.{can.editSetup ? " Add them in Publication Setup." : " An admin adds them in Publication Setup."}</p>
         ) : (
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {current.slice(0, 9).map((p) => (
-              <li key={p.id} className="min-w-0">
-                <Link href={`/wiki/publications/${p.slug}`} className="flex min-h-11 items-center gap-3 rounded-lg border border-line p-2.5 hover:border-accent">
-                  <PubLogo pub={p} size="sm" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{p.name}</span>
-                    <span className="block truncate text-xs text-muted">{p.tagline || p.pubType || p.code}</span>
-                  </span>
-                </Link>
-              </li>
+          <div className="space-y-4">
+            {groups.map((group) => (
+              <div key={group.key}>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">{group.label}</h3>
+              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {group.items.map((p) => (
+                  <li key={p.id} className="min-w-0">
+                    <Link href={`/wiki/publications/${p.slug}`} className="flex min-h-11 items-center gap-3 rounded-lg border border-line p-2.5 hover:border-accent">
+                      <PubLogo pub={p} size="sm" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{p.name}</span>
+                        <span className="block truncate text-xs text-muted">{p.tagline || p.pubType || p.code}</span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </Section>
 

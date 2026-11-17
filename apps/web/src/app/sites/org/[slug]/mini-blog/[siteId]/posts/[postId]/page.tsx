@@ -40,7 +40,7 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
       <h1 className="mb-1 mt-1 break-words text-2xl font-semibold tracking-tight">{post.title}</h1>
       <p className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted">
         <Badge tone={badge.tone}>{badge.label}</Badge>
-        {post.calendarIssueId ? <span>On the Marketing Calendar</span> : null}
+        {post.calendarIssueId ? <span>On the Calendar</span> : null}
       </p>
       <Flash error={query.error} notice={query.notice} />
       <form action={savePost} className="space-y-4">
@@ -139,7 +139,7 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
                 Delete post
               </Button>
             </form>
-            <p className="text-xs text-muted">Its Marketing Calendar issue, if any, stays on the calendar.</p>
+            <p className="text-xs text-muted">Its Calendar issue, if any, stays on the calendar.</p>
           </Section>
         ) : null}
       </div>
