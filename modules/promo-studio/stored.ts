@@ -49,6 +49,20 @@ export function isStoredV2(value: unknown): value is StoredAnalysisV2 {
   return Boolean(value && typeof value === "object" && (value as { format?: unknown }).format === STORED_FORMAT);
 }
 
+/** True for a run that stopped early (ran out of room). Old JSON analyses are always complete. */
+export function isIncomplete(result: unknown): boolean {
+  return isStoredV2(result) && result.truncated;
+}
+
+/**
+ * The analysis that counts for a promo, from its rows newest first: the newest
+ * complete one. A run that stopped early never replaces a complete review (or
+ * its score); it is current only when there is nothing else.
+ */
+export function currentAnalysis<T extends { result: unknown }>(rowsNewestFirst: readonly T[]): T | null {
+  return rowsNewestFirst.find((row) => !isIncomplete(row.result)) ?? rowsNewestFirst[0] ?? null;
+}
+
 /** Build the row to save from the finished (or cut-off) answer. */
 export function buildStored(input: { raw: string; finished: boolean; visual: boolean; matches: readonly DirectoryMatch[] }): StoredAnalysisV2 {
   const split = splitSections(input.raw, input.finished);

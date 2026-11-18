@@ -1,4 +1,5 @@
 import { tenantDb } from "@pubcommand/db";
+import { currentAnalysis, isIncomplete, isStoredV2 } from "../../../../../modules/promo-studio/stored";
 import { isStale } from "./server";
 
 export type PromoListItem = {
@@ -54,6 +55,7 @@ export async function loadPromo(organizationId: string, brandId: string, promoId
     db.promoFile.findMany({ where: { promoId }, orderBy: { createdAt: "asc" }, select: { id: true, kind: true, category: true, filename: true, size: true, mimeType: true, createdAt: true } }),
   ]);
   const stale = isStale(promo.analysisStatus, promo.updatedAt);
+  const current = currentAnalysis(analyses);
   return {
     promo: {
       ...promo,
@@ -61,9 +63,15 @@ export async function loadPromo(organizationId: string, brandId: string, promoId
       analysisError: stale ? "The analysis was interrupted (the server restarted). Run it again." : promo.analysisError,
       pricePoint: promo.pricePoint == null ? null : Number(promo.pricePoint),
     },
-    /** The newest analysis; `result` is either saved shape (see stored.ts `isStoredV2`). */
-    current: analyses[0] ? { ...analyses[0], result: analyses[0].result as unknown } : null,
-    history: analyses.map(({ result: _result, ...rest }) => rest),
+    /** The current analysis (newest complete one); `result` is either saved shape (see stored.ts `isStoredV2`). */
+    current: current ? { ...current, result: current.result as unknown } : null,
+    /** Newest first; `incomplete` marks runs that stopped early. */
+    history: analyses.map(({ result, ...rest }) => ({
+      ...rest,
+      incomplete: isIncomplete(result),
+      /** For a run that stopped early: the sections it finished, and the ones it did not reach. */
+      partial: isStoredV2(result) && result.truncated ? { sections: result.sections, missing: result.incomplete } : null,
+    })),
     files,
   };
 }

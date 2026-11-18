@@ -9,6 +9,7 @@ import { currentRequest } from "@/lib/request";
 import { PROMO_STATUSES, PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
 import { syncBestPerformers } from "../packager/training";
 import { retier } from "./insights";
+import { currentAnalysisRow } from "./current";
 import { extractSource, runPromoAnalysis, runReevaluation } from "./server";
 import type { Prisma } from "@pubcommand/db";
 import { effectiveScorecard, isStoredV2 } from "../../../../../modules/promo-studio/stored";
@@ -194,7 +195,7 @@ export async function reevaluatePromo(formData: FormData) {
   const promo = await ownPromo(ctx, text(formData, "promoId", 40));
   const back = `/promo-studio/${promo.id}?tab=training`;
   if (promo.myScore == null && promo.performanceScore == null) redirect(`${back}&error=${encodeURIComponent("Save your score or the real-world score first.")}`);
-  const row = await tenantDb(ctx.resolved.id).promoAnalysis.findFirst({ where: { promoId: promo.id }, orderBy: { version: "desc" }, select: { result: true } });
+  const row = await currentAnalysisRow(tenantDb(ctx.resolved.id), promo.id);
   if (!row || !isStoredV2(row.result)) redirect(`${back}&error=${encodeURIComponent("Re-analyze this promo first; re-evaluation needs the new score format.")}`);
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.reevaluated", targetType: "promo", targetId: promo.id });
   after(() => runReevaluation({ organizationId: ctx.resolved.id, promoId: promo.id, brand: ctx.brand, actorId: ctx.auth.user.id }));
@@ -207,7 +208,7 @@ export async function decideReevaluation(formData: FormData) {
   const promo = await ownPromo(ctx, text(formData, "promoId", 40));
   const back = `/promo-studio/${promo.id}?tab=training`;
   const db = tenantDb(ctx.resolved.id);
-  const row = await db.promoAnalysis.findFirst({ where: { promoId: promo.id }, orderBy: { version: "desc" } });
+  const row = await currentAnalysisRow(db, promo.id);
   if (!row || !isStoredV2(row.result) || row.result.reevaluation?.status !== "DONE" || !row.result.reevaluation.text) redirect(`${back}&error=${encodeURIComponent("Nothing to apply.")}`);
   const stored = row.result;
   const apply = formData.get("decision") === "apply";

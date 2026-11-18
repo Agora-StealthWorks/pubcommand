@@ -24,7 +24,7 @@ import { BAND_LABELS, MIN_TRAINING_PAIRS, scoreVector, similarOutcomes } from ".
 import type { PromoAnalysisResult } from "../../../../../../../../../modules/promo-studio/analysis";
 import { parseAnalysis } from "../../../../../../../../../modules/promo-studio/parse";
 import { parseScorecard } from "../../../../../../../../../modules/promo-studio/score";
-import { SECTION_LABELS } from "../../../../../../../../../modules/promo-studio/sections";
+import { SECTION_KEYS, SECTION_LABELS } from "../../../../../../../../../modules/promo-studio/sections";
 import { analysisDigest, effectiveScorecard, isStoredV2 } from "../../../../../../../../../modules/promo-studio/stored";
 
 /** The analysis tabs, in the old analyzer's order. */
@@ -103,6 +103,9 @@ export default async function PromoPage({
   const reeval = v2?.reevaluation ?? null;
   const reevalStale = reeval?.status === "RUNNING" && Date.now() - Date.parse(reeval.startedAt) > STALE_REEVAL_MS;
   const shownLegacyTab = legacy && !busy ? tab : null;
+  const newest = history[0] ?? null;
+  // The newest run stopped early and an earlier complete review is still the current one.
+  const keptEarlier = Boolean(newest?.incomplete && current && newest.id !== current.id);
 
   return (
     <div className="space-y-4">
@@ -164,8 +167,22 @@ export default async function PromoPage({
       {promo.analysisStatus === "FAILED" && promo.analysisError ? (
         <p className="rounded-md border border-[#fecdca] bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">Analysis failed: {promo.analysisError}</p>
       ) : null}
-      {promo.analysisStatus === "DONE" && promo.analysisError ? (
+      {promo.analysisStatus === "DONE" && promo.analysisError && !keptEarlier ? (
         <p className="rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">{promo.analysisError}</p>
+      ) : null}
+      {keptEarlier && !busy && current ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">
+          <p>
+            The latest run (version {newest!.version}) stopped early: the AI ran out of room. You are seeing version {current.version} and its score.{" "}
+            <Link href={`/promo-studio/${promo.id}?tab=history`} className="font-semibold underline">See what it finished</Link>
+          </p>
+          {writable ? (
+            <form action={reanalyzePromo}>
+              <input type="hidden" name="promoId" value={promo.id} />
+              <Button type="submit" variant="secondary">Re-analyze</Button>
+            </form>
+          ) : null}
+        </div>
       ) : null}
 
       <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-line" aria-label="Promo sections">
@@ -448,14 +465,31 @@ export default async function PromoPage({
         <section className="max-w-3xl space-y-4 rounded-xl border border-line bg-white p-5">
           <ul className="divide-y divide-line text-sm">
             {history.map((run) => (
-              <li key={run.id} className="flex flex-wrap justify-between gap-2 py-2">
-                <span>
-                  Version {run.version} · {run.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC
-                </span>
-                <span className="text-muted">
-                  {run.score != null ? `${run.score.toFixed(1)}/10 · ` : ""}
-                  {run.model}
-                </span>
+              <li key={run.id} className="py-2">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
+                    Version {run.version} · {run.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC
+                    {current?.id === run.id ? <Badge tone="accent">Current</Badge> : null}
+                    {run.incomplete ? <Badge tone="warn">Incomplete</Badge> : null}
+                  </span>
+                  <span className="text-muted">
+                    {run.score != null ? `${run.score.toFixed(1)}/10 · ` : ""}
+                    {run.model}
+                  </span>
+                </div>
+                {run.partial ? (
+                  <details className="mt-2 rounded-lg border border-line bg-canvas px-3 py-2">
+                    <summary className="cursor-pointer text-xs font-semibold">
+                      Stopped early. Finished: {SECTION_KEYS.filter((k) => !run.partial!.missing.includes(k)).map((k) => SECTION_LABELS[k]).join(", ") || "nothing"}
+                    </summary>
+                    {SECTION_KEYS.filter((k) => run.partial!.sections[k] && !run.partial!.missing.includes(k)).map((k) => (
+                      <div key={k} className="mt-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted">{SECTION_LABELS[k]}</p>
+                        <pre className="pc-break mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap font-sans text-xs leading-5">{run.partial!.sections[k]}</pre>
+                      </div>
+                    ))}
+                  </details>
+                ) : null}
               </li>
             ))}
             {history.length === 0 ? <li className="py-2 text-muted">Not analyzed yet.</li> : null}

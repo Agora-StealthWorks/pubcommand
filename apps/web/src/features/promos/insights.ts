@@ -4,6 +4,7 @@ import { tenantDb, type Prisma } from "@pubcommand/db";
 import { logAiUsage } from "../ai/usage";
 import { teachBrain } from "../brain/teach";
 import { PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
+import { currentByPromo } from "./current";
 import { analysisDigest, type AnalysisDigest } from "../../../../../modules/promo-studio/stored";
 import { ENTITY_KINDS, resolveName, type EntityKind, type EntityOverride } from "../../../../../modules/promo-studio/entities";
 import {
@@ -47,10 +48,9 @@ export async function latestResults(organizationId: string, promoIds: string[]):
     select: { promoId: true, result: true },
   });
   const out = new Map<string, AnalysisDigest>();
-  for (const row of rows) {
-    if (out.has(row.promoId)) continue;
+  for (const [promoId, row] of currentByPromo(rows)) {
     const digest = analysisDigest(row.result);
-    if (digest) out.set(row.promoId, digest);
+    if (digest) out.set(promoId, digest);
   }
   return out;
 }
@@ -124,10 +124,9 @@ export async function calibrationPoints(organizationId: string, brandId: string)
   const trained = promos.filter((p) => p.myScore != null || real.has(p.id));
   // The AI's own prediction (the analysis as first scored), not a score a re-evaluation moved toward the answer.
   const rows = trained.length
-    ? await tenantDb(organizationId).promoAnalysis.findMany({ where: { promoId: { in: trained.map((p) => p.id) } }, orderBy: { version: "desc" }, select: { promoId: true, score: true } })
+    ? await tenantDb(organizationId).promoAnalysis.findMany({ where: { promoId: { in: trained.map((p) => p.id) } }, orderBy: { version: "desc" }, select: { promoId: true, score: true, result: true } })
     : [];
-  const predicted = new Map<string, number | null>();
-  for (const row of rows) if (!predicted.has(row.promoId)) predicted.set(row.promoId, row.score);
+  const predicted = new Map<string, number | null>([...currentByPromo(rows)].map(([promoId, row]) => [promoId, row.score]));
   return trained
     .map((p) => ({ p, ai: predicted.has(p.id) ? predicted.get(p.id)! : p.effectivenessScore }))
     .filter((row) => row.ai != null)

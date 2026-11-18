@@ -5,7 +5,7 @@ import { parseAnalysis, parseCub, parseHeadline, parseIntel, parseOffer, parseOu
 import { ANALYSIS_SYSTEM, analysisContext, directiveBlock, matchDirectory, pickCalibration, reevaluatePrompt, type CalibrationExample } from "./prompt";
 import { blend, DIMENSION_WEIGHTS, DIMENSIONS, finalScore, parseScorecard, TOTAL_WEIGHT } from "./score";
 import { activeSection, progressPercent, SECTION_KEYS, splitSections } from "./sections";
-import { analysisDigest, analysisMarkdown, buildStored, cubQuotes, effectiveScorecard, intelNote, sourceCopyNote } from "./stored";
+import { analysisDigest, analysisMarkdown, buildStored, cubQuotes, currentAnalysis, effectiveScorecard, intelNote, isIncomplete, sourceCopyNote } from "./stored";
 
 describe("sections", () => {
   it("cuts a full answer into all eight sections, in order", () => {
@@ -271,6 +271,25 @@ describe("stored analysis", () => {
     expect(stored.incomplete).toEqual(["TEASE", "INTEL", "SCORECARD"]);
     expect(stored.scorecard.final).toBeNull();
     expect(analysisDigest(stored)!.final).toBeNull();
+  });
+
+  it("a partial run does not replace the current analysis or its score", () => {
+    const full = { version: 1, score: 7.5, result: buildStored({ raw: SAMPLE_ANSWER, finished: true, visual: false, matches: [] }) };
+    const cut = SAMPLE_ANSWER.slice(0, SAMPLE_ANSWER.indexOf("<<SCORECARD>>"));
+    const partial = { version: 2, score: null, result: buildStored({ raw: cut, finished: false, visual: false, matches: [] }) };
+    expect(isIncomplete(partial.result)).toBe(true);
+    expect(isIncomplete(full.result)).toBe(false);
+    const current = currentAnalysis([partial, full])!;
+    expect(current.version).toBe(1);
+    expect(current.score).toBe(7.5);
+    expect(analysisDigest(current.result)!.final).toBe(7.5);
+    // With nothing else, the partial run is shown (no score).
+    expect(currentAnalysis([partial])!.version).toBe(2);
+    expect(analysisDigest(currentAnalysis([partial])!.result)!.final).toBeNull();
+    // A newer complete run wins; old JSON rows count as complete.
+    expect(currentAnalysis([{ version: 3, result: full.result }, partial])!.version).toBe(3);
+    expect(currentAnalysis([partial, { version: 1, result: { headline: {}, scores: [] } }])!.version).toBe(1);
+    expect(currentAnalysis([])).toBeNull();
   });
 
   it("an applied re-evaluation replaces the shown scorecard", () => {

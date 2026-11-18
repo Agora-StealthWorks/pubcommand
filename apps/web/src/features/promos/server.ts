@@ -2,6 +2,7 @@ import { runText, streamText, type AiInput } from "@pubcommand/ai";
 import { brandProfile, brandPromptContext } from "@pubcommand/core";
 import { tenantDb, type Prisma } from "@pubcommand/db";
 import { logAiUsage } from "../ai/usage";
+import { currentAnalysisRow, currentByPromo } from "./current";
 import { teachBrain } from "../brain/teach";
 import { getEditors, getPublications, publicationPromptBlock } from "../pubsetup/read";
 import { brandScope, scopeWhere } from "../../../../../modules/knowledge/visibility";
@@ -118,8 +119,7 @@ async function gatherContext(db: Db, organizationId: string, promo: PromoRow, br
   const analyses = trained.length
     ? await db.promoAnalysis.findMany({ where: { promoId: { in: trained.map((t) => t.id) } }, orderBy: { version: "desc" }, select: { promoId: true, score: true, result: true } })
     : [];
-  const latest = new Map<string, (typeof analyses)[number]>();
-  for (const row of analyses) if (!latest.has(row.promoId)) latest.set(row.promoId, row);
+  const latest = currentByPromo(analyses);
   const calibration: CalibrationExample[] = trained.map((t) => {
     const a = latest.get(t.id);
     return {
@@ -242,6 +242,15 @@ export async function runPromoAnalysis(input: {
         createdById: input.actorId,
       },
     });
+    // A run that stopped early is kept as an incomplete version, but never replaces a complete
+    // review or its score: the page shows the earlier review with a notice and Re-analyze.
+    if (answer.status === "truncated") {
+      const current = await currentAnalysisRow(db, promo.id);
+      if (current && current.version !== version) {
+        await db.promo.updateMany({ where: { id: promo.id }, data: { analysisStatus: "DONE", analysisError: null, analysisLive: null } });
+        return;
+      }
+    }
     const price = digest.detected.pricePoint;
     const detectedType = promoTypeFromPrice(price);
     await db.promo.updateMany({
@@ -308,7 +317,7 @@ export const STALE_REEVAL_MS = 5 * 60 * 1000;
  */
 export async function runReevaluation(input: { organizationId: string; promoId: string; brand: Brand; actorId: string | null }): Promise<void> {
   const db = tenantDb(input.organizationId);
-  const row = await db.promoAnalysis.findFirst({ where: { promoId: input.promoId }, orderBy: { version: "desc" } });
+  const row = await currentAnalysisRow(db, input.promoId);
   const promo = await db.promo.findFirst({ where: { id: input.promoId, deletedAt: null } });
   if (!row || !promo || !isStoredV2(row.result)) return;
   const stored = row.result;

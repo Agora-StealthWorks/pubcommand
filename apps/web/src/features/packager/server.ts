@@ -5,6 +5,7 @@ import { tenantDb, type Prisma } from "@pubcommand/db";
 import { logAiUsage } from "../ai/usage";
 import { teachBrain } from "../brain/teach";
 import { publicationPromptBlock } from "../pubsetup/read";
+import { currentAnalysisRow } from "../promos/current";
 import { analysisDigest, type AnalysisDigest } from "../../../../../modules/promo-studio/stored";
 import {
   COMPONENT_SCHEMA,
@@ -44,7 +45,7 @@ export function allowedText(promo: { sourceText: string }, analysis: AnalysisDig
 }
 
 export async function latestAnalysis(db: Db, promoId: string): Promise<AnalysisDigest | null> {
-  const row = await db.promoAnalysis.findFirst({ where: { promoId }, orderBy: { version: "desc" }, select: { result: true } });
+  const row = await currentAnalysisRow(db, promoId);
   return row ? analysisDigest(row.result) : null;
 }
 
