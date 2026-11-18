@@ -164,7 +164,9 @@ export const ANALYSIS_SCHEMA: Record<string, unknown> = {
             additionalProperties: false,
             required: ["question", "answered", "evidence", "improve"],
             properties: {
-              question: { type: "string", enum: [...SIXTEEN_WORD_QUESTIONS] },
+              // Plain text, not an enum: long enum strings made the schema too large for the API's JSON mode.
+              // normalizeAnalysis maps each answer back to the canonical wording.
+              question: str,
               answered: { type: "string", enum: ["strong", "weak", "missing"] },
               evidence: str,
               improve: str,
@@ -177,7 +179,7 @@ export const ANALYSIS_SCHEMA: Record<string, unknown> = {
             type: "object",
             additionalProperties: false,
             required: ["step", "present", "note"],
-            properties: { step: { type: "string", enum: [...CLOSE_STEPS] }, present: { type: "boolean" }, note: str },
+            properties: { step: str, present: { type: "boolean" }, note: str },
           },
         },
       },
@@ -268,7 +270,7 @@ Answer every part of the JSON schema:
 - detected: publisher, gurus (the named experts, editors or doctors), product, headline price as a number (null if none), and promo type. Front-end means a low-priced first offer. Backend means a higher-priced offer sold to existing buyers, by live webinar or video sales letter. Mega-Bundle means many products sold together. Use Unknown when unclear.
 - headline: copy the eyebrow, headline and subhead exactly (empty string if missing). Rate the headline 1 to 10 on each of the 4 U's (urgent, unique, ultra-specific, useful) with one line each. Give a verdict and three stronger alternative headlines in the same voice that obey the compliance rules.
 - outline: the promo's structure as an ordered list of sections, each with a one-line summary.
-- sixteenWord: the big idea in one sentence. For each of the 10 reader questions of the 16-Word Sales Letter framework, say whether the copy answers it strongly, weakly, or not at all, quote the evidence, and say how to improve it. Then for each close step, say whether it is present with a note.
+- sixteenWord: the big idea in one sentence. For each of the 10 reader questions of the 16-Word Sales Letter framework, say whether the copy answers it strongly, weakly, or not at all, quote the evidence, and say how to improve it. Then for each close step, say whether it is present with a note. Use these exact wordings, one entry each, in this order. Questions: ${SIXTEEN_WORD_QUESTIONS.map((q) => `"${q}"`).join(", ")}. Close steps: ${CLOSE_STEPS.map((c) => `"${c}"`).join(", ")}.
 - cub: the most important places where the copy is Confusing, Unbelievable, or Boring. Each entry quotes an exact passage of 5 to 40 words copied character for character from the promo, says why it fails, and gives a fix. Give 6 to 15 entries, most important first.
 - offer: product, price, term, bonuses, guarantee, urgency device, and a short summary.
 - tease: whether the promo teases a secret it holds back until purchase (for example a stock, an ingredient, a protocol, a device or a strategy). subject says what kind of thing it is. List the clues, and up to three guesses (name, detail, confidence, why). Mark low confidence unless the clues are unmistakable.
@@ -289,6 +291,17 @@ export function analysisPrompt(input: { brandContext: string; title: string; tex
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
+const plain = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** The canonical wording for an item the AI named loosely ("Why now" -> "Why now?"). Unknown text is kept. */
+export function canonicalItem<T extends string>(value: string, list: readonly T[]): string {
+  const wanted = plain(value);
+  const exact = list.find((item) => plain(item) === wanted);
+  if (exact) return exact;
+  const partial = list.filter((item) => plain(item).startsWith(wanted) || wanted.startsWith(plain(item)));
+  return partial.length === 1 ? partial[0]! : value;
+}
+
 /** Clean up whatever the AI returned so the UI never sees a 0 or 47 on a 1-10 scale. */
 export function normalizeAnalysis(raw: PromoAnalysisResult): PromoAnalysisResult {
   const fix = (r: Rated): Rated => ({ score: clamp(Math.round(r.score), 1, 10), note: r.note });
@@ -302,6 +315,11 @@ export function normalizeAnalysis(raw: PromoAnalysisResult): PromoAnalysisResult
         ultraSpecific: fix(raw.headline.fourUs.ultraSpecific),
         useful: fix(raw.headline.fourUs.useful),
       },
+    },
+    sixteenWord: {
+      ...raw.sixteenWord,
+      questions: raw.sixteenWord.questions.map((q) => ({ ...q, question: canonicalItem(q.question, SIXTEEN_WORD_QUESTIONS) })),
+      close: raw.sixteenWord.close.map((c) => ({ ...c, step: canonicalItem(c.step, CLOSE_STEPS) })),
     },
     scores: raw.scores.map((item) => ({ ...item, score: clamp(Math.round(item.score), 1, 10) })),
   };

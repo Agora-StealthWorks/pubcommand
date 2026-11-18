@@ -102,3 +102,14 @@ describe("promo analysis", () => {
     walk(ANALYSIS_SCHEMA);
   });
 });
+
+describe("canonicalItem", () => {
+  it("maps loose wording back to the canonical list", async () => {
+    const { canonicalItem, SIXTEEN_WORD_QUESTIONS, CLOSE_STEPS, ANALYSIS_SYSTEM } = await import("./analysis");
+    expect(canonicalItem("why now", SIXTEEN_WORD_QUESTIONS)).toBe("Why now?");
+    expect(canonicalItem("What's in it for me", SIXTEEN_WORD_QUESTIONS)).toBe("What's in it for me?");
+    expect(canonicalItem("guarantee", CLOSE_STEPS)).toBe("Guarantee");
+    expect(canonicalItem("Something else", CLOSE_STEPS)).toBe("Something else");
+    expect(ANALYSIS_SYSTEM).toContain('"Why now?"');
+  });
+});
