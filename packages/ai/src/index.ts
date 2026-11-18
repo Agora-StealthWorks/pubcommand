@@ -265,3 +265,5 @@ export async function runText(request: { system: string; prompt: string; effort?
     return { status: "failed", reason: error instanceof Error ? error.message : "Unknown AI error." };
   }
 }
+
+export { streamText, type AiStreamRequest, type AiStreamResult } from "./stream";

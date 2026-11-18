@@ -7,10 +7,9 @@ import { redirect } from "next/navigation";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { PACKAGE_COMPONENTS, checkClaims, clampQuantity, componentSpec, parseDirection } from "../../../../../modules/promo-studio/packager";
-import type { PromoAnalysisResult } from "../../../../../modules/promo-studio/analysis";
 import { isUuid, loadPackage } from "./data";
 import { parseFindings } from "../../../../../modules/promo-studio/timely";
-import { allowedText, reopenIfApproved, runPackageGeneration, runPackageResearch, saveVersion, teachApprovedPackage, type GenerationRequest } from "./server";
+import { allowedText, latestAnalysis, reopenIfApproved, runPackageGeneration, runPackageResearch, saveVersion, teachApprovedPackage, type GenerationRequest } from "./server";
 import { learnFromComponent } from "./training";
 
 type Permission = "promo.write" | "promo.approve";
@@ -181,8 +180,7 @@ export async function regenerateComponent(formData: FormData) {
 
 async function claimsFor(ctx: Ctx, loaded: Awaited<ReturnType<typeof target>>["loaded"], content: string) {
   const profile = brandProfile(ctx.brand);
-  const row = await tenantDb(ctx.resolved.id).promoAnalysis.findFirst({ where: { promoId: loaded.promo.id }, orderBy: { version: "desc" }, select: { result: true } });
-  const analysis = row ? (row.result as unknown as PromoAnalysisResult) : null;
+  const analysis = await latestAnalysis(tenantDb(ctx.resolved.id), loaded.promo.id);
   return checkClaims(content, { niche: profile.niche, rules: profile.complianceRules, allowedText: allowedText(loaded.promo, analysis, loaded.pkg.direction.offerDetails) });
 }
 

@@ -3,7 +3,8 @@ import { brandProfile, brandPromptContext } from "@pubcommand/core";
 import { tenantDb, type Prisma } from "@pubcommand/db";
 import { logAiUsage } from "../ai/usage";
 import { teachBrain } from "../brain/teach";
-import { PROMO_TYPES, type PromoAnalysisResult } from "../../../../../modules/promo-studio/analysis";
+import { PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
+import { analysisDigest, type AnalysisDigest } from "../../../../../modules/promo-studio/stored";
 import { ENTITY_KINDS, resolveName, type EntityKind, type EntityOverride } from "../../../../../modules/promo-studio/entities";
 import {
   LESSON_SCHEMA,
@@ -37,16 +38,20 @@ type Brand = { id: string; name: string; niche?: string | null; audience?: strin
 // ---------------------------------------------------------------------------
 // Shared reads
 
-/** The newest analysis result per promo (only promos that have one). */
-export async function latestResults(organizationId: string, promoIds: string[]): Promise<Map<string, PromoAnalysisResult>> {
+/** The newest analysis per promo (only promos that have a readable one), as a digest of either saved shape. */
+export async function latestResults(organizationId: string, promoIds: string[]): Promise<Map<string, AnalysisDigest>> {
   if (!promoIds.length) return new Map();
   const rows = await tenantDb(organizationId).promoAnalysis.findMany({
     where: { promoId: { in: promoIds } },
     orderBy: { version: "desc" },
     select: { promoId: true, result: true },
   });
-  const out = new Map<string, PromoAnalysisResult>();
-  for (const row of rows) if (!out.has(row.promoId)) out.set(row.promoId, row.result as unknown as PromoAnalysisResult);
+  const out = new Map<string, AnalysisDigest>();
+  for (const row of rows) {
+    if (out.has(row.promoId)) continue;
+    const digest = analysisDigest(row.result);
+    if (digest) out.set(row.promoId, digest);
+  }
   return out;
 }
 
@@ -116,9 +121,17 @@ export async function trainingPairs(organizationId: string, brandId: string) {
 
 export async function calibrationPoints(organizationId: string, brandId: string): Promise<CalibrationPoint[]> {
   const { promos, real } = await brandPromoData(organizationId, brandId);
-  return promos
-    .filter((p) => p.effectivenessScore != null && (p.myScore != null || real.has(p.id)))
-    .map((p) => ({ id: p.id, title: p.title, ai: p.effectivenessScore!, mine: p.myScore, real: real.get(p.id)?.score ?? null }));
+  const trained = promos.filter((p) => p.myScore != null || real.has(p.id));
+  // The AI's own prediction (the analysis as first scored), not a score a re-evaluation moved toward the answer.
+  const rows = trained.length
+    ? await tenantDb(organizationId).promoAnalysis.findMany({ where: { promoId: { in: trained.map((p) => p.id) } }, orderBy: { version: "desc" }, select: { promoId: true, score: true } })
+    : [];
+  const predicted = new Map<string, number | null>();
+  for (const row of rows) if (!predicted.has(row.promoId)) predicted.set(row.promoId, row.score);
+  return trained
+    .map((p) => ({ p, ai: predicted.has(p.id) ? predicted.get(p.id)! : p.effectivenessScore }))
+    .filter((row) => row.ai != null)
+    .map(({ p, ai }) => ({ id: p.id, title: p.title, ai: ai!, mine: p.myScore, real: real.get(p.id)?.score ?? null }));
 }
 
 // ---------------------------------------------------------------------------

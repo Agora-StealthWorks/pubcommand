@@ -17,7 +17,7 @@ type Values = {
 };
 
 /** Shared by the upload form and the Details tab. */
-export function PromoDetailsFields({ values = {}, options }: { values?: Values; options?: DetailsOptions }) {
+export function PromoDetailsFields({ values = {}, options, hideRunAndCode = false }: { values?: Values; options?: DetailsOptions; /** The upload form shows these two up front instead. */ hideRunAndCode?: boolean }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {options ? (
@@ -69,14 +69,23 @@ export function PromoDetailsFields({ values = {}, options }: { values?: Values; 
           ))}
         </select>
       </div>
+      {hideRunAndCode ? null : <RunAndCodeFields values={values} />}
+    </div>
+  );
+}
+
+/** Approximate run start date and promo code: the two optional inputs the upload asks for up front. */
+export function RunAndCodeFields({ values = {} }: { values?: Pick<Values, "promoCode" | "runStartDate"> }) {
+  return (
+    <>
+      <div>
+        <Label htmlFor="runStartDate">Approx. date it started running</Label>
+        <Input id="runStartDate" name="runStartDate" type="date" defaultValue={values.runStartDate ? values.runStartDate.toISOString().slice(0, 10) : ""} />
+      </div>
       <div>
         <Label htmlFor="promoCode">Promo / creative code</Label>
         <Input id="promoCode" name="promoCode" defaultValue={values.promoCode ?? ""} maxLength={80} />
       </div>
-      <div>
-        <Label htmlFor="runStartDate">Started running</Label>
-        <Input id="runStartDate" name="runStartDate" type="date" defaultValue={values.runStartDate ? values.runStartDate.toISOString().slice(0, 10) : ""} />
-      </div>
-    </div>
+    </>
   );
 }

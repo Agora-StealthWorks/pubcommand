@@ -5,7 +5,7 @@ import { tenantDb, type Prisma } from "@pubcommand/db";
 import { logAiUsage } from "../ai/usage";
 import { teachBrain } from "../brain/teach";
 import { publicationPromptBlock } from "../pubsetup/read";
-import type { PromoAnalysisResult } from "../../../../../modules/promo-studio/analysis";
+import { analysisDigest, type AnalysisDigest } from "../../../../../modules/promo-studio/stored";
 import {
   COMPONENT_SCHEMA,
   checkClaims,
@@ -38,14 +38,14 @@ export function isGenStale(status: string, updatedAt: Date): boolean {
 }
 
 /** Text whose figures count as "from the source" for the claims check. */
-export function allowedText(promo: { sourceText: string }, analysis: PromoAnalysisResult | null, offerDetails: string): string {
+export function allowedText(promo: { sourceText: string }, analysis: AnalysisDigest | null, offerDetails: string): string {
   const offer = analysis ? [analysis.offer.price, analysis.offer.term, analysis.offer.guarantee, analysis.offer.urgency, analysis.offer.summary, ...analysis.offer.bonuses].join("\n") : "";
   return [promo.sourceText, offer, offerDetails].join("\n");
 }
 
-async function latestAnalysis(db: Db, promoId: string): Promise<PromoAnalysisResult | null> {
+export async function latestAnalysis(db: Db, promoId: string): Promise<AnalysisDigest | null> {
   const row = await db.promoAnalysis.findFirst({ where: { promoId }, orderBy: { version: "desc" }, select: { result: true } });
-  return row ? (row.result as unknown as PromoAnalysisResult) : null;
+  return row ? analysisDigest(row.result) : null;
 }
 
 async function bestPerformers(db: Db, brandId: string, promoId: string): Promise<BestPerformer[]> {
@@ -61,7 +61,7 @@ async function bestPerformers(db: Db, brandId: string, promoId: string): Promise
       return {
         title: promo.title,
         headline: analysis?.headline.headline ?? "",
-        bigIdea: analysis?.sixteenWord.bigIdea ?? "",
+        bigIdea: analysis?.bigIdea ?? "",
         lessons: analysis?.lessons ?? [],
         excerpt: promo.sourceText.slice(0, 2500),
       };
@@ -112,7 +112,7 @@ export async function runPackageResearch(input: { organizationId: string; packag
             today: new Date().toISOString().slice(0, 10),
             title: promo.title,
             product: promo.product,
-            bigIdea: analysis?.sixteenWord.bigIdea ?? "",
+            bigIdea: analysis?.bigIdea ?? "",
             summary: analysis?.summary ?? "",
             angle: direction.angle,
             eventName: direction.event?.name ?? null,
@@ -178,12 +178,12 @@ export async function runPackageGeneration(input: {
       analysis: analysis
         ? {
             summary: analysis.summary,
-            bigIdea: analysis.sixteenWord.bigIdea,
+            bigIdea: analysis.bigIdea,
             headline: analysis.headline.headline,
             offer: analysis.offer,
             strengths: analysis.strengths,
             lessons: analysis.lessons,
-            compliance: analysis.compliance ?? [],
+            compliance: analysis.compliance,
           }
         : null,
     };

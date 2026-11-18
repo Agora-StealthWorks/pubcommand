@@ -1,11 +1,15 @@
-import { brandProfile, can } from "@pubcommand/core";
+import { brandProfile } from "@pubcommand/core";
 import { Badge, Button, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Flash } from "@/components/ui";
-import { addPromoFile, deletePromo, reanalyzePromo, removePromoFile, updatePromoDetails, updatePromoTraining } from "@/features/promos/actions";
+import { Denied, Flash } from "@/components/ui";
+import { addPromoFile, decideReevaluation, deletePromo, reanalyzePromo, reevaluatePromo, removePromoFile, updatePromoDetails, updatePromoTraining } from "@/features/promos/actions";
 import { ComplianceTab, CubTab, HeadlineTab, OfferTab, OutlineTab, OverviewTab, SixteenWordTab, TeaseTab } from "@/features/promos/analysis-view";
 import { AutoRefresh } from "@/features/promos/auto-refresh";
+import { promoPage } from "@/features/promos/guard";
+import { LiveAnalysis } from "@/features/promos/live-analysis";
+import { STALE_REEVAL_MS } from "@/features/promos/server";
+import { CubView, HeadlineView, OutlineView, ScoreBadges, ScorecardView, SixteenWordView, SummaryView } from "@/features/promos/sections-view";
 import { loadPromo } from "@/features/promos/data";
 import { listPackages } from "@/features/packager/data";
 import { PackageTab } from "@/features/packager/views";
@@ -17,9 +21,22 @@ import { TableScroll } from "@/components/table-scroll";
 import { displayEntities } from "../../../../../../../../../modules/promo-studio/entities";
 import { describeTier, enrich, percentileScore } from "../../../../../../../../../modules/promo-studio/performance";
 import { BAND_LABELS, MIN_TRAINING_PAIRS, scoreVector, similarOutcomes } from "../../../../../../../../../modules/promo-studio/similar";
-import { getOrgContext } from "@/lib/org";
+import type { PromoAnalysisResult } from "../../../../../../../../../modules/promo-studio/analysis";
+import { parseAnalysis } from "../../../../../../../../../modules/promo-studio/parse";
+import { parseScorecard } from "../../../../../../../../../modules/promo-studio/score";
+import { SECTION_LABELS } from "../../../../../../../../../modules/promo-studio/sections";
+import { analysisDigest, effectiveScorecard, isStoredV2 } from "../../../../../../../../../modules/promo-studio/stored";
 
-const ANALYSIS_TABS = [
+/** The analysis tabs, in the old analyzer's order. */
+const SECTION_TABS = [
+  ["summary", "Summary"],
+  ["headline", "Headline"],
+  ["outline", "Outline"],
+  ["sixteen", "16-Word Sales Letter"],
+  ["cub", "CUB Review"],
+] as const;
+/** Analyses saved before November 2026 (one JSON object) keep their own tabs. */
+const LEGACY_TABS = [
   ["overview", "Overview"],
   ["headline", "Headline"],
   ["outline", "Outline"],
@@ -30,14 +47,15 @@ const ANALYSIS_TABS = [
   ["compliance", "Compliance"],
 ] as const;
 const OTHER_TABS = [
-  ["package", "Package"],
+  ["training", "Training"],
+  ["files", "Documents"],
   ["results", "Results"],
+  ["package", "Package"],
   ["copy", "Copy"],
   ["details", "Details"],
-  ["files", "Files"],
-  ["training", "Training"],
   ["history", "History"],
 ] as const;
+const INPUT_LABEL: Record<string, string> = { pdf: "Visual PDF", "scanned-pdf": "Visual PDF (scanned)", docx: "Word (text)", text: "Text" };
 
 function kb(size: number) {
   return size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
@@ -52,16 +70,24 @@ export default async function PromoPage({
 }) {
   const { slug, promoId } = await params;
   const query = await searchParams;
-  const ctx = await getOrgContext(slug);
-  if (ctx.kind !== "ok" || !ctx.brand) notFound();
+  const access = await promoPage(slug);
+  if ("denied" in access) {
+    if (access.denied === "notfound") notFound();
+    return <Denied title={access.denied} />;
+  }
+  const { ctx, writable } = access;
   const loaded = await loadPromo(ctx.resolved.id, ctx.brand.id, promoId);
   if (!loaded) notFound();
   const { promo, current, history, files } = loaded;
-  const writable = can(ctx.subject, "promo.write", ctx.scope);
   const busy = promo.analysisStatus === "QUEUED" || promo.analysisStatus === "RUNNING";
-  const tab = query.tab ?? (current ? "overview" : "copy");
-  const result = current?.result ?? null;
-  const tabs = [...(result ? ANALYSIS_TABS : []), ...OTHER_TABS];
+  const v2 = current && isStoredV2(current.result) ? current.result : null;
+  const legacy = current && !v2 ? (current.result as PromoAnalysisResult) : null;
+  const parsed = v2 ? parseAnalysis(v2.sections) : null;
+  const card = v2 ? effectiveScorecard(v2) : null;
+  const digest = current ? analysisDigest(current.result, ctx.brand.name) : null;
+  const analysisTabs: readonly (readonly [string, string])[] = busy ? [["live", "Analysis (live)"]] : v2 ? SECTION_TABS : legacy ? LEGACY_TABS : [];
+  const tab = query.tab ?? (busy ? "live" : v2 ? "summary" : legacy ? "overview" : "copy");
+  const tabs = [...analysisTabs, ...OTHER_TABS];
   const [packages, insights, pickerOptions] = await Promise.all([
     tab === "package" ? listPackages(ctx.resolved.id, promo.id) : Promise.resolve([]),
     promoInsights(ctx.resolved.id, ctx.brand.id, promo.id),
@@ -69,9 +95,14 @@ export default async function PromoPage({
   ]);
   const shown = displayEntities(promo, insights.overrides);
   const perf = insights.performance.find((row) => row.tier) ?? insights.performance[0] ?? null;
-  const similar = tab === "results" ? similarOutcomes({ id: promo.id, vector: scoreVector(result?.scores), promoType: promo.promoType }, await trainingPairs(ctx.resolved.id, ctx.brand.id)) : null;
+  const similar = tab === "results" ? similarOutcomes({ id: promo.id, vector: scoreVector(digest?.scores), promoType: promo.promoType }, await trainingPairs(ctx.resolved.id, ctx.brand.id)) : null;
   const [calibration, gallery] = tab === "training" ? await Promise.all([calibrationPoints(ctx.resolved.id, ctx.brand.id), bestPerformers(ctx.resolved.id, ctx.brand.id)]) : [[], []];
   const realScore = promo.performanceScore ?? (perf?.tier ? percentileScore(perf.percentile) : null);
+  const fk = promo.fkReadingEase != null && promo.fkGradeLevel != null ? { ease: promo.fkReadingEase, grade: promo.fkGradeLevel } : null;
+  const attribution = v2?.matches.length && digest ? { publisher: digest.detected.publisher, names: v2.matches.map((m) => m.name).join(", ") } : null;
+  const reeval = v2?.reevaluation ?? null;
+  const reevalStale = reeval?.status === "RUNNING" && Date.now() - Date.parse(reeval.startedAt) > STALE_REEVAL_MS;
+  const shownLegacyTab = legacy && !busy ? tab : null;
 
   return (
     <div className="space-y-4">
@@ -89,23 +120,33 @@ export default async function PromoPage({
             {perf?.tier ? <TierBadge tier={perf.tier} title={describeTier(perf)} /> : null}
             {promo.promoType ? <Badge>{promo.promoType}</Badge> : null}
             {promo.promoStatus ? <Badge>{promo.promoStatus}</Badge> : null}
-            {promo.fkReadingEase != null ? (
+            {legacy && promo.fkReadingEase != null ? (
               <span title="Flesch reading ease (higher is easier) and grade level">
                 · Reading ease {promo.fkReadingEase} (grade {promo.fkGradeLevel})
               </span>
             ) : null}
           </div>
+          {!legacy ? (
+            <div className="mt-2">
+              <ScoreBadges final={busy ? null : promo.effectivenessScore} fk={fk} inputLabel={INPUT_LABEL[promo.inputType] ?? promo.inputType} />
+            </div>
+          ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {promo.effectivenessScore != null ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
+          {legacy && promo.effectivenessScore != null ? (
             <div className="rounded-xl border border-line bg-white px-4 py-2 text-center">
               <p className="text-2xl font-semibold leading-none">{promo.effectivenessScore.toFixed(1)}</p>
               <p className="mt-1 text-[11px] text-muted">score /10</p>
             </div>
           ) : null}
-          {current ? (
+          {current && !busy ? (
             <a href={`/promo-studio/${promo.id}/export`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold hover:bg-canvas">
-              Word export
+              Export Word
+            </a>
+          ) : null}
+          {v2 && !busy ? (
+            <a href={`/promo-studio/${promo.id}/export?format=md`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold hover:bg-canvas">
+              Markdown
             </a>
           ) : null}
           {writable && !busy ? (
@@ -120,14 +161,11 @@ export default async function PromoPage({
       </header>
 
       <Flash error={query.error} notice={query.notice} />
-      {busy ? (
-        <div className="flex items-center gap-3 rounded-xl border border-[#c7d7fe] bg-[#eef4ff] px-4 py-3 text-sm text-[#1e3a8a]">
-          <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#1e3a8a] border-t-transparent" aria-hidden />
-          Analyzing… usually 30 to 90 seconds. This page updates by itself. <AutoRefresh />
-        </div>
-      ) : null}
       {promo.analysisStatus === "FAILED" && promo.analysisError ? (
         <p className="rounded-md border border-[#fecdca] bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">Analysis failed: {promo.analysisError}</p>
+      ) : null}
+      {promo.analysisStatus === "DONE" && promo.analysisError ? (
+        <p className="rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">{promo.analysisError}</p>
       ) : null}
 
       <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-line" aria-label="Promo sections">
@@ -138,21 +176,37 @@ export default async function PromoPage({
             className={`inline-flex min-h-11 shrink-0 items-center border-b-2 px-3 text-sm font-medium ${tab === key ? "border-accent text-accent" : "border-transparent text-muted hover:text-ink"}`}
           >
             {label}
-            {key === "cub" && result ? <span className="ml-1 text-xs text-muted">{result.cub.length}</span> : null}
-            {key === "compliance" && result?.compliance.length ? <span className="ml-1 rounded-full bg-[#fee4e2] px-1.5 text-xs text-[#912018]">{result.compliance.length}</span> : null}
+            {key === "cub" && digest ? <span className="ml-1 text-xs text-muted">{digest.cubCount}</span> : null}
+            {key === "compliance" && legacy?.compliance.length ? <span className="ml-1 rounded-full bg-[#fee4e2] px-1.5 text-xs text-[#912018]">{legacy.compliance.length}</span> : null}
             {key === "files" ? <span className="ml-1 text-xs text-muted">{files.length}</span> : null}
           </Link>
         ))}
       </nav>
 
-      {result && tab === "overview" ? <OverviewTab result={result} score={promo.effectivenessScore} /> : null}
-      {result && tab === "headline" ? <HeadlineTab result={result} /> : null}
-      {result && tab === "outline" ? <OutlineTab result={result} /> : null}
-      {result && tab === "sixteen" ? <SixteenWordTab result={result} /> : null}
-      {result && tab === "cub" ? <CubTab result={result} sourceText={promo.sourceText} /> : null}
-      {result && tab === "offer" ? <OfferTab result={result} /> : null}
-      {result && tab === "tease" ? <TeaseTab result={result} /> : null}
-      {result && tab === "compliance" ? <ComplianceTab result={result} rules={brandProfile(ctx.brand).complianceRules} /> : null}
+      {busy && (tab === "live" || (SECTION_TABS as readonly (readonly string[])[]).some(([key]) => key === tab)) ? (
+        <LiveAnalysis
+          promoId={promo.id}
+          sourceText={promo.sourceText}
+          initial={{ status: promo.analysisStatus, error: promo.analysisError, text: promo.analysisLive ?? "", startedAt: promo.analysisStartedAt?.toISOString() ?? null }}
+        />
+      ) : null}
+
+      {v2 && parsed && card && !busy && tab === "summary" ? (
+        <SummaryView parsed={parsed} card={card} calibrated={card.calibrated} attribution={attribution} missing={v2.incomplete.map((key) => SECTION_LABELS[key])} />
+      ) : null}
+      {v2 && parsed && !busy && tab === "headline" ? <HeadlineView headline={parsed.headline} /> : null}
+      {v2 && parsed && !busy && tab === "outline" ? <OutlineView outline={parsed.outline} /> : null}
+      {v2 && parsed && !busy && tab === "sixteen" ? <SixteenWordView sixteen={parsed.sixteenWord} /> : null}
+      {v2 && parsed && !busy && tab === "cub" ? <CubView flags={parsed.cub} raw={v2.sections.CUB ?? ""} sourceText={promo.sourceText} /> : null}
+
+      {legacy && shownLegacyTab === "overview" ? <OverviewTab result={legacy} score={promo.effectivenessScore} /> : null}
+      {legacy && shownLegacyTab === "headline" ? <HeadlineTab result={legacy} /> : null}
+      {legacy && shownLegacyTab === "outline" ? <OutlineTab result={legacy} /> : null}
+      {legacy && shownLegacyTab === "sixteen" ? <SixteenWordTab result={legacy} /> : null}
+      {legacy && shownLegacyTab === "cub" ? <CubTab result={legacy} sourceText={promo.sourceText} /> : null}
+      {legacy && shownLegacyTab === "offer" ? <OfferTab result={legacy} /> : null}
+      {legacy && shownLegacyTab === "tease" ? <TeaseTab result={legacy} /> : null}
+      {legacy && shownLegacyTab === "compliance" ? <ComplianceTab result={legacy} rules={brandProfile(ctx.brand).complianceRules} /> : null}
 
       {tab === "package" ? <PackageTab promoId={promo.id} packages={packages} writable={writable} analyzed={Boolean(current)} /> : null}
 
@@ -281,7 +335,7 @@ export default async function PromoPage({
                 </span>
               </li>
             ))}
-            {files.length === 0 ? <li className="py-2 text-sm text-muted">No files. Pasted promos have no original.</li> : null}
+            {files.length === 0 ? <li className="py-2 text-sm text-muted">No documents. Pasted promos have no original.</li> : null}
           </ul>
           {writable ? (
             <form action={addPromoFile} className="space-y-3 border-t border-line pt-4">
@@ -342,6 +396,43 @@ export default async function PromoPage({
         ) : (
           <p className="text-sm text-muted">You can't edit training.</p>
         )}
+        {v2 ? (
+          <section className="max-w-3xl space-y-3 rounded-xl border border-line bg-white p-5">
+            <h2 className="font-semibold">Re-evaluate with this feedback</h2>
+            <p className="text-sm text-muted">
+              The AI re-scores all eight dimensions in light of your score, the real-world result and your notes. You see the new
+              scores first and choose whether to apply them. {card?.calibrated && v2.calibrated ? `A re-evaluation was applied on ${v2.calibrated.appliedAt.slice(0, 10)}.` : ""}
+            </p>
+            {reeval?.status === "RUNNING" && !reevalStale ? (
+              <p className="flex items-center gap-2 text-sm text-[#1e3a8a]">
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#1e3a8a] border-t-transparent" aria-hidden />
+                Re-evaluating… <AutoRefresh />
+              </p>
+            ) : null}
+            {reeval?.status === "FAILED" || reevalStale ? (
+              <p className="rounded-md border border-[#fecdca] bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">Re-evaluation failed: {reevalStale ? "it was interrupted." : reeval?.error}</p>
+            ) : null}
+            {reeval?.status === "DONE" && reeval.text ? (
+              <div className="space-y-3">
+                <ScorecardView card={parseScorecard(reeval.text)} />
+                {writable ? (
+                  <form action={decideReevaluation} className="flex flex-wrap gap-2">
+                    <input type="hidden" name="promoId" value={promo.id} />
+                    <Button type="submit" name="decision" value="apply">Apply to analysis</Button>
+                    <Button type="submit" name="decision" value="discard" variant="secondary">Discard</Button>
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
+            {writable && reeval?.status !== "RUNNING" && reeval?.status !== "DONE" ? (
+              <form action={reevaluatePromo}>
+                <input type="hidden" name="promoId" value={promo.id} />
+                <Button type="submit" variant="secondary" disabled={promo.myScore == null && promo.performanceScore == null}>Re-evaluate</Button>
+                {promo.myScore == null && promo.performanceScore == null ? <p className="mt-1 text-xs text-muted">Save your score or the real-world score first.</p> : null}
+              </form>
+            ) : null}
+          </section>
+        ) : null}
         <section className="rounded-xl border border-line bg-white p-5">
           <h2 className="mb-3 font-semibold">Calibration for {ctx.brand.name}</h2>
           <CalibrationChart points={calibration} highlightId={promo.id} />

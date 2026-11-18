@@ -9,7 +9,10 @@ import { currentRequest } from "@/lib/request";
 import { PROMO_STATUSES, PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
 import { syncBestPerformers } from "../packager/training";
 import { retier } from "./insights";
-import { extractSource, runPromoAnalysis } from "./server";
+import { extractSource, runPromoAnalysis, runReevaluation } from "./server";
+import type { Prisma } from "@pubcommand/db";
+import { effectiveScorecard, isStoredV2 } from "../../../../../modules/promo-studio/stored";
+import { parseScorecard } from "../../../../../modules/promo-studio/score";
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
@@ -183,4 +186,38 @@ export async function removePromoFile(formData: FormData) {
   const promo = await ownPromo(ctx, text(formData, "promoId", 40));
   await tenantDb(ctx.resolved.id).promoFile.deleteMany({ where: { id: text(formData, "fileId", 40), promoId: promo.id, kind: "supplemental" } });
   redirect(`/promo-studio/${promo.id}?tab=files&notice=File removed.`);
+}
+
+/** Training tab: re-score the eight dimensions with the feedback saved on the promo. Runs after the response. */
+export async function reevaluatePromo(formData: FormData) {
+  const ctx = await promoContext("promo.write");
+  const promo = await ownPromo(ctx, text(formData, "promoId", 40));
+  const back = `/promo-studio/${promo.id}?tab=training`;
+  if (promo.myScore == null && promo.performanceScore == null) redirect(`${back}&error=${encodeURIComponent("Save your score or the real-world score first.")}`);
+  const row = await tenantDb(ctx.resolved.id).promoAnalysis.findFirst({ where: { promoId: promo.id }, orderBy: { version: "desc" }, select: { result: true } });
+  if (!row || !isStoredV2(row.result)) redirect(`${back}&error=${encodeURIComponent("Re-analyze this promo first; re-evaluation needs the new score format.")}`);
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.reevaluated", targetType: "promo", targetId: promo.id });
+  after(() => runReevaluation({ organizationId: ctx.resolved.id, promoId: promo.id, brand: ctx.brand, actorId: ctx.auth.user.id }));
+  redirect(back);
+}
+
+/** Apply (or discard) the proposed re-evaluation. Applying replaces the shown score; the first score stays in History. */
+export async function decideReevaluation(formData: FormData) {
+  const ctx = await promoContext("promo.write");
+  const promo = await ownPromo(ctx, text(formData, "promoId", 40));
+  const back = `/promo-studio/${promo.id}?tab=training`;
+  const db = tenantDb(ctx.resolved.id);
+  const row = await db.promoAnalysis.findFirst({ where: { promoId: promo.id }, orderBy: { version: "desc" } });
+  if (!row || !isStoredV2(row.result) || row.result.reevaluation?.status !== "DONE" || !row.result.reevaluation.text) redirect(`${back}&error=${encodeURIComponent("Nothing to apply.")}`);
+  const stored = row.result;
+  const apply = formData.get("decision") === "apply";
+  const proposal = stored.reevaluation!.text!;
+  if (apply && !parseScorecard(proposal).dimensions.length) redirect(`${back}&error=${encodeURIComponent("The re-evaluation had no scores to apply.")}`);
+  const next = { ...stored, reevaluation: null, ...(apply ? { calibrated: { text: proposal, appliedAt: new Date().toISOString() } } : {}) };
+  await db.promoAnalysis.updateMany({ where: { id: row.id }, data: { result: next as unknown as Prisma.InputJsonValue } });
+  if (apply) {
+    await db.promo.updateMany({ where: { id: promo.id }, data: { effectivenessScore: effectiveScorecard(next).final } });
+    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.reevaluation.applied", targetType: "promo", targetId: promo.id });
+  }
+  redirect(`${back}&notice=${encodeURIComponent(apply ? "Re-evaluation applied to the analysis." : "Re-evaluation discarded.")}`);
 }

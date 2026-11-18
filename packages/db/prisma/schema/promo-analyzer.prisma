@@ -27,6 +27,9 @@ model Promo {
   pricePoint         Decimal?       @map("price_point") @db.Decimal(10, 2)
   analysisStatus     AnalysisStatus @default(NONE) @map("analysis_status")
   analysisError      String?        @map("analysis_error")
+  /// The answer so far while an analysis streams (the live view polls it). Cleared when the run ends.
+  analysisLive       String?        @map("analysis_live")
+  analysisStartedAt  DateTime?      @map("analysis_started_at")
   effectivenessScore Float?         @map("effectiveness_score")
   fkReadingEase      Float?         @map("fk_reading_ease")
   fkGradeLevel       Float?         @map("fk_grade_level")

@@ -1,12 +1,11 @@
 import { aiConfigured } from "@pubcommand/ai";
-import { can } from "@pubcommand/core";
 import { Button, Input, Label, Textarea } from "@pubcommand/ui";
 import { notFound } from "next/navigation";
-import { Flash } from "@/components/ui";
+import { Denied, Flash } from "@/components/ui";
 import { createPromo } from "@/features/promos/actions";
-import { PromoDetailsFields } from "@/features/promos/details-fields";
+import { PromoDetailsFields, RunAndCodeFields } from "@/features/promos/details-fields";
 import { getPickerOptions } from "@/features/pubsetup/read";
-import { getOrgContext } from "@/lib/org";
+import { promoPage } from "@/features/promos/guard";
 
 export default async function NewPromoPage({
   params,
@@ -17,18 +16,21 @@ export default async function NewPromoPage({
 }) {
   const { slug } = await params;
   const query = await searchParams;
-  const ctx = await getOrgContext(slug);
-  if (ctx.kind !== "ok") notFound();
-  const writable = can(ctx.subject, "promo.write", ctx.scope);
+  const access = await promoPage(slug);
+  if ("denied" in access) {
+    if (access.denied === "notfound") notFound();
+    return <Denied title={access.denied} />;
+  }
+  const { ctx, writable } = access;
   const picks = ctx.brand && writable ? { publishers: [ctx.brand.name], ...(await getPickerOptions(ctx.resolved.id, ctx.brand.id)) } : undefined;
 
   return (
     <div className="max-w-3xl">
       <h1 className="text-2xl font-semibold tracking-tight">Analyze a promo</h1>
       <p className="mt-1 text-sm text-muted">
-        Upload a sales letter, VSL or webinar script for {ctx.brand?.name}. You get the headline and 4 U&apos;s, outline,
-        16-Word Sales Letter review, CUB highlights, offer, stock tease and a score in about a minute. Each review also
-        teaches this brand&apos;s Brain.
+        Upload a sales letter, VSL or webinar script for {ctx.brand?.name}. You watch the review being written: headline
+        and 4 U&apos;s, outline, 16-Word Sales Letter, CUB review, offer, tease and a weighted score. It finishes even if you
+        close the tab, and each review teaches this brand&apos;s Brain.
       </p>
       <div className="mt-4">
         <Flash error={query.error} notice={query.notice} />
@@ -60,10 +62,14 @@ export default async function NewPromoPage({
             <Label htmlFor="promo-title">Title</Label>
             <Input id="promo-title" name="title" maxLength={200} placeholder="Defaults to the file name" />
           </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <RunAndCodeFields />
+          </div>
+          <p className="-mt-3 text-xs text-muted">Both optional. The date tells the AI when it ran; the code links it to imported results.</p>
           <details>
             <summary className="cursor-pointer text-sm font-semibold text-accent">Details (optional — the AI fills blanks)</summary>
             <div className="mt-3">
-              <PromoDetailsFields options={picks} />
+              <PromoDetailsFields options={picks} hideRunAndCode />
             </div>
           </details>
           <Button type="submit" className="w-full sm:w-auto">

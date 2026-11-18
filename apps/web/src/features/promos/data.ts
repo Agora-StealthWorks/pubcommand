@@ -1,5 +1,4 @@
 import { tenantDb } from "@pubcommand/db";
-import type { PromoAnalysisResult } from "../../../../../modules/promo-studio/analysis";
 import { isStale } from "./server";
 
 export type PromoListItem = {
@@ -62,7 +61,8 @@ export async function loadPromo(organizationId: string, brandId: string, promoId
       analysisError: stale ? "The analysis was interrupted (the server restarted). Run it again." : promo.analysisError,
       pricePoint: promo.pricePoint == null ? null : Number(promo.pricePoint),
     },
-    current: analyses[0] ? { ...analyses[0], result: analyses[0].result as unknown as PromoAnalysisResult } : null,
+    /** The newest analysis; `result` is either saved shape (see stored.ts `isStoredV2`). */
+    current: analyses[0] ? { ...analyses[0], result: analyses[0].result as unknown } : null,
     history: analyses.map(({ result: _result, ...rest }) => rest),
     files,
   };

@@ -1,6 +1,6 @@
 import { brandProfile } from "@pubcommand/core";
 import { tenantDb } from "@pubcommand/db";
-import type { PromoAnalysisResult } from "../../../../../modules/promo-studio/analysis";
+import type { AnalysisDigest } from "../../../../../modules/promo-studio/stored";
 import { exampleFromBestPerformer, exampleFromComponent, type TrainingExample } from "../../../../../modules/promo-studio/training";
 import { bestPerformers, latestResults } from "../promos/insights";
 
@@ -56,7 +56,7 @@ export async function syncBestPerformers(input: { organizationId: string; brand:
   let updated = 0;
   const refs: string[] = [];
   for (const promo of best) {
-    const result: PromoAnalysisResult | undefined = results.get(promo.id);
+    const result: AnalysisDigest | undefined = results.get(promo.id);
     const example = exampleFromBestPerformer({
       promoId: promo.id,
       title: promo.title,
