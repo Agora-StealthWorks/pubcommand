@@ -16,6 +16,7 @@ import { manifest as settings } from "../settings/manifest";
 import { manifest as testimonials } from "../testimonials/manifest";
 import { manifest as wiki } from "../wiki/manifest";
 import { manifest as support } from "../support/manifest";
+import { manifest as websites } from "../websites/manifest";
 
 export const moduleManifests = [
   example,
@@ -29,6 +30,7 @@ export const moduleManifests = [
   charts,
   funnels,
   miniblog,
+  websites,
   pubsetup,
   wiki,
   testimonials,
@@ -50,6 +52,7 @@ export const PRODUCT_MODULE_IDS = [
   "charts",
   "funnels",
   "miniblog",
+  "websites",
   "pubsetup",
   "wiki",
   "testimonials",
@@ -75,5 +78,6 @@ export {
   testimonials,
   wiki,
   support,
+  websites,
 };
 

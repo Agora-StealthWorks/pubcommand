@@ -94,6 +94,13 @@ const CARDS: AppCard[] = [
     category: "Media & Audience",
   },
   {
+    moduleId: "websites",
+    name: "Websites",
+    description: "Your public website and members-only site: posts, pages, media, free sign-ups, members and access.",
+    icon: "🌐",
+    category: "Media & Audience",
+  },
+  {
     moduleId: "miniblog",
     name: "Mini-Blog",
     description: "Small public blogs with an archive and SMS subscribe page.",
@@ -125,7 +132,8 @@ export const CATEGORY_ORDER: AppCard["category"][] = [
   "Media & Audience",
 ];
 
-export type VisibleApp = AppCard & { href: string };
+export type SubNavItem = { label: string; href: string };
+export type VisibleApp = AppCard & { href: string; /** The app's own pages, shown under it in the sidebar while it is open. */ subnav: SubNavItem[] };
 
 /** Apps this person can open in this organization and brand. */
 export function visibleApps(subject: AccessSubject, scope: AccessScope, niche: Niche = "general"): VisibleApp[] {
@@ -137,7 +145,8 @@ export function visibleApps(subject: AccessSubject, scope: AccessScope, niche: N
     const entry = manifest.nav[0];
     if (!entry) return [];
     if (entry.permission && !can(subject, entry.permission, scope)) return [];
-    return [{ ...card, href: entry.href }];
+    const subnav = manifest.nav.slice(1).filter((item) => !item.permission || can(subject, item.permission, scope)).map((item) => ({ label: item.label, href: item.href }));
+    return [{ ...card, href: entry.href, subnav }];
   });
 }
 

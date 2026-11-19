@@ -17,12 +17,13 @@
  * - `/l/<funnel>/...`: launch funnels.
  * - `/b/<site>/...`: Mini-Blogs (canonical).
  * - `/t/<site>/...`: Mini-Blogs under their old text-letter path (kept so old links work).
+ * - `/w/<site>/...`: Websites (public site and members area).
  */
-export const PUBLIC_PREFIXES = ["f", "embed", "p", "l", "b", "t"] as const;
+export const PUBLIC_PREFIXES = ["f", "embed", "p", "l", "b", "t", "w"] as const;
 export type PublicPrefix = (typeof PUBLIC_PREFIXES)[number];
 
 /** Prefixes a domain may point at. `/p/` links are single-use tokens, so not a target. */
-export const TARGET_PREFIXES: readonly PublicPrefix[] = ["f", "embed", "l", "b", "t"];
+export const TARGET_PREFIXES: readonly PublicPrefix[] = ["f", "embed", "l", "b", "t", "w"];
 
 /**
  * Paths refused outright on a custom host, even though joining them onto the

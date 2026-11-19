@@ -1,0 +1,291 @@
+// Websites app: a brand's public website and members-only site (a WordPress-style CMS).
+// See modules/websites/README.md.
+//
+// Publications are NOT copied here: posts and products point at
+// calendar_publications ids (Publication Setup), which stay the one source.
+// Reader emails (members, sign-ups) are PII: only websites.members sees them.
+//
+// No relation fields to Organization/Brand/User (shared files). Foreign keys to
+// those tables are in migration 20261119120000_websites.
+
+/// One website (public site + members area) for a brand.
+model WebSite {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  brandId        String    @map("brand_id") @db.Uuid
+  name           String
+  /// Public path on the org host: /w/<slug>. Unique per organization.
+  slug           String
+  /// draft | live
+  status         String    @default("draft")
+  tagline        String    @default("")
+  /// Light-artwork logo for the dark header (uploaded into web_assets). Falls back to the brand logo in Publication Setup.
+  logoAssetId    String?   @map("logo_asset_id") @db.Uuid
+  /// Dark-artwork logo for light backgrounds (emails, white pages).
+  logoLightAssetId String? @map("logo_light_asset_id") @db.Uuid
+  iconAssetId    String?   @map("icon_asset_id") @db.Uuid
+  /// Header logo height in px (desktop).
+  logoHeight     Int       @default(88) @map("logo_height")
+  /// { primary, accent, accentOnLight, cream, ink } hex colors.
+  theme          Json      @default("{}")
+  /// [{ label, href }] header menu.
+  menu           Json      @default("[]")
+  /// [{ label, href }] topic bar under the header.
+  topics         Json      @default("[]")
+  footerText     String    @default("") @map("footer_text")
+  disclaimer     String    @default("")
+  /// Free publication offered in the sign-up bar and pop-ins.
+  signupPublicationId String? @map("signup_publication_id") @db.Uuid
+  showTicker     Boolean   @default(true) @map("show_ticker")
+  /// Ticker line: "S&P 500 | 6,912.40 | +0.62%" per line. Typed in; never invented.
+  tickerText     String    @default("") @map("ticker_text")
+  /// Support email shown in the members area.
+  supportEmail   String?   @map("support_email")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  deletedAt      DateTime? @map("deleted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  posts    WebPost[]
+  terms    WebTerm[]
+  assets   WebAsset[]
+  products WebProduct[]
+  members  WebMember[]
+  signups  WebSignup[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, brandId])
+  @@map("web_sites")
+}
+
+/// A post or a page. Posts can belong to a publication (Publication Setup) and be members-only.
+model WebPost {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  siteId           String    @map("site_id") @db.Uuid
+  /// post | page
+  kind             String    @default("post")
+  title            String    @default("")
+  /// URL: /<slug>. Unique per site across posts and pages.
+  slug             String
+  excerpt          String    @default("")
+  /// Sanitized rich text (sanitized on save and on render).
+  bodyHtml         String    @default("") @map("body_html")
+  featuredAssetId  String?   @map("featured_asset_id") @db.Uuid
+  /// draft | pending | scheduled | published
+  status           String    @default("draft")
+  /// When it goes (or went) live. A "scheduled" post is live once this has passed.
+  publishedAt      DateTime? @map("published_at")
+  /// calendar_publications.id (Publication Setup). Null = the site in general.
+  publicationId    String?   @map("publication_id") @db.Uuid
+  /// article | issue | alert | update | report | guide
+  contentType      String    @default("article") @map("content_type")
+  /// public | free | members
+  access           String    @default("public")
+  /// Blocks shown before the paywall to readers without access.
+  teaserBlocks     Int       @default(2) @map("teaser_blocks")
+  /// pubsetup_editors.id; authorName is kept for display and for authors outside Publication Setup.
+  authorEditorId   String?   @map("author_editor_id") @db.Uuid
+  authorName       String    @default("") @map("author_name")
+  featured         Boolean   @default(false)
+  seoTitle         String    @default("") @map("seo_title")
+  seoDescription   String    @default("") @map("seo_description")
+  createdById      String?   @map("created_by_id") @db.Uuid
+  updatedById      String?   @map("updated_by_id") @db.Uuid
+  deletedAt        DateTime? @map("deleted_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  site  WebSite       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  terms WebPostTerm[]
+
+  @@unique([siteId, slug])
+  @@index([organizationId, siteId, kind, status, publishedAt])
+  @@index([siteId, publicationId, publishedAt])
+  @@map("web_posts")
+}
+
+/// Category or tag.
+model WebTerm {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  /// category | tag
+  kind           String
+  name           String
+  slug           String
+  description    String   @default("")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  site  WebSite       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  posts WebPostTerm[]
+
+  @@unique([siteId, kind, slug])
+  @@map("web_terms")
+}
+
+model WebPostTerm {
+  organizationId String @map("organization_id") @db.Uuid
+  postId         String @map("post_id") @db.Uuid
+  termId         String @map("term_id") @db.Uuid
+
+  post WebPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  term WebTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@id([postId, termId])
+  @@index([termId])
+  @@map("web_post_terms")
+}
+
+/// Media library file, stored in Postgres (there is no volume).
+model WebAsset {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  filename       String
+  mimeType       String   @map("mime_type")
+  size           Int
+  data           Bytes
+  alt            String   @default("")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  site WebSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, siteId, createdAt])
+  @@map("web_assets")
+}
+
+/// Something a reader buys (or is given) that unlocks publications.
+model WebProduct {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  siteId          String   @map("site_id") @db.Uuid
+  name            String
+  /// Billing/fulfillment SKU, used to match imported orders.
+  sku             String   @default("")
+  priceLabel      String   @default("") @map("price_label")
+  /// calendar_publications ids this product unlocks.
+  publicationIds  String[] @default([]) @map("publication_ids") @db.Uuid
+  /// Unlocks every publication, including future ones (a lifetime bundle).
+  allPublications Boolean  @default(false) @map("all_publications")
+  /// Where "Upgrade" sends readers without it.
+  offerUrl        String?  @map("offer_url")
+  active          Boolean  @default(true)
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  site         WebSite          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  entitlements WebEntitlement[]
+
+  @@index([organizationId, siteId])
+  @@map("web_products")
+}
+
+/// A reader account on one site (not a PubCommand user).
+model WebMember {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  siteId         String    @map("site_id") @db.Uuid
+  email          String
+  name           String    @default("")
+  /// active | disabled
+  status         String    @default("active")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  site         WebSite            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  entitlements WebEntitlement[]
+  sessions     WebMemberSession[]
+  tokens       WebMemberToken[]
+
+  @@unique([siteId, email])
+  @@index([organizationId, siteId, createdAt])
+  @@map("web_members")
+}
+
+/// A member's access to a product.
+model WebEntitlement {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  memberId       String    @map("member_id") @db.Uuid
+  productId      String    @map("product_id") @db.Uuid
+  /// manual | comp | import | purchase
+  source         String    @default("manual")
+  /// active | past_due | cancelled
+  status         String    @default("active")
+  startsAt       DateTime  @default(now()) @map("starts_at")
+  /// Null = no end (lifetime or until cancelled).
+  endsAt         DateTime? @map("ends_at")
+  /// Order number or other reference.
+  reference      String    @default("")
+  note           String    @default("")
+  grantedById    String?   @map("granted_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  member  WebMember  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  product WebProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([productId])
+  @@map("web_entitlements")
+}
+
+/// Free newsletter sign-up (one row per email and publication).
+model WebSignup {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  memberId       String?  @map("member_id") @db.Uuid
+  email          String
+  /// calendar_publications.id of the free newsletter.
+  publicationId  String   @map("publication_id") @db.Uuid
+  /// subscribed | unsubscribed
+  status         String   @default("subscribed")
+  /// Page the form was on.
+  source         String   @default("")
+  ipHash         String?  @map("ip_hash")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  site WebSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, email, publicationId])
+  @@index([organizationId, siteId, publicationId, createdAt])
+  @@map("web_signups")
+}
+
+/// One-time sign-in link for a member (hash only).
+model WebMemberToken {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  memberId       String    @map("member_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash")
+  expiresAt      DateTime  @map("expires_at")
+  usedAt         DateTime? @map("used_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  member WebMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, createdAt])
+  @@map("web_member_tokens")
+}
+
+/// Signed-in member session (hash only; the cookie holds the token).
+model WebMemberSession {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  memberId       String   @map("member_id") @db.Uuid
+  tokenHash      String   @unique @map("token_hash")
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  member WebMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@map("web_member_sessions")
+}
