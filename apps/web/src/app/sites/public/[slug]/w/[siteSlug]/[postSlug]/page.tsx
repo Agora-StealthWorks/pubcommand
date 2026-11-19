@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { tenantDb } from "@pubcommand/db";
-import { RichContentStyles } from "@/components/rich-text-editor";
+import { RichContentStyles } from "@/components/rich-text-editor/content-css";
 import { sanitizeRichText } from "@/components/rich-text-editor/sanitize";
 import { loadSite, loadViewer, liveWhere, pubFor, CARD_SELECT } from "@/features/websites/public";
 import { EditorPhoto, FormNote, Img, PubBadge, SignupForm, SiteShell, editorOf, fmtDate } from "@/features/websites/site-view";
