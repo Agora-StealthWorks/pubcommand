@@ -131,7 +131,6 @@ export async function PostList({ organizationId, brandId, site, kind, query, can
                 <tr key={post.id} className="border-b border-line align-top last:border-0">
                   <td className="px-3 py-3">
                     {post.featuredAssetId ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={`/w/${site.slug}/media/${post.featuredAssetId}`} alt="" loading="lazy" className="h-10 w-16 rounded object-cover" />
                     ) : (
                       <span className="block h-10 w-16 rounded bg-canvas" />

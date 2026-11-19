@@ -70,7 +70,6 @@ export function PubChip({ siteSlug, pub }: { siteSlug: string; pub: { id: string
   return (
     <span className="inline-flex items-center gap-2 font-medium">
       {pub.hasLogo ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={`/w/${siteSlug}/pub-logo/${pub.id}?bg=light`} alt="" className="h-6 w-6 rounded object-contain" />
       ) : (
         <span className="grid h-6 w-6 place-items-center rounded bg-[#10213a] text-[10px] font-bold text-white">{pub.name.slice(0, 1)}</span>

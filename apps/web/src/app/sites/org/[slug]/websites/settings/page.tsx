@@ -41,7 +41,6 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       <Label htmlFor={field}>{label}</Label>
       <div className={`mb-2 flex h-24 items-center justify-center rounded-lg border border-line ${dark ? "" : "bg-white"}`} style={dark ? { background: theme.primary } : undefined}>
         {id ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img src={`/w/${site.slug}/media/${id}`} alt="" className="max-h-20 max-w-[90%] object-contain" />
         ) : (
           <span className={`text-xs ${dark ? "text-white/70" : "text-muted"}`}>Using the brand logo from Publication Setup</span>

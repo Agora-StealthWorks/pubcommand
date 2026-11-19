@@ -4,7 +4,7 @@ Other PRs build against this file. The foundation loads manifests and renders na
 
 A module is `modules/<id>/manifest.ts` plus `README.md`. `id`, `slug`, and `planEntitlement` are the same string. The organization host serves `https://{org}.{ROOT_DOMAIN}/{slug}`.
 
-Register the manifest in `modules/src/index.ts`. The registry rejects duplicate ids, slugs, and permission keys. The shell shows `nav` only when `can()` allows the item's permission and the plan entitles `planEntitlement`.
+Register the manifest in `modules/src/index.ts`. The registry rejects duplicate ids, slugs, and permission keys. The sidebar links the first `nav` item; further items are the app's sub-menu, shown under it while it is open. The shell shows `nav` only when `can()` allows the item's permission and the plan entitles `planEntitlement`.
 
 ## Stable manifests
 
@@ -18,6 +18,7 @@ Register the manifest in `modules/src/index.ts`. The registry rejects duplicate 
 | `forms` | `/forms` | `forms.read`, `forms.write`, `forms.export` | `forms` |
 | `charts` | `/charts` | `charts.read` | `charts` |
 | `billing` | `/billing` | `billing.read`, `billing.manage` | `billing` |
+| `websites` | `/websites` (+ sub-menu) | `websites.read`, `websites.write`, `websites.publish`, `websites.members` | `websites` |
 
 Each manifest also declares `routes`, `events`, `jobs`, and `settingsSchema`. Those arrays are placeholders.
 

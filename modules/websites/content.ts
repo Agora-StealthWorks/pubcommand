@@ -57,6 +57,7 @@ export function isValidSlug(slug: string): boolean {
 
 /** First path segments the public site uses itself; a post or page cannot take them. */
 export const RESERVED_SLUGS = [
+  "latest",
   "category",
   "tag",
   "newsletters",
@@ -227,7 +228,10 @@ export function publicBaseFor(pathname: string, siteSlug: string): string {
 /** A safe same-site return path from a form or query ("/my", "/w/x/post"). */
 export function safeReturnPath(value: unknown, fallback: string): string {
   const text = typeof value === "string" ? value.trim() : "";
-  return /^\/(?!\/)[A-Za-z0-9/_.-]{0,300}$/.test(text) && !text.includes("..") ? text : fallback;
+  const [path = "", hash] = text.split("#", 2);
+  const okPath = /^\/(?!\/)[A-Za-z0-9/_.-]{0,300}$/.test(path) && !path.includes("..");
+  const okHash = hash === undefined || /^[A-Za-z0-9_-]{1,60}$/.test(hash);
+  return okPath && okHash ? text : fallback;
 }
 
 // ---------------------------------------------------------------------------

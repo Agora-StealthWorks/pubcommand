@@ -38,7 +38,6 @@ export default async function MediaPage({ params, searchParams }: { params: Prom
             <div key={item.id} className="overflow-hidden rounded-xl border border-line bg-white">
               <a href={src} target="_blank" rel="noreferrer" className="block aspect-[4/3] bg-canvas">
                 {item.mimeType.startsWith("image/") ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={src} alt={item.alt} loading="lazy" className="h-full w-full object-cover" />
                 ) : (
                   <span className="grid h-full place-items-center text-2xl font-bold text-muted">PDF</span>

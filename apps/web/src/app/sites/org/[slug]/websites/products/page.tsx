@@ -53,7 +53,6 @@ export default async function ProductsPage({ params, searchParams }: { params: P
                 {paid.map((pub) => (
                   <th key={pub.id} className="max-w-[96px] px-2 py-3 text-center align-bottom font-semibold leading-tight">
                     {pub.hasLogo ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={`/w/${site.slug}/pub-logo/${pub.id}?bg=light`} alt="" className="mx-auto mb-1 h-7 w-7 rounded object-contain" />
                     ) : null}
                     {pub.name}

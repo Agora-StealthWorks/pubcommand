@@ -50,14 +50,15 @@ export async function PostEditor({ organizationId, brandId, site, post, kind, ca
           <label htmlFor="post-title" className="sr-only">
             Title
           </label>
-          <input
+          <textarea
             id="post-title"
             name="title"
             defaultValue={post?.title ?? ""}
             placeholder="Add title"
             maxLength={300}
             required
-            className="w-full rounded-lg border border-line bg-white px-4 py-3 font-serif text-2xl font-bold text-[#10213a] sm:text-3xl"
+            rows={2}
+            className="block w-full resize-y rounded-lg border border-line bg-white px-4 py-3 font-serif text-2xl font-bold leading-tight text-[#10213a] sm:text-3xl"
           />
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
             <span>Address: /w/{site.slug}/</span>
@@ -204,7 +205,6 @@ export async function PostEditor({ organizationId, brandId, site, post, kind, ca
 
         <Box title="Featured image">
           {post?.featuredAssetId ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img src={`/w/${site.slug}/media/${post.featuredAssetId}`} alt="" className="aspect-video w-full rounded-md object-cover" />
           ) : null}
           <input type="file" name="featuredFile" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="block w-full text-xs" aria-label="Upload a featured image" />
@@ -225,7 +225,7 @@ export async function PostEditor({ organizationId, brandId, site, post, kind, ca
           ) : null}
         </Box>
         {post && canWrite ? (
-          <button formAction={trashPost} name="postId" value={post.id} className="text-sm font-semibold text-[#b42318]" formNoValidate>
+          <button formAction={trashPost} className="text-sm font-semibold text-[#b42318]" formNoValidate>
             Move to trash
           </button>
         ) : null}

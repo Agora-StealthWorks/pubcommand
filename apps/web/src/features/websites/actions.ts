@@ -19,6 +19,7 @@ import {
   parseMenu,
   safePostSlug,
   statusForSave,
+  teaserHtml,
 } from "../../../../../modules/websites/content";
 import { sanitizeRichText } from "@/components/rich-text-editor/sanitize";
 import { assetPath, orgTimezone, siteEditors, sitePublications } from "./data";
@@ -202,7 +203,7 @@ export async function savePost(formData: FormData) {
   if (next.status === "published" && !next.publishedAt) next.publishedAt = now;
   if (next.status === "scheduled" && (!next.publishedAt || next.publishedAt <= now)) next = { status: "published", publishedAt: next.publishedAt ?? now };
 
-  const title = text(formData, "title", 300) || "Untitled";
+  const title = text(formData, "title", 300).replace(/\s+/g, " ") || "Untitled";
   const bodyHtml = sanitizeRichText(String(formData.get("bodyHtml") ?? ""), 400_000);
   const pubs = await sitePublications(ctx.resolved.id, ctx.brand.id);
   const publicationId = uuidOrNull(formData, "publicationId");
@@ -220,7 +221,8 @@ export async function savePost(formData: FormData) {
     kind,
     title,
     slug,
-    excerpt: text(formData, "excerpt", 600) || excerptFrom(bodyHtml, 220),
+    // An automatic excerpt is shown to everyone (cards, meta tags), so a locked post's comes from its free teaser only.
+    excerpt: text(formData, "excerpt", 600) || excerptFrom(isAccessLevel(access) && access !== "public" ? teaserHtml(bodyHtml, Math.max(1, int(formData, "teaserBlocks", 2, 0, 10))) : bodyHtml, 220),
     bodyHtml,
     featuredAssetId,
     status: next.status,
