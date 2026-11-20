@@ -159,7 +159,11 @@ export default async function MemberPage({ params, searchParams }: { params: Pro
               </div>
               <Button variant="secondary">Save</Button>
             </form>
-            <form action={emailSignInLink} className="mt-4 border-t border-line pt-4">
+            <p className="mt-4 border-t border-line pt-4 text-sm">
+              Password: <b>{member.passwordHash ? `set ${formatDate(member.passwordSetAt, timeZone)}` : "not set yet"}</b>
+              <span className="block text-xs text-muted">Members set and change their own password. The sign-in link below also lets them set a new one.</span>
+            </p>
+            <form action={emailSignInLink} className="mt-3">
               <input type="hidden" name="memberId" value={member.id} />
               <Button variant="secondary" className="w-full">
                 Email a sign-in link

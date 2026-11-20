@@ -2,7 +2,7 @@ import { tenantDb } from "@pubcommand/db";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { getEditors, getPublications, type Editor, type Publication } from "@/features/pubsetup/read";
 import { sanitizeRichText } from "@/components/rich-text-editor/sanitize";
-import { menuFrom, readingMinutes, themeFrom, type Access } from "../../../../../modules/websites/content";
+import { homepageFrom, menuFrom, readingMinutes, themeFrom, type Access } from "../../../../../modules/websites/content";
 import { isFreePublication, orgTimezone, type SiteRow } from "./data";
 import type { SignedInMember } from "./members";
 
@@ -141,6 +141,10 @@ export async function siteJson({ organizationId, site }: ApiSite) {
       logoHeight: site.logoHeight,
       logo: hasLogo ? `/logo?v=${version(site.updatedAt)}` : null,
       icon: site.iconAssetId ? `/media/${site.iconAssetId}` : null,
+      homepage: (() => {
+        const home = homepageFrom(site.homepage);
+        return { sections: home.sections, hero: { ...home.hero, image: home.hero.imageAssetId ? `/media/${home.hero.imageAssetId}` : null } };
+      })(),
       timeZone,
     },
     publications: publications.map(publicationJson),
@@ -199,6 +203,7 @@ export function memberJson(member: SignedInMember, productName: Map<string, stri
     id: member.id,
     email: member.email,
     name: member.name,
+    hasPassword: member.hasPassword,
     createdAt: member.createdAt.toISOString(),
     access: accessJson(member.access),
     entitlements: member.entitlements.map((entitlement) => ({

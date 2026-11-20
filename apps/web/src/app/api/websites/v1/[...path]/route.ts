@@ -2,7 +2,8 @@ import { tenantDb, type Prisma } from "@pubcommand/db";
 import { getEditors, getImage, getPublications } from "@/features/pubsetup/read";
 import { authenticate, bodyForSite, cardJson, memberJson, minutes, siteJson, type ApiSite } from "@/features/websites/api";
 import { CARD_SELECT } from "@/features/websites/public";
-import { endSession, readMemberByToken, redeemSignInToken, sendMemberSignInLink } from "@/features/websites/members";
+import { endSession, passwordSignIn, readMemberByToken, redeemSignInToken, sendMemberSignInLink, setMemberPassword } from "@/features/websites/members";
+import { tickerQuotes } from "@/features/websites/ticker";
 import { hashIp } from "@/features/websites/public";
 import { isFreePublication } from "@/features/websites/data";
 import { UUID_RE } from "@/features/websites/guard";
@@ -93,6 +94,11 @@ async function getHandler(request: Request, api: ApiSite, path: string[]): Promi
       },
       access: decision,
     });
+  }
+
+  if (head === "ticker" && path.length === 1) {
+    if (!site.showTicker) return json({ quotes: [] });
+    return json({ quotes: await tickerQuotes(site.tickerText) }, 200, "public, max-age=60");
   }
 
   if (head === "terms" && (a === "category" || a === "tag") && b && path.length === 3) {
@@ -187,6 +193,20 @@ async function postHandler(request: Request, api: ApiSite, path: string[]): Prom
   if (route === "auth/verify") {
     const opened = await redeemSignInToken(organizationId, site.id, typeof input.token === "string" ? input.token : "");
     return opened ? json({ session: opened.value, maxAge: opened.maxAge }) : json({ error: "expired" }, 401);
+  }
+
+  if (route === "auth/password") {
+    const email = normalizeEmail(input.email);
+    const password = typeof input.password === "string" ? input.password : "";
+    if (!email || !password) return json({ error: "invalid" }, 401);
+    const result = await passwordSignIn(organizationId, site.id, email, password, hashIp(typeof input.ip === "string" ? input.ip.slice(0, 64) : null));
+    if (!result.ok) return json({ error: result.reason }, result.reason === "limited" ? 429 : 401);
+    return json({ session: result.session.value, maxAge: result.session.maxAge });
+  }
+
+  if (route === "auth/set-password") {
+    const result = await setMemberPassword(organizationId, site.id, memberToken(request), { password: input.password, currentPassword: input.currentPassword });
+    return result.ok ? json({ ok: true }) : json({ error: result.error }, 400);
   }
 
   if (route === "auth/sign-out") {

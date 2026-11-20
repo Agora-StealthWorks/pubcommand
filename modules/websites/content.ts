@@ -303,3 +303,133 @@ export function csvCell(value: unknown): string {
 export function csv(rows: readonly (readonly unknown[])[]): string {
   return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
 }
+
+// ---------------------------------------------------------------------------
+// Market ticker (prices come from Massive through PubCommand; only symbols are chosen)
+
+export type TickerSymbol = { label: string; symbol: string };
+
+/** Massive's plan has no index values (I:SPX), so the defaults are the funds that track them, labelled as such. */
+export const DEFAULT_TICKER: TickerSymbol[] = [
+  { label: "S&P 500 (SPY)", symbol: "SPY" },
+  { label: "Dow (DIA)", symbol: "DIA" },
+  { label: "Nasdaq 100 (QQQ)", symbol: "QQQ" },
+  { label: "Gold (GLD)", symbol: "GLD" },
+  { label: "Bitcoin", symbol: "X:BTCUSD" },
+];
+
+/** "Label | SYMBOL" per line (or just "SYMBOL"). Empty text means the defaults. */
+export function parseTickerSymbols(text: string, max = 10): TickerSymbol[] {
+  const rows = text
+    .split(/\r?\n/)
+    .map((line) => line.split("|").map((part) => part.trim()))
+    .filter((parts) => parts.some(Boolean))
+    .map((parts) => (parts.length >= 2 ? { label: parts[0]!, symbol: parts[1]! } : { label: parts[0]!, symbol: parts[0]! }))
+    .map((row) => ({ label: row.label.slice(0, 30), symbol: row.symbol.toUpperCase() }))
+    .filter((row) => /^[A-Z0-9][A-Z0-9.:^-]{0,14}$/.test(row.symbol));
+  return rows.length ? rows.slice(0, max) : DEFAULT_TICKER;
+}
+
+/** Last close vs the one before, from daily bars sorted oldest first. */
+export function quoteFromBars(bars: readonly { t: number; c: number }[]): { price: number; change: number; changePct: number; asOf: string } | null {
+  const last = bars[bars.length - 1];
+  const prev = bars[bars.length - 2];
+  if (!last || !prev || !(prev.c > 0)) return null;
+  const change = last.c - prev.c;
+  return { price: last.c, change, changePct: (change / prev.c) * 100, asOf: new Date(last.t).toISOString().slice(0, 10) };
+}
+
+// ---------------------------------------------------------------------------
+// Member passwords
+
+export const PASSWORD_MIN = 10;
+
+export function passwordProblem(password: unknown): string | null {
+  if (typeof password !== "string" || password.length < PASSWORD_MIN) return `Use at least ${PASSWORD_MIN} characters.`;
+  if (password.length > 200) return "That password is too long.";
+  if (/^\s|\s$/.test(password)) return "Remove spaces at the start or end.";
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Homepage builder (Site settings → Homepage): sections, each on/off, in any order.
+
+export const HOME_SECTIONS = [
+  { key: "hero", label: "Hero banner", hint: "Your own headline, text, image, buttons and an optional email box" },
+  { key: "featured", label: "Featured story + latest headlines", hint: "The post ticked \"Feature on the homepage\" (or the newest), with the four latest beside it" },
+  { key: "signup", label: "Newsletter sign-up bar", hint: "The newsletter chosen in Site settings" },
+  { key: "picks", label: "Editors' picks", hint: "Four article cards" },
+  { key: "latest", label: "Latest articles + free newsletters box", hint: "A list of recent articles with a multi-newsletter sign-up" },
+  { key: "research", label: "Premium research", hint: "Your paid publications from Publication Setup" },
+  { key: "editors", label: "Meet our editors", hint: "Editors from Publication Setup" },
+] as const;
+export type HomeSectionKey = (typeof HOME_SECTIONS)[number]["key"];
+export type HomeSection = { key: HomeSectionKey; on: boolean };
+
+export type Hero = {
+  kicker: string;
+  headline: string;
+  text: string;
+  imageAssetId: string | null;
+  buttonLabel: string;
+  buttonHref: string;
+  button2Label: string;
+  button2Href: string;
+  /** Free newsletter whose email form sits in the hero (null = no form). */
+  signupPublicationId: string | null;
+};
+
+export type Homepage = { sections: HomeSection[]; hero: Hero };
+
+/** Today's layout, used until someone saves the builder. */
+export const DEFAULT_HOME_ORDER: HomeSectionKey[] = ["hero", "featured", "signup", "picks", "latest", "research", "editors"];
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const str = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
+
+/** A same-site path or an http(s) link; anything else is dropped. */
+export function safeHref(value: unknown): string {
+  const text = str(value, 500);
+  if (/^\/(?!\/)/.test(text)) return text;
+  return /^https?:\/\//i.test(text) ? text : "";
+}
+
+/** Stored JSON → a complete layout: every section once, known keys only, in the saved order. */
+export function homepageFrom(value: unknown): Homepage {
+  const input = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const hero = input.hero && typeof input.hero === "object" ? (input.hero as Record<string, unknown>) : {};
+  const saved = Array.isArray(input.sections) ? input.sections : [];
+  const keys = new Set<string>(HOME_SECTIONS.map((section) => section.key));
+  const sections: HomeSection[] = [];
+  for (const row of saved) {
+    const key = row && typeof row === "object" ? (row as { key?: unknown }).key : undefined;
+    if (typeof key === "string" && keys.has(key) && !sections.some((section) => section.key === key)) {
+      sections.push({ key: key as HomeSectionKey, on: (row as { on?: unknown }).on !== false });
+    }
+  }
+  for (const key of DEFAULT_HOME_ORDER) if (!sections.some((section) => section.key === key)) sections.push({ key, on: key !== "hero" });
+  return {
+    sections,
+    hero: {
+      kicker: str(hero.kicker, 60),
+      headline: str(hero.headline, 160),
+      text: str(hero.text, 600),
+      imageAssetId: typeof hero.imageAssetId === "string" && UUID.test(hero.imageAssetId) ? hero.imageAssetId : null,
+      buttonLabel: str(hero.buttonLabel, 40),
+      buttonHref: safeHref(hero.buttonHref),
+      button2Label: str(hero.button2Label, 40),
+      button2Href: safeHref(hero.button2Href),
+      signupPublicationId: typeof hero.signupPublicationId === "string" && UUID.test(hero.signupPublicationId) ? hero.signupPublicationId : null,
+    },
+  };
+}
+
+/** Builder form rows (key, on, position) → ordered sections. Ties keep the current order. */
+export function orderSections(rows: { key: string; on: boolean; position: number }[]): HomeSection[] {
+  const keys = new Set<string>(HOME_SECTIONS.map((section) => section.key));
+  return rows
+    .map((row, index) => ({ ...row, index }))
+    .filter((row) => keys.has(row.key))
+    .sort((a, b) => a.position - b.position || a.index - b.index)
+    .map((row) => ({ key: row.key as HomeSectionKey, on: row.on }));
+}

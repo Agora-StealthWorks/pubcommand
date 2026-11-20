@@ -9,7 +9,13 @@ import {
   menuHref,
   normalizeEmail,
   parseMenu,
+  homepageFrom,
+  orderSections,
+  passwordProblem,
+  safeHref,
+  parseTickerSymbols,
   publicBaseFor,
+  quoteFromBars,
   safePostSlug,
   safeReturnPath,
   statusForSave,
@@ -136,5 +142,46 @@ describe("paths, menus and input", () => {
 
   it("writes CSV that spreadsheets will not execute", () => {
     expect(csv([["a", "=1+1"], ['x,"y"', null]])).toBe(`a,'=1+1\r\n"x,""y""",`);
+  });
+});
+
+describe("ticker and passwords", () => {
+  it("reads symbols and falls back to the defaults", () => {
+    expect(parseTickerSymbols("")[0]).toEqual({ label: "S&P 500 (SPY)", symbol: "SPY" });
+    expect(parseTickerSymbols("Gold | gld\nX:BTCUSD\nbad | not a symbol!")).toEqual([
+      { label: "Gold", symbol: "GLD" },
+      { label: "X:BTCUSD", symbol: "X:BTCUSD" },
+    ]);
+  });
+
+  it("quotes the last close against the one before", () => {
+    const day = Date.UTC(2026, 10, 19);
+    expect(quoteFromBars([{ t: day - 86_400_000, c: 100 }, { t: day, c: 102 }])).toEqual({ price: 102, change: 2, changePct: 2, asOf: "2026-11-19" });
+    expect(quoteFromBars([{ t: day, c: 1 }])).toBeNull();
+  });
+
+  it("checks passwords", () => {
+    expect(passwordProblem("short")).toMatch(/at least/);
+    expect(passwordProblem(" padded-password ")).toMatch(/spaces/);
+    expect(passwordProblem("a good long password")).toBeNull();
+  });
+});
+
+describe("homepage builder", () => {
+  it("fills in every section once, in the saved order", () => {
+    const empty = homepageFrom({});
+    expect(empty.sections.map((section) => section.key)).toEqual(["hero", "featured", "signup", "picks", "latest", "research", "editors"]);
+    expect(empty.sections.find((section) => section.key === "hero")?.on).toBe(false);
+    const saved = homepageFrom({ sections: [{ key: "research", on: true }, { key: "hero", on: true }, { key: "bogus" }, { key: "research", on: false }] });
+    expect(saved.sections.slice(0, 3)).toEqual([{ key: "research", on: true }, { key: "hero", on: true }, { key: "featured", on: true }]);
+    expect(saved.sections).toHaveLength(7);
+  });
+
+  it("orders by position and keeps links safe", () => {
+    expect(orderSections([{ key: "a", on: true, position: 1 }, { key: "picks", on: true, position: 3 }, { key: "hero", on: false, position: 1 }])).toEqual([{ key: "hero", on: false }, { key: "picks", on: true }]);
+    expect(safeHref("/research")).toBe("/research");
+    expect(safeHref("javascript:alert(1)")).toBe("");
+    expect(safeHref("//evil.com")).toBe("");
+    expect(homepageFrom({ hero: { buttonHref: "javascript:x", imageAssetId: "nope" } }).hero).toMatchObject({ buttonHref: "", imageAssetId: null });
   });
 });

@@ -1,8 +1,9 @@
 import { tenantDb } from "@pubcommand/db";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+import { hashPassword, verifyPassword } from "@pubcommand/auth";
 import { escapeHtml, sendEmail } from "@/lib/email";
-import { memberAccess, sitePath, type Access } from "../../../../../modules/websites/content";
+import { memberAccess, passwordProblem, sitePath, type Access } from "../../../../../modules/websites/content";
 import type { SiteRow } from "./data";
 
 /**
@@ -81,11 +82,79 @@ export async function redeemSignInToken(organizationId: string, siteId: string, 
   if (!member) return null;
   const used = await db.webMemberToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: new Date() } });
   if (!used.count) return null;
+  return openSession(organizationId, siteId, member.id);
+}
+
+/** Open a session for a member (after a link or a password). */
+async function openSession(organizationId: string, siteId: string, memberId: string) {
+  const db = tenantDb(organizationId);
   const value = newToken();
   const maxAge = SESSION_DAYS * 24 * 60 * 60;
-  await db.webMemberSession.create({ data: { organizationId, memberId: member.id, tokenHash: hashToken(value), expiresAt: new Date(Date.now() + maxAge * 1000) } });
-  await db.webMember.updateMany({ where: { id: member.id }, data: { lastLoginAt: new Date() } });
-  return { cookie: memberCookieName(siteId), value, maxAge, memberId: member.id };
+  await db.webMemberSession.create({ data: { organizationId, memberId, tokenHash: hashToken(value), expiresAt: new Date(Date.now() + maxAge * 1000) } });
+  await db.webMember.updateMany({ where: { id: memberId }, data: { lastLoginAt: new Date() } });
+  return { cookie: memberCookieName(siteId), value, maxAge, memberId };
+}
+
+// Failed password attempts per site+email and per site+IP, in memory (per server). 10 per 15 minutes.
+const FAIL_WINDOW_MS = 15 * 60_000;
+const FAIL_LIMIT = 10;
+const failures = new Map<string, number[]>();
+
+function tooMany(key: string, now: number): boolean {
+  const recent = (failures.get(key) ?? []).filter((at) => now - at < FAIL_WINDOW_MS);
+  failures.set(key, recent);
+  return recent.length >= FAIL_LIMIT;
+}
+
+function recordFailure(key: string, now: number) {
+  failures.set(key, [...(failures.get(key) ?? []), now]);
+  if (failures.size > 50_000) failures.clear();
+}
+
+export type PasswordLogin = { ok: true; session: { cookie: string; value: string; maxAge: number; memberId: string } } | { ok: false; reason: "invalid" | "limited" };
+
+/** Email + password sign-in. One answer for "no such member", "no password yet" and "wrong password". */
+export async function passwordSignIn(organizationId: string, siteId: string, email: string, password: string, ipHash: string | null): Promise<PasswordLogin> {
+  const now = Date.now();
+  const keys = [`${siteId}|e|${email}`, ...(ipHash ? [`${siteId}|i|${ipHash}`] : [])];
+  if (keys.some((key) => tooMany(key, now))) return { ok: false, reason: "limited" };
+  const member = await tenantDb(organizationId).webMember.findFirst({ where: { siteId, email, status: "active" } });
+  const valid = member?.passwordHash ? await verifyPassword(password.slice(0, 200), member.passwordHash) : false;
+  if (!member || !valid) {
+    for (const key of keys) recordFailure(key, now);
+    return { ok: false, reason: "invalid" };
+  }
+  for (const key of keys) failures.delete(key);
+  return { ok: true, session: await openSession(organizationId, siteId, member.id) };
+}
+
+/**
+ * Set or change the signed-in member's password. Changing an existing password needs the
+ * current one, unless the session was opened by an emailed link in the last 30 minutes
+ * (that is the "forgot password" path). Other sessions of the member are signed out.
+ */
+export async function setMemberPassword(
+  organizationId: string,
+  siteId: string,
+  sessionValue: string | null | undefined,
+  input: { password: unknown; currentPassword?: unknown },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!sessionValue || !/^[A-Za-z0-9_-]{20,100}$/.test(sessionValue)) return { ok: false, error: "Sign in again first." };
+  const db = tenantDb(organizationId);
+  const session = await db.webMemberSession.findFirst({ where: { tokenHash: hashToken(sessionValue) } });
+  if (!session || session.expiresAt <= new Date()) return { ok: false, error: "Sign in again first." };
+  const member = await db.webMember.findFirst({ where: { id: session.memberId, siteId, status: "active" } });
+  if (!member) return { ok: false, error: "Sign in again first." };
+  const problem = passwordProblem(input.password);
+  if (problem) return { ok: false, error: problem };
+  const fresh = Date.now() - session.createdAt.getTime() < 30 * 60_000;
+  if (member.passwordHash && !fresh) {
+    const current = typeof input.currentPassword === "string" ? input.currentPassword : "";
+    if (!(await verifyPassword(current.slice(0, 200), member.passwordHash))) return { ok: false, error: "Your current password is not right." };
+  }
+  await db.webMember.updateMany({ where: { id: member.id }, data: { passwordHash: await hashPassword(input.password as string), passwordSetAt: new Date() } });
+  await db.webMemberSession.deleteMany({ where: { memberId: member.id, id: { not: session.id } } });
+  return { ok: true };
 }
 
 export async function endSession(organizationId: string, siteId: string, value: string | undefined): Promise<void> {
@@ -94,7 +163,7 @@ export async function endSession(organizationId: string, siteId: string, value: 
   void siteId;
 }
 
-export type SignedInMember = { id: string; email: string; name: string; access: Access; createdAt: Date; entitlements: { id: string; productId: string; status: string; startsAt: Date; endsAt: Date | null; source: string }[] };
+export type SignedInMember = { id: string; email: string; name: string; hasPassword: boolean; access: Access; createdAt: Date; entitlements: { id: string; productId: string; status: string; startsAt: Date; endsAt: Date | null; source: string }[] };
 
 /** The member signed in on this site (from the cookie), with what they can read today. */
 export async function readMember(organizationId: string, siteId: string, now = new Date()): Promise<SignedInMember | null> {
@@ -113,5 +182,5 @@ export async function readMemberByToken(organizationId: string, siteId: string, 
     db.webEntitlement.findMany({ where: { memberId: member.id }, select: { id: true, productId: true, status: true, startsAt: true, endsAt: true, source: true } }),
     db.webProduct.findMany({ where: { siteId }, select: { id: true, publicationIds: true, allPublications: true, active: true } }),
   ]);
-  return { id: member.id, email: member.email, name: member.name, createdAt: member.createdAt, entitlements, access: memberAccess(entitlements, products, now) };
+  return { id: member.id, email: member.email, name: member.name, hasPassword: Boolean(member.passwordHash), createdAt: member.createdAt, entitlements, access: memberAccess(entitlements, products, now) };
 }

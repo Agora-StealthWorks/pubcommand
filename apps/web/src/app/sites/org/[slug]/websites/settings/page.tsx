@@ -1,11 +1,12 @@
 import { Button, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { menuToText, themeFrom } from "../../../../../../../../../modules/websites/content";
+import { DEFAULT_TICKER, menuToText, themeFrom } from "../../../../../../../../../modules/websites/content";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { cookies } from "next/headers";
 import { generateApiKey, saveSettings } from "@/features/websites/actions";
 import { webhookSecret } from "@/features/websites/api";
+import { tickerConfigured } from "@/features/websites/ticker";
 import { NoSite, SiteBar } from "@/features/websites/admin-ui";
 import { sitePublications } from "@/features/websites/data";
 import { NEW_KEY_COOKIE, websitesAccess } from "@/features/websites/guard";
@@ -151,12 +152,15 @@ export default async function SettingsPage({ params, searchParams }: { params: P
           </div>
         </Section>
 
-        <Section title="Market ticker" description='Optional strip above the header. One line each: "Label | value | change", e.g. "GOLD | $4,118.20 | +1.07%". Typed in by you; nothing is invented.'>
+        <Section
+          title="Market ticker"
+          description={`Live prices from Massive, refreshed every 5 minutes${tickerConfigured() ? "" : " (Massive is not connected yet: set MASSIVE_API_KEY on PubCommand)"}. Choose the symbols: one per line, "Label | SYMBOL". Massive has no index values, so use the funds that track them (SPY, DIA, QQQ); crypto is X:BTCUSD. Leave empty for the default list.`}
+        >
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <input type="checkbox" name="showTicker" defaultChecked={site.showTicker} /> Show the ticker
           </label>
           <div className="sm:col-span-2">
-            <Textarea name="tickerText" rows={4} defaultValue={site.tickerText} className="font-mono text-xs" aria-label="Ticker lines" />
+            <Textarea name="tickerText" rows={6} defaultValue={site.tickerText} placeholder={DEFAULT_TICKER.map((row) => `${row.label} | ${row.symbol}`).join("\n")} className="font-mono text-xs" aria-label="Ticker symbols" />
           </div>
         </Section>
 
