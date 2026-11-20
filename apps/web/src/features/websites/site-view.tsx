@@ -162,14 +162,28 @@ export function SiteShell({ loaded, member, active, children }: { loaded: Loaded
             <Logo loaded={loaded} />
           </a>
           <nav className="main" aria-label="Main">
-            {menu.map((item) => {
-              const href = menuHref(base, item.href);
-              return (
-                <a key={item.href + item.label} href={href} className={active && item.href === active ? "on" : undefined}>
+            {menu.map((item) =>
+              item.children?.length ? (
+                <div key={item.href + item.label} className="dd">
+                  <a href={menuHref(base, item.href)} className={active && item.href === active ? "on" : undefined}>
+                    {item.label}
+                  </a>
+                  <div className="sub">
+                    <div>
+                      {item.children.map((child) => (
+                        <a key={child.href + child.label} href={menuHref(base, child.href)}>
+                          {child.label}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <a key={item.href + item.label} href={menuHref(base, item.href)} className={active && item.href === active ? "on" : undefined}>
                   {item.label}
                 </a>
-              );
-            })}
+              ),
+            )}
           </nav>
           <div className="acts">
             {member ? (
@@ -177,25 +191,25 @@ export function SiteShell({ loaded, member, active, children }: { loaded: Loaded
                 My Account
               </a>
             ) : (
-              <>
-                <a className="login" href={`${base}/sign-in`}>
-                  Member Login
-                </a>
-                <a className="btn btn-gold btn-sm" href={`${base}/newsletters`}>
-                  Join Free
-                </a>
-              </>
+<a className="btn btn-gold btn-sm" href={`${base}/sign-in`}>
+                Member Login
+              </a>
             )}
             <details className="menu-toggle">
               <summary aria-label="Menu">
                 <span />
               </summary>
               <nav className="mobile-menu" aria-label="Menu">
-                {menu.map((item) => (
+                {menu.flatMap((item) => [
                   <a key={item.href + item.label} href={menuHref(base, item.href)}>
                     {item.label}
-                  </a>
-                ))}
+                  </a>,
+                  ...(item.children ?? []).map((child) => (
+                    <a key={`c${child.href}${child.label}`} className="child" href={menuHref(base, child.href)}>
+                      {child.label}
+                    </a>
+                  )),
+                ])}
                 {topics.map((item) => (
                   <a key={`t${item.href}`} href={menuHref(base, item.href)}>
                     {item.label}
@@ -210,7 +224,7 @@ export function SiteShell({ loaded, member, active, children }: { loaded: Loaded
           <div className="subnav">
             <div className="wrap">
               <b>TOPICS</b>
-              {topics.map((item) => (
+              {topics.flatMap((item) => [item, ...(item.children ?? [])]).map((item) => (
                 <a key={item.href + item.label} href={menuHref(base, item.href)}>
                   {item.label}
                 </a>

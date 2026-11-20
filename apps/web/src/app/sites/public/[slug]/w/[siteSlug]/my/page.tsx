@@ -53,7 +53,7 @@ export default async function MembersHome({ params }: { params: Params }) {
             {greeting(now, timeZone)}
             {firstName ? `, ${firstName}` : ""}.
           </h1>
-          <p>{owned.length ? `You have ${owned.length} research service${owned.length === 1 ? "" : "s"}.` : since ? `Free member since ${fmtDate(since, timeZone)}.` : ""}</p>
+          <p>{owned.length ? `You have ${owned.length} research service${owned.length === 1 ? "" : "s"}.` : since ? `Member since ${fmtDate(since, timeZone)}.` : ""}</p>
         </div>
       </section>
       <div className="wrap mmain">

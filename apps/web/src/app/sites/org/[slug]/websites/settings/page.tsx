@@ -1,7 +1,7 @@
 import { Button, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { DEFAULT_TICKER, menuToText, themeFrom } from "../../../../../../../../../modules/websites/content";
+import { DEFAULT_TICKER, themeFrom } from "../../../../../../../../../modules/websites/content";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { cookies } from "next/headers";
 import { generateApiKey, saveSettings } from "@/features/websites/actions";
@@ -141,16 +141,16 @@ export default async function SettingsPage({ params, searchParams }: { params: P
           ))}
         </Section>
 
-        <Section title="Menus" description='One link per line: "Label | /path". Paths are on your site (/, /newsletters, /research, /editors, /category/income, /about). Full https:// links work too.'>
-          <div>
-            <Label htmlFor="s-menu">Header menu</Label>
-            <Textarea id="s-menu" name="menu" rows={7} defaultValue={menuToText(site.menu)} className="font-mono text-xs" />
-          </div>
-          <div>
-            <Label htmlFor="s-topics">Topic bar (under the header)</Label>
-            <Textarea id="s-topics" name="topics" rows={7} defaultValue={menuToText(site.topics)} placeholder={"Income | /category/income\nSound Money | /category/sound-money"} className="font-mono text-xs" />
-          </div>
-        </Section>
+        <section className="rounded-xl border border-line bg-white p-5 text-sm">
+          <h2 className="font-semibold">Menus</h2>
+          <p className="mt-1 text-muted">
+            The header menu and topic bar are edited in{" "}
+            <a href="/websites/menus" className="font-semibold text-accent">
+              Websites → Menus
+            </a>
+            .
+          </p>
+        </section>
 
         <Section
           title="Market ticker"

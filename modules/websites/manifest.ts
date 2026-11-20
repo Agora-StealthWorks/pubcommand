@@ -21,6 +21,7 @@ export const manifest = defineModule({
     { label: "Products & access", href: "/websites/products", permission: "websites.members" },
     { label: "Free sign-ups", href: "/websites/signups", permission: "websites.members" },
     { label: "Homepage", href: "/websites/homepage", permission: "websites.publish" },
+    { label: "Menus", href: "/websites/menus", permission: "websites.publish" },
     { label: "Site settings", href: "/websites/settings", permission: "websites.publish" },
   ],
   routes: [{ path: "/websites", title: "Websites" }],

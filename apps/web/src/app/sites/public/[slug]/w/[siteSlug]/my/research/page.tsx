@@ -58,7 +58,7 @@ export default async function MemberList({ params }: { params: Params }) {
               </a>
             );
           })}
-          {posts.length === 0 ? <p className="empty">Issues from your research services appear here. Free members: see our research services to upgrade.</p> : null}
+          {posts.length === 0 ? <p className="empty">Issues from your research services appear here.</p> : null}
         </div>
       </div>
     </MembersShell>

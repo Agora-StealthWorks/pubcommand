@@ -77,7 +77,7 @@ export default async function HomepagePage({ params, searchParams }: { params: P
             <div>
               <Label htmlFor="h-b2">Second button (optional)</Label>
               <div className="flex gap-2">
-                <Input id="h-b2" name="heroButton2Label" defaultValue={home.hero.button2Label} maxLength={40} placeholder="Join free" />
+                <Input id="h-b2" name="heroButton2Label" defaultValue={home.hero.button2Label} maxLength={40} placeholder="Free newsletters" />
                 <Input name="heroButton2Href" defaultValue={home.hero.button2Href} maxLength={500} placeholder="/newsletters" aria-label="Second button link" />
               </div>
             </div>

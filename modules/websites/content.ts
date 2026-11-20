@@ -11,7 +11,6 @@ export type PostStatus = (typeof POST_STATUSES)[number];
 
 export const ACCESS_LEVELS = [
   { key: "public", label: "Public", hint: "Anyone, on the public website" },
-  { key: "free", label: "Free subscribers", hint: "Signed-in readers, including free newsletter subscribers" },
   { key: "members", label: "Members of this publication", hint: "Readers whose product includes the publication" },
 ] as const;
 export type AccessLevel = (typeof ACCESS_LEVELS)[number]["key"];
@@ -26,6 +25,7 @@ export const CONTENT_TYPES = [
 ] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number]["key"];
 
+/** Posts are public or for members. There are no free accounts: "free" (older rows) reads as public. */
 export function isAccessLevel(value: string): value is AccessLevel {
   return ACCESS_LEVELS.some((level) => level.key === value);
 }
@@ -156,9 +156,8 @@ export type ReadDecision = { allowed: true } | { allowed: false; reason: "sign-i
 
 /** May this viewer read the whole post? */
 export function canRead(post: { access: string; publicationId: string | null }, viewer: Viewer): ReadDecision {
-  if (post.access === "public") return { allowed: true };
-  if (!viewer.signedIn) return { allowed: false, reason: post.access === "free" ? "sign-in" : "upgrade" };
-  if (post.access === "free") return { allowed: true };
+  if (post.access !== "members") return { allowed: true };
+  if (!viewer.signedIn) return { allowed: false, reason: "upgrade" };
   const { access } = viewer;
   if (access.all) return { allowed: true };
   if (post.publicationId ? access.publicationIds.has(post.publicationId) : access.paid) return { allowed: true };
@@ -251,7 +250,8 @@ export function themeFrom(value: unknown): SiteTheme {
   return { primary: pick("primary"), accent: pick("accent"), accentOnLight: pick("accentOnLight"), cream: pick("cream"), ink: pick("ink") };
 }
 
-export type MenuItem = { label: string; href: string };
+/** A menu as the site renders it: top-level items with optional dropdown children (one level). */
+export type MenuItem = { label: string; href: string; children?: MenuItem[] };
 
 /** Header menu from "Label | /path" lines. Only same-site paths and http(s) links. */
 export function parseMenu(text: string, max = 12): MenuItem[] {
@@ -273,8 +273,103 @@ export function menuToText(items: unknown): string {
     : "";
 }
 
+/**
+ * A menu as stored (Websites → Menus, like WordPress): a flat list in order; an item
+ * with a `parent` sits in that top-level item's dropdown. `kind` records where it came
+ * from (page, category, publication, builtin, custom) for the editor.
+ */
+export type NavItem = { id: string; label: string; href: string; parent: string | null; kind: string };
+
+export const NAV_MAX = 40;
+
+function navHref(value: unknown): string {
+  const text = typeof value === "string" ? value.trim().slice(0, 300) : "";
+  if (/^\/(?!\/)/.test(text)) return text;
+  return /^https?:\/\//i.test(text) ? text : "";
+}
+
+export function newNavId(): string {
+  return `n${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Stored JSON → clean flat items. Older menus ({label, href}) get ids; bad links, loops and deep nesting are dropped. */
+export function navItemsFrom(value: unknown): NavItem[] {
+  const rows = Array.isArray(value) ? value : [];
+  const items: NavItem[] = [];
+  const seen = new Set<string>();
+  rows.forEach((row, index) => {
+    if (!row || typeof row !== "object") return;
+    const raw = row as Record<string, unknown>;
+    const label = typeof raw.label === "string" ? raw.label.trim().slice(0, 40) : "";
+    const href = navHref(raw.href);
+    if (!label || !href) return;
+    let id = typeof raw.id === "string" && /^[a-z0-9]{2,20}$/i.test(raw.id) ? raw.id : `n${index}`;
+    while (seen.has(id)) id = `${id}x`;
+    seen.add(id);
+    items.push({ id, label, href, parent: typeof raw.parent === "string" ? raw.parent : null, kind: typeof raw.kind === "string" ? raw.kind.slice(0, 20) : "custom" });
+  });
+  // Parents must be top-level items in this menu (one level of dropdown).
+  const topLevel = new Set(items.filter((item) => !item.parent).map((item) => item.id));
+  for (const item of items) if (item.parent && (!topLevel.has(item.parent) || item.parent === item.id)) item.parent = null;
+  return items.slice(0, NAV_MAX);
+}
+
+/** Flat items → the tree the site renders. */
+export function navTree(items: readonly NavItem[]): MenuItem[] {
+  return items
+    .filter((item) => !item.parent)
+    .map((item) => {
+      const children = items.filter((child) => child.parent === item.id).map((child) => ({ label: child.label, href: child.href }));
+      return children.length ? { label: item.label, href: item.href, children } : { label: item.label, href: item.href };
+    });
+}
+
 export function menuFrom(value: unknown): MenuItem[] {
-  return parseMenu(menuToText(value));
+  return navTree(navItemsFrom(value));
+}
+
+/** "Add to menu": new items go at the end, skipping links already in the menu. */
+export function addNavItems(items: readonly NavItem[], added: { label: string; href: string; kind: string }[]): NavItem[] {
+  const out = [...items];
+  for (const item of added) {
+    const href = navHref(item.href);
+    const label = item.label.trim().slice(0, 40);
+    if (!href || !label || out.some((existing) => existing.href === href && !existing.parent)) continue;
+    out.push({ id: newNavId(), label, href, parent: null, kind: item.kind });
+  }
+  return navItemsFrom(out);
+}
+
+export type NavFormRow = { id: string; label: string; href: string; position: number; parent: string | null; remove: boolean };
+
+/**
+ * The editor's "Save menu": labels, links, order (position numbers), dropdown parent and
+ * removals. Children of a removed item move to the top level. An item that has children
+ * stays top-level (dropdowns are one level deep). Children follow their parent.
+ */
+export function applyNavForm(items: readonly NavItem[], rows: readonly NavFormRow[]): NavItem[] {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const kept = items
+    .map((item, index) => ({ item, row: byId.get(item.id), index }))
+    .filter(({ row }) => !row?.remove)
+    .map(({ item, row, index }) => ({
+      item: { ...item, label: row?.label.trim().slice(0, 40) || item.label, href: navHref(row?.href) || item.href, parent: row ? row.parent : item.parent },
+      position: row?.position ?? index + 1,
+      index,
+    }));
+  const ids = new Set(kept.map(({ item }) => item.id));
+  const parents = new Set(kept.filter(({ item }) => item.parent).map(({ item }) => item.parent));
+  for (const entry of kept) {
+    const parent = entry.item.parent;
+    const parentEntry = kept.find(({ item }) => item.id === parent);
+    if (!parent || !ids.has(parent) || parent === entry.item.id || parents.has(entry.item.id) || parentEntry?.item.parent) entry.item.parent = null;
+  }
+  const sorted = [...kept].sort((a, b) => a.position - b.position || a.index - b.index).map(({ item }) => item);
+  const ordered: NavItem[] = [];
+  for (const top of sorted.filter((item) => !item.parent)) {
+    ordered.push(top, ...sorted.filter((item) => item.parent === top.id));
+  }
+  return navItemsFrom(ordered);
 }
 
 /** Header link: site paths get the site prefix, full URLs stay as they are. */

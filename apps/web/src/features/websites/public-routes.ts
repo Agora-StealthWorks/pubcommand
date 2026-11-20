@@ -35,7 +35,7 @@ async function cookieOptions(maxAge: number) {
   return { httpOnly: true, sameSite: "lax" as const, secure: origin.startsWith("https://"), path: "/", maxAge };
 }
 
-/** POST /subscribe: free newsletter sign-up (one or more publications). Creates a free member account too. */
+/** POST /subscribe: free newsletter sign-up (one or more publications). An email subscription, not an account. */
 export async function handleSubscribe(request: Request, orgSlug: string, siteSlug: string): Promise<Response> {
   const loaded = await loadSite(orgSlug, siteSlug);
   if (!loaded || !sameOrigin(request)) return notFound();
@@ -56,13 +56,12 @@ export async function handleSubscribe(request: Request, orgSlug: string, siteSlu
     const recent = await db.webSignup.count({ where: { siteId: loaded.site.id, ipHash, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
     if (recent >= 12) return seeOther(withQuery(back, { signup: "limited" }));
   }
-  const existing = await db.webMember.findFirst({ where: { siteId: loaded.site.id, email }, select: { id: true } });
-  const member = existing ?? (await db.webMember.create({ data: { organizationId: loaded.organizationId, siteId: loaded.site.id, email }, select: { id: true } }));
+  const member = await db.webMember.findFirst({ where: { siteId: loaded.site.id, email }, select: { id: true } });
   const source = (request.headers.get("referer") ?? "").slice(0, 500);
   for (const pub of pubs) {
     const found = await db.webSignup.findFirst({ where: { siteId: loaded.site.id, email, publicationId: pub.id }, select: { id: true } });
-    if (found) await db.webSignup.updateMany({ where: { id: found.id }, data: { status: "subscribed", memberId: member.id } });
-    else await db.webSignup.create({ data: { organizationId: loaded.organizationId, siteId: loaded.site.id, memberId: member.id, email, publicationId: pub.id, source, ipHash } });
+    if (found) await db.webSignup.updateMany({ where: { id: found.id }, data: { status: "subscribed", memberId: member?.id ?? null } });
+    else await db.webSignup.create({ data: { organizationId: loaded.organizationId, siteId: loaded.site.id, memberId: member?.id ?? null, email, publicationId: pub.id, source, ipHash } });
   }
   return seeOther(withQuery(back, { signup: "subscribed" }));
 }
