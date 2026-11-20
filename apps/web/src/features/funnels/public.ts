@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
+import { resolveCustomHost } from "@/features/domains/resolve";
 import { computeDayStates, type DayState, type ViewerFacts } from "../../../../../modules/funnels/state";
 import { zonedLocalToUtc } from "../../../../../modules/funnels/time";
 import { VIEWER_COOKIE_MAX_AGE, decodeViewer, emptyViewerCookie, encodeViewer, viewerCookieName, viewerSecret, type ViewerCookie } from "../../../../../modules/funnels/viewer";
@@ -23,8 +24,14 @@ export async function publicSiteMatches(orgSlug: string): Promise<boolean> {
  * to /l/<slug>, the browser path has no prefix and links start at "/".
  */
 export async function publicBase(prefix: "l" | "t", slug: string): Promise<string> {
-  const { pathname } = await currentRequest();
+  const request = await currentRequest();
   const own = `/${prefix}/${slug}`;
+  // A custom domain pointed at this funnel serves it at its root: links start at "/" (/day-2, /p/page).
+  if (request.customDomain) {
+    const resolved = await resolveCustomHost(request.customDomain).catch(() => null);
+    if (resolved && resolved.targetPath.replace(/\/+$/, "") === own) return "";
+  }
+  const { pathname } = request;
   return pathname === own || pathname.startsWith(`${own}/`) ? own : "";
 }
 
@@ -80,7 +87,7 @@ export async function loadPublicFunnel(orgSlug: string, funnelSlug: string, opti
   const db = tenantDb(org.id);
   const row = await db.funnel.findFirst({ where: { slug: funnelSlug, deletedAt: null } });
   if (!row) return null;
-  const wantsPreview = options.preview === "1" || Boolean(options.as_of) || options.draft === "1" || row.status !== "published";
+  const wantsPreview = options.preview === "1" || Boolean(options.as_of) || options.fresh === "1" || options.draft === "1" || row.status !== "published";
   const preview = wantsPreview ? await previewer(orgSlug, row.id) : false;
   if (row.status !== "published" && !preview) return null;
   const draft = preview && options.draft === "1";
@@ -114,8 +121,17 @@ export function viewerFacts(viewer: ViewerCookie | null): ViewerFacts {
   return viewer ? { start: viewer.start, watched: viewer.watched, keys: viewer.keys } : { watched: {}, keys: [] };
 }
 
+/** The state-engine view of a loaded funnel (with the org time zone for "today"). */
+export function rulesOf(loaded: Pick<LoadedFunnel, "funnel" | "timeZone">) {
+  return funnelRules(loaded.funnel, loaded.timeZone);
+}
+
+export function dayRulesOf(loaded: Pick<LoadedFunnel, "funnel" | "days">) {
+  return loaded.days.map((day) => dayRules(day, loaded.funnel.mode));
+}
+
 export function statesFor(loaded: LoadedFunnel, viewer: ViewerCookie | null, presentedKeys: Record<string, string> = {}): DayState[] {
-  return computeDayStates(funnelRules(loaded.funnel), loaded.days.map(dayRules), viewerFacts(viewer), loaded.now, presentedKeys);
+  return computeDayStates(rulesOf(loaded), dayRulesOf(loaded), viewerFacts(viewer), loaded.now, presentedKeys);
 }
 
 export function newVisitorId(): string {
@@ -173,6 +189,9 @@ export function safeBack(value: FormDataEntryValue | null, fallback: string): st
 export function publicDays(days: DayRow[], states: DayState[]): DayRow[] {
   return days.map((day, index) => {
     const open = states[index]?.kind === "video";
-    return { ...day, unlockKey: "", ...(open ? {} : { videoId: null, videoProvider: null, videoThumbUrl: null, videoTitle: null }) };
+    // A Wistia poster address is a delivery hash, not the media id, so a locked module keeps its tile image
+    // (as the old app did). YouTube's carries the id and Vidalytics has none: both are dropped.
+    const keepThumb = day.videoProvider === "wistia" && day.videoThumbUrl && !day.videoThumbUrl.includes(day.videoId ?? "\u0000") ? day.videoThumbUrl : null;
+    return { ...day, unlockKey: "", ...(open ? {} : { videoId: null, videoProvider: null, videoThumbUrl: keepThumb, videoTitle: null }) };
   });
 }

@@ -185,3 +185,57 @@ export function filterTraffic<T extends FlaggableRow>(rows: readonly T[], includ
   }
   return { kept, flagged, flaggedVisitors: visitors.size, byReason };
 }
+
+/** Click kinds a public page may record (anything else is refused). */
+export const CLICK_KINDS = [
+  "cta",
+  "resource",
+  "next",
+  "prev",
+  "calendar",
+  "live_join",
+  "live_redirect",
+  "early_join",
+  "today_training",
+  "nav_link",
+  "agenda_link",
+  "home_button",
+  "deadline_bar",
+  "close_button",
+] as const;
+export type ClickKind = (typeof CLICK_KINDS)[number];
+export function isClickKind(value: unknown): value is ClickKind {
+  return typeof value === "string" && (CLICK_KINDS as readonly string[]).includes(value);
+}
+
+/** Labels for the stats page. */
+export const CLICK_LABELS: Record<ClickKind, string> = {
+  cta: "Call-to-action button",
+  resource: "Resource / homework link",
+  next: "Next-day button",
+  prev: "Previous-day button (locked day)",
+  calendar: "Add to calendar",
+  live_join: "Join the livestream (click)",
+  live_redirect: "Livestream auto-redirect",
+  early_join: "Join the room early",
+  today_training: "Join today's session",
+  nav_link: "Navigation link",
+  agenda_link: "Agenda link",
+  home_button: "Home page button",
+  deadline_bar: "Deadline bar button",
+  close_button: "Close page button",
+};
+
+export const PAGE_KINDS = ["waitlist", "home", "day", "close", "custom"] as const;
+export type PageKind = (typeof PAGE_KINDS)[number];
+export function isPageKind(value: unknown): value is PageKind {
+  return typeof value === "string" && (PAGE_KINDS as readonly string[]).includes(value);
+}
+
+/** mobile | tablet | desktop from the user agent (and the client hint when sent). */
+export function deviceOf(userAgent: string | null | undefined, mobileHint?: string | null): "mobile" | "tablet" | "desktop" {
+  const ua = userAgent ?? "";
+  if (/ipad|tablet|kindle|silk|playbook|(android(?!.*mobile))/i.test(ua)) return "tablet";
+  if (mobileHint === "?1" || /mobi|iphone|ipod|android.*mobile|windows phone|blackberry|opera mini/i.test(ua)) return "mobile";
+  return "desktop";
+}

@@ -46,6 +46,9 @@ export function DeadlineBarClient({
   funnelId = "",
   dismissible = false,
   button = null,
+  digitColor = null,
+  buttonBg = null,
+  spacing = "narrow",
 }: {
   at: number;
   revealAt: number | null;
@@ -59,6 +62,10 @@ export function DeadlineBarClient({
   /** Show a × that hides the bar for the rest of the browser session (per deadline). */
   dismissible?: boolean;
   button?: { text: string; href: string | null } | null;
+  digitColor?: string | null;
+  buttonBg?: string | null;
+  /** Desktop: narrow = grouped at the centre, wide = spread across the bar. */
+  spacing?: "narrow" | "wide";
 }) {
   const clock = useNow();
   const key = dismissKey(funnelId, at);
@@ -69,35 +76,63 @@ export function DeadlineBarClient({
   const now = clock === null ? null : clock + nowOffset;
   const visible = now === null ? revealAt === null : now < at && (revealAt === null || now >= revealAt);
   if (!visible || dismissed) return null;
+  const left = now === null ? null : Math.max(0, Math.floor((at - now) / 1000));
+  const units: [string, number | null][] = [
+    ["Days", left === null ? null : Math.floor(left / 86400)],
+    ["Hours", left === null ? null : Math.floor((left % 86400) / 3600)],
+    ["Mins", left === null ? null : Math.floor((left % 3600) / 60)],
+    ["Secs", left === null ? null : left % 60],
+  ];
+  const shown = units[0]![1] ? units : units.slice(1);
+  const fixedBottom = sticky && position === "bottom";
+  const external = button?.href ? /^https?:/i.test(button.href) : false;
   return (
     <div
       role="timer"
       aria-live="off"
-      className={`z-40 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-center text-sm font-semibold ${sticky ? "sticky" : ""} ${dismissible ? "pr-11" : ""} relative`}
-      style={{ background: bg, color, ...(sticky ? (position === "top" ? { top: 0 } : { bottom: 0 }) : {}) }}
+      className={`pcf-dbar z-50 w-full ${sticky && position === "top" ? "sticky top-0" : ""} ${fixedBottom ? "fixed inset-x-0 bottom-0 shadow-[0_-6px_20px_rgba(0,0,0,.25)]" : "relative"}`}
+      style={{ background: bg, color }}
       data-deadline-bar={position}
+      title={parts(at - (now ?? at))}
     >
-      <span className="[overflow-wrap:anywhere]">
-        {text} <span className="ml-1 inline-block rounded-md bg-black/20 px-2 py-0.5 font-mono tabular-nums">{now === null ? "--:--:--" : parts(at - now)}</span>
-      </span>
-      {button?.href ? (
-        <a href={button.href} className="inline-flex min-h-9 items-center rounded-md px-3 text-sm font-bold shadow-sm" style={{ background: color, color: bg }} {...(/^https?:/i.test(button.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
-          {button.text}
-        </a>
-      ) : null}
-      {dismissible ? (
-        <button
-          type="button"
-          aria-label="Close"
-          className="absolute right-1.5 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-lg leading-none hover:bg-black/15"
-          onClick={() => {
-            rememberDismiss(sessionStore(), key);
-            setDismissed(true);
-          }}
-        >
-          ×
-        </button>
-      ) : null}
+      <div className={`pcf-wrap relative flex flex-col items-center gap-1.5 py-2 text-center sm:flex-row sm:py-2.5 ${spacing === "wide" ? "sm:justify-between" : "sm:justify-center sm:gap-9"} ${dismissible ? "pr-10" : ""}`}>
+        <span className="px-4 text-[14.5px] font-semibold leading-tight [overflow-wrap:anywhere] sm:px-0 sm:text-left sm:text-[clamp(16px,2vw,21px)]">{text}</span>
+        <span className="flex items-center gap-2 sm:gap-3">
+          {shown.map(([label, value]) => (
+            <span key={label} className="flex min-w-[2.2em] flex-col items-center leading-none">
+              <b className="text-[22px] font-extrabold tabular-nums sm:text-[clamp(24px,3.4vw,38px)]" style={digitColor ? { color: digitColor } : undefined}>
+                {value === null ? "--" : String(value).padStart(2, "0")}
+              </b>
+              <small className="mt-1 text-[8.5px] font-bold uppercase tracking-[0.12em] opacity-85 sm:text-[9.5px]">{label}</small>
+            </span>
+          ))}
+        </span>
+        {button?.href ? (
+          <a
+            href={button.href}
+            data-track="deadline_bar"
+            data-track-target={button.text}
+            className="inline-block whitespace-nowrap rounded px-3 py-2 text-[12.5px] font-extrabold uppercase tracking-wide sm:px-4 sm:py-2.5 sm:text-sm"
+            style={{ background: buttonBg ?? "var(--pcf-accent, #1d4ed8)", color: "var(--pcf-accent-text, #ffffff)" }}
+            {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+          >
+            {button.text}
+          </a>
+        ) : null}
+        {dismissible ? (
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute right-1 top-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-lg leading-none opacity-70 hover:opacity-100"
+            onClick={() => {
+              rememberDismiss(sessionStore(), key);
+              setDismissed(true);
+            }}
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

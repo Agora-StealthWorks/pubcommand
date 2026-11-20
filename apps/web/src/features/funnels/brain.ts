@@ -4,10 +4,10 @@ import { funnelBrainNote } from "../../../../../modules/funnels/stats";
 import { PROGRESSIONS, type Progression } from "../../../../../modules/funnels/state";
 import { formatZoned } from "../../../../../modules/funnels/time";
 import { BLOCK_INFO } from "../../../../../modules/funnels/blocks";
-import { funnelStats, orgTimezone } from "./data";
+import { orgTimezone } from "./data";
 import { homeBlocks } from "./site-data";
 
-/** Teach the brand Brain about a published funnel: structure and aggregates only. Soft-fails. */
+/** Teach the brand Brain about a published funnel: its structure and agenda only, never traffic. Soft-fails. */
 export async function teachFunnel(input: { organizationId: string; funnelId: string; actorId: string | null }): Promise<void> {
   try {
     const db = tenantDb(input.organizationId);
@@ -19,7 +19,6 @@ export async function teachFunnel(input: { organizationId: string; funnelId: str
       db.brand.findFirst({ where: { id: funnel.brandId }, select: { name: true } }),
       orgTimezone(input.organizationId),
     ]);
-    const stats = await funnelStats(input.organizationId, funnel, days.map((day) => day.id));
     const note = funnelBrainNote({
       name: funnel.name,
       brandName: brand?.name ?? "the brand",
@@ -27,7 +26,6 @@ export async function teachFunnel(input: { organizationId: string; funnelId: str
       progression: (PROGRESSIONS as readonly string[]).includes(funnel.progression) ? (funnel.progression as Progression) : "all_open",
       startLabel: funnel.startAt ? formatZoned(funnel.startAt, timeZone, { year: true }) : null,
       days: days.map((day) => ({ position: day.position, title: day.title, topics: day.topics, isLive: day.isLive })),
-      stats,
       siteType: funnel.siteType === "microsite" ? "microsite" : "launch",
       homeSections: homeBlocks(funnel).map((block) => BLOCK_INFO[block.type].label),
       pages: navItems.map((item) => item.title || item.label).filter(Boolean),

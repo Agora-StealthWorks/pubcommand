@@ -113,6 +113,36 @@ export function googleCalendarUrl(event: CalendarEvent, timeZone: string): strin
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
+export type InviteSettings = {
+  /** Tokens: {funnel} {day} {title}. */
+  titleTemplate?: string;
+  /** Tokens: {agenda} {topics} {room_url} {page_url} {day} {title} {date} {time}. */
+  descTemplate?: string;
+  /** Minutes before the start (.ics only). */
+  reminders?: number[];
+  /** Every live session, for {agenda}. */
+  agenda?: { label: string; title: string; topics: string[]; liveStartAt: Date | null }[];
+};
+
+export const DEFAULT_INVITE_TITLE = "{funnel}: {title}";
+export const DEFAULT_INVITE_DESC = "You're registered! Join the livestream here:\n{room_url}\n\n{title} goes live {date}.";
+
+/** {agenda}: every live session with its time and topics, like the waitlist agenda. */
+export function agendaText(sessions: InviteSettings["agenda"], timeZone: string): string {
+  return (sessions ?? [])
+    .filter((session) => session.liveStartAt)
+    .sort((a, b) => a.liveStartAt!.getTime() - b.liveStartAt!.getTime())
+    .map((session) => [`• ${session.label}${session.title ? `: ${session.title}` : ""} — ${formatZoned(session.liveStartAt, timeZone)}`, ...session.topics.filter(Boolean).map((topic) => `   – ${topic}`)].join("\n"))
+    .join("\n");
+}
+
+/** "8:00 PM ET" in the zone. */
+function timeOnly(date: Date, timeZone: string): string {
+  const full = formatZoned(date, timeZone);
+  const at = full.lastIndexOf(" at ");
+  return at >= 0 ? full.slice(at + 4) : full;
+}
+
 /** The invite for a live session. Null when the day has no start time. */
 export function liveSessionEvent(input: {
   funnelId: string;
@@ -121,22 +151,59 @@ export function liveSessionEvent(input: {
   roomUrl: string | null;
   pageUrl: string;
   timeZone: string;
+  invite?: InviteSettings;
 }): CalendarEvent | null {
   const { start, end } = liveWindow(input.day);
   if (!start || !end) return null;
   const room = input.day.liveUrl || input.roomUrl || input.pageUrl;
-  const title = `${input.funnelName}: ${input.day.title || input.day.label}`;
-  const topics = input.day.topics.filter(Boolean).map((topic) => `• ${topic}`);
+  const invite = input.invite ?? {};
+  const fill = (template: string) =>
+    template
+      .replaceAll("{agenda}", agendaText(invite.agenda, input.timeZone))
+      .replaceAll("{topics}", input.day.topics.filter(Boolean).map((topic) => `• ${topic}`).join("\n"))
+      .replaceAll("{funnel}", input.funnelName)
+      .replaceAll("{day}", input.day.label)
+      .replaceAll("{title}", input.day.title || input.day.label)
+      .replaceAll("{date}", formatZoned(start, input.timeZone))
+      .replaceAll("{time}", timeOnly(start, input.timeZone))
+      .replaceAll("{room_url}", room)
+      .replaceAll("{page_url}", input.pageUrl);
   return {
     uid: `funnel-${input.funnelId}-day-${input.day.id}`,
-    title,
-    description: [`${input.day.title || input.day.label} goes live ${formatZoned(start, input.timeZone)}.`, ...(topics.length ? ["", ...topics] : []), "", `Join here: ${room}`].join("\n"),
+    title: fill(invite.titleTemplate?.trim() || DEFAULT_INVITE_TITLE).slice(0, 300),
+    description: fill(invite.descTemplate?.trim() || DEFAULT_INVITE_DESC).slice(0, 8000),
     start,
     end,
     location: room,
     url: room,
-    reminders: [1440, 60, 15],
+    reminders: invite.reminders ?? [1440, 60, 15],
   };
+}
+
+/** "1 day, 2 hours, 15 min, 5" → [1440, 120, 15, 5]: minutes before, de-duplicated, longest first, at most 5. */
+export function parseReminders(input: string): number[] {
+  const minutes = input
+    .split(/[,;]+/)
+    .map((part) => {
+      const match = /^\s*(\d+(?:\.\d+)?)\s*([a-z]*)\s*$/i.exec(part);
+      if (!match) return Number.NaN;
+      const value = Number(match[1]);
+      const unit = match[2]!.toLowerCase();
+      if (/^(d|day|days)$/.test(unit)) return value * 1440;
+      if (/^(h|hr|hrs|hour|hours)$/.test(unit)) return value * 60;
+      if (unit === "" || /^(m|min|mins|minute|minutes)$/.test(unit)) return value;
+      return Number.NaN;
+    })
+    .map(Math.round)
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= 40320);
+  return [...new Set(minutes)].sort((a, b) => b - a).slice(0, 5);
+}
+
+export function describeReminders(minutes: number[]): string {
+  if (!minutes.length) return "no reminders";
+  return `${minutes
+    .map((value) => (value && value % 1440 === 0 ? `${value / 1440} day${value === 1440 ? "" : "s"}` : value && value % 60 === 0 ? `${value / 60} hour${value === 60 ? "" : "s"}` : `${value} min`))
+    .join(", ")} before`;
 }
 
 /** The invite for a home page event box. Null without a start. */

@@ -6,13 +6,14 @@ import { RichContentStyles } from "@/components/rich-text-editor/content-css";
 import { safeColor } from "../../../../../modules/funnels/checks";
 import { navStrip } from "../../../../../modules/funnels/nav";
 import type { DayState } from "../../../../../modules/funnels/state";
-import { dayLabel, dayThumb, funnelRules, type DayRow, type FunnelRow, type NavItemRow } from "./data";
+import { dayLabel, dayThumb, funnelRules, isTextModule, type DayRow, type FunnelRow, type NavItemRow } from "./data";
 import type { LoadedFunnel } from "./public";
 import { viewerFacts } from "./public";
 import type { ViewerCookie } from "../../../../../modules/funnels/viewer";
 import { DeadlineBarClient } from "./site-client";
 import { navItemThumb, pageHref, type FunnelTheme } from "./site-data";
 import { RICH } from "./public-view";
+import { LAYOUT_CSS } from "../../../../../modules/funnels/layout-css";
 
 /** Which kind of page a public funnel page is (the deadline bar is set per kind). */
 export type FunnelPageKind = DeadlinePage | "close";
@@ -43,6 +44,9 @@ export function DeadlineBar({ loaded, viewer, position, page, base = "" }: { loa
       funnelId={funnel.id}
       dismissible={funnel.deadlineBarDismiss}
       button={funnel.deadlineBarButtonText.trim() ? { text: funnel.deadlineBarButtonText.trim(), href: deadlineButtonHref(funnel.deadlineBarButtonUrl, base, loaded.carry) } : null}
+      digitColor={funnel.deadlineBarDigitColor && /^#[0-9a-f]{6}$/i.test(funnel.deadlineBarDigitColor) ? funnel.deadlineBarDigitColor : null}
+      buttonBg={funnel.deadlineBarButtonBg && /^#[0-9a-f]{6}$/i.test(funnel.deadlineBarButtonBg) ? funnel.deadlineBarButtonBg : null}
+      spacing={funnel.deadlineBarSpacing === "wide" ? "wide" : "narrow"}
     />
   );
 }
@@ -58,7 +62,10 @@ export function FunnelShell({
   page,
   base,
   children,
+  hideHeader = false,
 }: {
+  /** The waitlist draws its logo inside the countdown hero instead of a header bar. */
+  hideHeader?: boolean;
   theme: FunnelTheme;
   loaded: LoadedFunnel;
   viewer: ViewerCookie | null;
@@ -79,12 +86,13 @@ export function FunnelShell({
   );
   return (
     <div className="pcf flex min-h-screen flex-col">
-      <style dangerouslySetInnerHTML={{ __html: theme.css }} />
+      <style dangerouslySetInnerHTML={{ __html: `${LAYOUT_CSS}\n${theme.css}` }} />
       <RichContentStyles />
       {theme.fontHref ? <link rel="stylesheet" href={theme.fontHref} /> : null}
       <FunnelCode loaded={loaded} where="head" />
       {preview}
       {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="top" page={page} base={base} /> : null}
+{hideHeader ? null : (
       <header className="pcf-header">
         <div className="pcf-header-inner">
           {theme.logoHref ? (
@@ -96,10 +104,11 @@ export function FunnelShell({
           )}
         </div>
       </header>
+      )}
       {nav}
-      <div className="min-w-0 flex-1">{children}</div>
-      <footer className="pcf-footer border-t border-black/10 px-4 py-6 text-center text-xs">
-        <div className="mx-auto max-w-3xl space-y-3">
+      <main className="pcf-main">{children}</main>
+      <footer className="pcf-footer">
+        <div className="pcf-wrap space-y-3">
           {theme.footerLogoSrc ? <img src={theme.footerLogoSrc} alt={branding.brandName} className="mx-auto block h-auto w-auto max-w-full" style={{ maxHeight: theme.footerLogoHeight }} /> : null}
           {branding.footerHtml ? <div className={`${RICH} [overflow-wrap:anywhere]`} dangerouslySetInnerHTML={{ __html: branding.footerHtml }} /> : null}
           <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
@@ -157,27 +166,28 @@ export function funnelIcons(funnel: Pick<FunnelRow, "slug" | "faviconAssetId" | 
 
 function LockBadge() {
   return (
-    <span className="pcf-lock absolute inset-0 items-center justify-center bg-black/40 text-white" aria-label="Locked">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+    <span className="pcf-lock" role="img" aria-label="Locked">
+      <span className="pcf-lock-badge">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
         <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z" />
       </svg>
+      </span>
     </span>
   );
 }
 
-function Tile({ href, newTab, current, locked, faded, thumb, label, sub, badge }: { href: string | null; newTab?: boolean; current?: boolean; locked?: boolean; faded?: boolean; thumb: string | null; label: string; sub?: string; badge?: ReactNode }) {
+function Tile({ href, newTab, current, locked, faded, thumb, label, placeholder, badge, track }: { href: string | null; newTab?: boolean; current?: boolean; locked?: boolean; faded?: boolean; thumb: string | null; label: string; placeholder?: ReactNode; badge?: ReactNode; track?: { kind: string; target: string } }) {
   const body = (
     <>
-      <span className="pcf-thumb relative block bg-black/80" style={{ aspectRatio: "16 / 9" }}>
-        {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" /> : <span className="flex h-full items-center justify-center px-2 text-center text-sm font-bold text-white">{locked ? "" : label}</span>}
+      <span className="pcf-thumb">
+        {thumb ? <img src={thumb} alt="" loading="lazy" /> : placeholder ?? <span className="pcf-ph" />}
         {locked ? <LockBadge /> : null}
         {badge}
       </span>
-      <span className="pcf-tile-label mt-1.5 block truncate text-xs font-semibold">{label}</span>
-      {sub ? <span className="block truncate text-xs opacity-80">{sub}</span> : null}
+      <span className="pcf-tile-label">{label}</span>
     </>
   );
-  const common = { className: "pcf-tile block shrink-0", "data-locked": locked ? "1" : undefined, style: faded ? { opacity: 0.5 } : undefined, "aria-current": current ? ("page" as const) : undefined };
+  const common = { className: "pcf-tile", "data-locked": locked ? "1" : undefined, style: faded ? { opacity: 0.45 } : undefined, "aria-current": current ? ("page" as const) : undefined, title: label };
   if (!href) {
     return (
       <li>
@@ -189,7 +199,7 @@ function Tile({ href, newTab, current, locked, faded, thumb, label, sub, badge }
   }
   return (
     <li>
-      <a href={href} {...common} {...(newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+      <a href={href} {...common} {...(newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})} {...(track ? { "data-track": track.kind, "data-track-target": track.target } : {})}>
         {body}
       </a>
     </li>
@@ -219,8 +229,8 @@ export function NavStrip({
   const entries = navStrip(days, navItems);
   if (!entries.length) return null;
   return (
-    <nav aria-label="Navigation" className="pcf-nav">
-      <ol className="mx-auto flex max-w-5xl gap-3 overflow-x-auto px-4 pb-3 pt-5">
+    <nav aria-label="Modules" className="pcf-nav">
+      <ol className="pcf-wrap pcf-nav-row">
         {entries.map((entry) => {
           if (entry.kind === "day") {
             const { day } = entry;
@@ -234,17 +244,17 @@ export function NavStrip({
                 locked={!open}
                 thumb={dayThumb(day, base, state.kind === "video")}
                 label={dayLabel(day)}
-                sub={day.title || undefined}
-                badge={state.kind === "live" ? <span className="absolute left-1.5 top-1.5 rounded bg-[#d92d20] px-1.5 py-0.5 text-[10px] font-bold text-white">LIVE</span> : null}
+                placeholder={<span className="pcf-ph">{isTextModule(day, funnel.mode) ? "📝" : day.position}</span>}
+                badge={state.kind === "live" ? <span className="pcf-live-badge">LIVE</span> : null}
               />
             );
           }
           const { item } = entry;
           const label = item.label.trim() || item.title.trim() || (item.kind === "placeholder" ? "Coming soon" : item.kind === "link" ? "Link" : "Page");
           const thumb = navItemThumb(funnel, item);
-          if (item.kind === "placeholder") return <Tile key={item.id} href={null} locked={item.showLock} faded={item.faded} thumb={thumb} label={label} sub={item.agendaWhen || undefined} />;
-          if (item.kind === "link") return <Tile key={item.id} href={item.url} newTab={item.newTab} thumb={thumb} label={`${label} ↗`} />;
-          return <Tile key={item.id} href={pageHref(funnel, base, item.slug, carry)} current={item.slug === currentPageSlug} thumb={thumb} label={label} sub={item.title && item.title !== label ? item.title : undefined} />;
+          if (item.kind === "placeholder") return <Tile key={item.id} href={null} locked={item.showLock} faded={item.faded} thumb={thumb} label={label} />;
+          if (item.kind === "link") return <Tile key={item.id} href={item.url} newTab={item.newTab} thumb={thumb} label={label} placeholder={<span className="pcf-ph is-custom">🔗</span>} track={{ kind: "nav_link", target: `${label}|${item.url}` }} />;
+          return <Tile key={item.id} href={pageHref(funnel, base, item.slug, carry)} current={item.slug === currentPageSlug} thumb={thumb} label={label} placeholder={<span className="pcf-ph is-custom">📄</span>} />;
         })}
       </ol>
     </nav>

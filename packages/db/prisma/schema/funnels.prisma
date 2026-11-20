@@ -123,6 +123,70 @@ model Funnel {
   /// Sender name on invites and reminders. Empty = the company name.
   emailFromName          String          @default("") @map("email_from_name")
   emailReplyTo           String?         @map("email_reply_to")
+  /// The first module follows scheduled / link-key progression too.
+  lockFirstModule        Boolean         @default(false) @map("lock_first_module")
+  /// Live: where the front door goes between sessions: hybrid | recent | next
+  betweenSessions        String          @default("hybrid") @map("between_sessions")
+  /// Live: countdown in the video box on the calendar day of a session.
+  liveCountdown          Boolean         @default(true) @map("live_countdown")
+  liveCountdownTitle     String          @default("We go live in…") @map("live_countdown_title")
+  /// Live: on a later session's page, point to today's earlier session while it is still to come or live.
+  todayTrainingEnabled   Boolean         @default(true) @map("today_training_enabled")
+  todayTrainingText      String          @default("Join today's session") @map("today_training_text")
+  /// Tokens: {day} {time}
+  todayTrainingMsg       String          @default("Today's live session, {day}, starts at {time}.") @map("today_training_msg")
+  /// Tokens: {day}
+  todayTrainingLiveMsg   String          @default("Today's live session, {day}, is live right now!") @map("today_training_live_msg")
+  /// Countdown in a locked (timed) module's box: day_of | always | off
+  unlockCountdownMode    String          @default("day_of") @map("unlock_countdown_mode")
+  unlockCountdownTitle   String          @default("Unlocks in…") @map("unlock_countdown_title")
+  /// Live: N minutes before a session, swap Add to calendar for a "join early" button.
+  earlyJoinEnabled       Boolean         @default(false) @map("early_join_enabled")
+  earlyJoinMinutes       Int             @default(15) @map("early_join_minutes")
+  earlyJoinText          String          @default("Join the room early") @map("early_join_text")
+  /// Empty = the session's livestream room.
+  earlyJoinUrl           String?         @map("early_join_url")
+  prevButtonText         String          @default("Watch the previous day") @map("prev_button_text")
+  /// Live: Add to calendar on upcoming sessions and the waitlist.
+  calendarEnabled        Boolean         @default(true) @map("calendar_enabled")
+  calendarButtonText     String          @default("Add to calendar") @map("calendar_button_text")
+  /// builtin (Google / Apple / Outlook from the session time) | url (a calendar tool link)
+  calendarMode           String          @default("builtin") @map("calendar_mode")
+  calendarUrl            String?         @map("calendar_url")
+  /// Tokens: {funnel} {day} {title}
+  calInviteTitle         String          @default("{funnel}: {title}") @map("cal_invite_title")
+  /// Tokens: {agenda} {topics} {room_url} {page_url} {day} {title} {date} {time}
+  calInviteDesc          String          @default("You're registered! Join the livestream here:\n{room_url}\n\n{title} goes live {date}.") @map("cal_invite_desc")
+  /// Minutes before the start, comma-separated (.ics only).
+  calReminders           String          @default("1440,60,15") @map("cal_reminders")
+  /// individual | series
+  calInviteScope         String          @default("individual") @map("cal_invite_scope")
+  /// Waitlist colours. Empty = the header colours (older funnels keep their look).
+  waitlistBg             String          @default("") @map("waitlist_bg")
+  waitlistText           String          @default("") @map("waitlist_text")
+  waitlistBgImageUrl     String?         @map("waitlist_bg_image_url")
+  countdownBoxBg         String          @default("#ffffff") @map("countdown_box_bg")
+  countdownDigit         String          @default("#111827") @map("countdown_digit")
+  homeworkEnabled        Boolean         @default(false) @map("homework_enabled")
+  homeworkTitle          String          @default("Pre-event homework") @map("homework_title")
+  homeworkSubtitle       String          @default("") @map("homework_subtitle")
+  /// [{ label, url, style: button|link, newTab }]
+  homeworkItems          Json            @default("[]") @map("homework_items")
+  /// Empty = the page colours.
+  hostsBg                String          @default("") @map("hosts_bg")
+  hostsTitleColor        String          @default("") @map("hosts_title_color")
+  /// list | cards
+  agendaLayout           String          @default("list") @map("agenda_layout")
+  agendaBg               String          @default("") @map("agenda_bg")
+  agendaText             String          @default("") @map("agenda_text")
+  /// Heading over the calendar-buttons embed under each video. Empty = none.
+  livendarTitle          String          @default("Add this event to your calendar") @map("livendar_title")
+  /// Default calendar-buttons embed (sanitized, no scripts) under every module's video.
+  livendarHtml           String          @default("") @map("livendar_html")
+  deadlineBarDigitColor  String?         @map("deadline_bar_digit_color")
+  deadlineBarButtonBg    String?         @map("deadline_bar_button_bg")
+  /// narrow | wide
+  deadlineBarSpacing     String          @default("narrow") @map("deadline_bar_spacing")
   publishedAt            DateTime?       @map("published_at")
   createdById            String?         @map("created_by_id") @db.Uuid
   createdAt              DateTime        @default(now()) @map("created_at")
@@ -186,6 +250,22 @@ model FunnelDay {
   ctaSeconds        Int       @default(0) @map("cta_seconds")
   ctaAt             DateTime? @map("cta_at")
   ctaSubtext        String    @default("") @map("cta_subtext")
+  /// video | text (a rich text module in place of the video box; live days keep the video box)
+  kind              String    @default("video")
+  /// Per-module override of the funnel's locked message.
+  lockedMessage     String?   @map("locked_message")
+  /// Per-session Add to calendar link (calendar mode "url").
+  calendarUrl       String?   @map("calendar_url")
+  /// Show the agenda in a box below this module's video box.
+  showAgenda        Boolean   @default(false) @map("show_agenda")
+  /// full | module
+  agendaScope       String    @default("full") @map("agenda_scope")
+  /// default | custom | off
+  livendarMode      String    @default("default") @map("livendar_mode")
+  livendarHtml      String    @default("") @map("livendar_html")
+  ctaBg             String?   @map("cta_bg")
+  ctaTextColor      String?   @map("cta_text_color")
+  ctaNewTab         Boolean   @default(false) @map("cta_new_tab")
   /// SMS signup form (funnel_sms_forms id) shown under the video.
   smsFormId         String?   @map("sms_form_id") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at")
@@ -246,6 +326,10 @@ model FunnelNavItem {
   showLock       Boolean  @default(true) @map("show_lock")
   faded          Boolean  @default(true)
   showInAgenda   Boolean  @default(false) @map("show_in_agenda")
+  /// Pages: shown at the funnel's front door instead of the waitlist / current module.
+  isHome         Boolean  @default(false) @map("is_home")
+  /// Placeholders: the agenda entry's title (empty = the label).
+  agendaTitle    String   @default("") @map("agenda_title")
   agendaWhen     String   @default("") @map("agenda_when")
   agendaDesc     String   @default("") @map("agenda_desc")
   /// Shown after module N (0 = before the first); null = at the end.
@@ -286,8 +370,14 @@ model FunnelEvent {
   funnelId       String   @map("funnel_id") @db.Uuid
   /// Null = the waitlist / front door.
   dayId          String?  @map("day_id") @db.Uuid
-  /// view | cta
+  /// view | cta | resource | next | prev | calendar | live_join | live_redirect | early_join | today_training | nav_link | agenda_link | deadline_bar | close_button | home_button
   kind           String
+  /// waitlist | home | day | close | custom (null on older rows)
+  page           String?
+  /// The clicked thing: resource "<index>|<label>|<url>", buttons their label.
+  target         String?
+  /// mobile | tablet | desktop
+  device         String?
   /// Random id from the viewer cookie. Not linked to any person.
   visitorId      String   @map("visitor_id")
   /// Why this looks automated (user_agent | datacenter | webdriver); null = a person. Stats leave these out by default.
@@ -296,6 +386,7 @@ model FunnelEvent {
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, funnelId, createdAt])
+  @@index([organizationId, funnelId, kind])
   @@map("funnel_events")
 }
 

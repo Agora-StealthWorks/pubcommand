@@ -2,11 +2,12 @@ import { tenantDb } from "@pubcommand/db";
 import { after } from "next/server";
 import { verifyUnsubscribeToken } from "../../../../../modules/funnels/emails";
 import { captureSmsOptin, isValidEmail } from "../../../../../modules/funnels/sms";
-import { classifyTraffic, clientIpOf } from "../../../../../modules/funnels/traffic";
+import { classifyTraffic, clientIpOf, deviceOf, isClickKind, isPageKind } from "../../../../../modules/funnels/traffic";
 import { ensureStart, recordWatch, rememberKey } from "../../../../../modules/funnels/viewer";
-import { eventBoxEvent, icsFile, liveSessionEvent } from "../../../../../modules/funnels/calendar";
+import { eventBoxEvent, icsFile } from "../../../../../modules/funnels/calendar";
+import { sessionEvent, upcomingSessions } from "./calendar-view";
 import { effectiveStart } from "../../../../../modules/funnels/state";
-import { dayLabel, emailConsent, funnelBranding, funnelRules } from "./data";
+import { emailConsent, funnelBranding, funnelRules } from "./data";
 import { sendConfirmation, unsubscribeOptin, unsubscribeSecret } from "./emails";
 import { acceptsEmailOptin, homeBlocks } from "./site-data";
 import {
@@ -51,22 +52,30 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
   if (loaded.preview) return json({ ok: true, preview: true });
   const raw = await request.text();
   if (raw.length > 2000) return json({ ok: false }, 413);
-  let body: { kind?: unknown; dayId?: unknown; percent?: unknown; key?: unknown; wd?: unknown };
+  let body: { kind?: unknown; dayId?: unknown; percent?: unknown; key?: unknown; wd?: unknown; page?: unknown; target?: unknown };
   try {
     body = JSON.parse(raw || "{}");
   } catch {
     return json({ ok: false }, 400);
   }
-  const kind = body.kind === "watch" || body.kind === "cta" ? body.kind : "view";
-  const dayId = typeof body.dayId === "string" && UUID.test(body.dayId) ? body.dayId : null;
-  const day = dayId ? loaded.days.find((item) => item.id === dayId) ?? null : null;
-  if (dayId && !day) return json({ ok: false }, 404);
+  const kind = typeof body.kind === "string" && (body.kind === "view" || body.kind === "watch" || isClickKind(body.kind)) ? body.kind : null;
+  if (!kind) return json({ ok: false }, 400);
+  const page = isPageKind(body.page) ? body.page : null;
+  // dayId is a module id, or on a custom page that page's id.
+  const rawId = typeof body.dayId === "string" && UUID.test(body.dayId) ? body.dayId : null;
+  const day = rawId ? loaded.days.find((item) => item.id === rawId) ?? null : null;
+  const pageItem = rawId && !day && page === "custom" ? loaded.navItems.find((item) => item.id === rawId) ?? null : null;
+  if (rawId && !day && !pageItem) return json({ ok: false }, 404);
+  const dayId = day?.id ?? pageItem?.id ?? null;
+  const target = typeof body.target === "string" ? body.target.replace(/[\u0000-\u001f]/g, " ").slice(0, 600) : null;
   const { funnel, now } = loaded;
   let viewer = ensureStart(startViewer(await readViewer(funnel.id, false)), now);
   const db = tenantDb(loaded.organizationId);
   // Flag (never drop) automated traffic: bot user agents, cloud / data-center networks, automated browsers.
-  const botReason = classifyTraffic({ userAgent: request.headers.get("user-agent"), ip: clientIpOf(request.headers), webdriver: body.wd === true });
+  const userAgent = request.headers.get("user-agent");
+  const botReason = classifyTraffic({ userAgent, ip: clientIpOf(request.headers), webdriver: body.wd === true });
   const bot = botReason !== null;
+  const device = deviceOf(userAgent, request.headers.get("sec-ch-ua-mobile"));
   let unlocked = false;
 
   if (kind === "view") {
@@ -75,16 +84,14 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
       viewer = rememberKey(viewer, day.id);
       unlocked = true;
     }
-    {
-      const recent = await db.funnelEvent.count({ where: { funnelId: funnel.id, dayId, visitorId: viewer.visitorId, kind: "view", createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
-      if (!recent) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, kind: "view", visitorId: viewer.visitorId, botReason } });
-    }
+    const recent = await db.funnelEvent.count({ where: { funnelId: funnel.id, dayId, page, visitorId: viewer.visitorId, kind: "view", createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
+    if (!recent) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, page, device, kind: "view", visitorId: viewer.visitorId, botReason } });
   } else if (kind === "watch") {
     const percent = Number(body.percent);
     if (!day || !Number.isFinite(percent)) return json({ ok: false }, 400);
     const index = loaded.days.findIndex((item) => item.id === day.id);
     const state = statesFor(loaded, viewer)[index];
-    // Only a day that is actually open with its video can be "watched".
+    // Only a module that is actually open with its content can be "watched" (every provider, and text modules).
     if (state?.kind !== "video") return json({ ok: false, error: "locked" }, 409);
     viewer = recordWatch(viewer, day.id, percent);
     const value = viewer.watched[day.id] ?? 0;
@@ -97,7 +104,9 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
       }
     }
   } else {
-    await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, kind: "cta", visitorId: viewer.visitorId, botReason } });
+    // A click. Bursts from one visitor are capped so a script cannot flood the table.
+    const recent = await db.funnelEvent.count({ where: { funnelId: funnel.id, visitorId: viewer.visitorId, createdAt: { gte: new Date(now.getTime() - 10 * 60_000) } } });
+    if (recent < 150) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, page, device, kind, target, visitorId: viewer.visitorId, botReason } });
   }
 
   const cookie = viewerCookieHeader(funnel.id, viewer, isSecure(request));
@@ -225,17 +234,15 @@ export async function funnelIcs(request: Request, orgSlug: string, funnelSlug: s
   const rules = funnelRules(funnel);
   const dayId = url.searchParams.get("day") ?? "";
   const blockId = url.searchParams.get("block") ?? "";
+  if (url.searchParams.get("series") === "1") {
+    if (rules.mode !== "live") return new Response("Not found", { status: 404 });
+    const events = upcomingSessions(loaded).map((day) => sessionEvent(loaded, day, origin)).filter((event) => event !== null);
+    return events.length ? icsResponse(icsFile(events, { timeZone, calendarName: funnel.name, domain: host }), `${funnel.slug}-sessions`) : new Response("Not found", { status: 404 });
+  }
   if (dayId) {
     const day = UUID.test(dayId) ? loaded.days.find((item) => item.id === dayId) : undefined;
     if (!day || rules.mode !== "live" || !day.isLive) return new Response("Not found", { status: 404 });
-    const event = liveSessionEvent({
-      funnelId: funnel.id,
-      funnelName: funnel.name,
-      day: { ...day, label: dayLabel(day) },
-      roomUrl: rules.livestreamUrl,
-      pageUrl: `${origin}/l/${funnel.slug}/day-${day.position}`,
-      timeZone,
-    });
+    const event = sessionEvent(loaded, day, origin);
     return event ? icsResponse(icsFile([event], { timeZone, calendarName: funnel.name, domain: host }), `${funnel.slug}-day-${day.position}`) : new Response("Not found", { status: 404 });
   }
   const block = homeBlocks(funnel).find((item) => item.id === blockId);

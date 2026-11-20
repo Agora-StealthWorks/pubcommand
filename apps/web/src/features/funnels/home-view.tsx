@@ -51,12 +51,19 @@ export function HostCards({ funnel, hosts, layout = "grid" }: { funnel: FunnelRo
   );
 }
 
-export function HostsSection({ funnel, hosts, title }: { funnel: FunnelRow; hosts: HostRow[]; title: string }) {
+export function HostsSection({ funnel, hosts, title, bg, titleColor }: { funnel: FunnelRow; hosts: HostRow[]; title: string; bg?: string; titleColor?: string }) {
   if (!hosts.length) return null;
+  const hex = (value?: string) => (value && /^#[0-9a-f]{6}$/i.test(value) ? value : undefined);
   return (
-    <section className="mx-auto w-full max-w-4xl px-4 pb-12">
-      <h2 className="mb-5 text-center text-2xl font-bold tracking-tight">{title}</h2>
-      <HostCards funnel={funnel} hosts={hosts} />
+    <section className="pcf-hosts" style={hex(bg) ? { background: hex(bg) } : undefined}>
+      <div className="pcf-wrap">
+        {title ? (
+          <h2 className="pcf-agenda-h" style={hex(titleColor) ? { color: hex(titleColor) } : undefined}>
+            {title}
+          </h2>
+        ) : null}
+        <HostCards funnel={funnel} hosts={hosts} layout={hosts.length === 1 ? "stacked" : "grid"} />
+      </div>
     </section>
   );
 }
@@ -190,7 +197,7 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
           {when ? <p className="text-base font-semibold opacity-90">{when}</p> : null}
           {block.countdown && at && at > now ? (
             <div className="mx-auto max-w-xl">
-              <Countdown target={at.getTime()} labelColor="currentColor" boxColor="#ffffff" digitColor="#111827" reloadAtZero={false} />
+              <Countdown target={at.getTime()} serverNow={now.getTime()} reloadTo={null} labelColor="currentColor" boxColor="#ffffff" digitColor="#111827" />
             </div>
           ) : null}
           {block.calendar && event && at && at > now ? <AddToCalendar event={event} icsHref={icsHref} timeZone={timeZone} tone={dark ? "dark" : "light"} /> : null}
@@ -204,7 +211,7 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
         <>
           <Heading text={block.heading} />
           <div className="mx-auto max-w-xl">
-            <Countdown target={target.getTime()} labelColor="currentColor" boxColor="#ffffff" digitColor="#111827" reloadAtZero={false} />
+            <Countdown target={target.getTime()} serverNow={now.getTime()} reloadTo={null} labelColor="currentColor" boxColor="#ffffff" digitColor="#111827" />
           </div>
         </>
       );

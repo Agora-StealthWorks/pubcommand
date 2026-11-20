@@ -76,7 +76,8 @@ export function funnelBrainNote(input: {
   progression: Progression;
   startLabel: string | null;
   days: { position: number; title: string; topics: string[]; isLive: boolean }[];
-  stats: FunnelStats;
+  /** Ignored: funnel traffic never teaches the Brain (same rule as the old app). Kept so callers compile. */
+  stats?: FunnelStats;
   /** Microsites get a different headline and list their home page sections and extra pages. */
   siteType?: "launch" | "microsite";
   homeSections?: string[];
@@ -100,14 +101,88 @@ export function funnelBrainNote(input: {
       return `- Day ${day.position}${day.isLive && input.mode === "live" ? " (live)" : ""}: ${day.title || "Untitled"}${topics}`;
     }),
     "",
-    "## Results so far (aggregates)",
-    `- Visitors: ${input.stats.visitors}; waitlist views: ${input.stats.waitlistViews}; opt-ins: ${input.stats.optins}; CTA clicks: ${input.stats.ctaClicks}.`,
-    ...input.stats.days.map((day, index) => {
-      const label = input.days[index] ? `Day ${input.days[index]!.position}` : `Day ${index + 1}`;
-      return `- ${label}: ${day.viewers} viewers, average watched ${day.avgWatch === null ? "n/a" : `${day.avgWatch}%`}, ${day.completed} finished, ${day.ctaClicks} CTA clicks.`;
-    }),
-    "",
-    "Use this to plan the next launch: which topics held attention (watch %), and where people dropped off between days.",
+    "Structure only: visitor traffic and opt-ins are never sent to the Brain.",
   ];
   return { title: `${kind}: ${input.name}`, body: lines.join("\n") };
+}
+
+export type ReportEvent = { dayId: string | null; page: string | null; kind: string; target: string | null; device: string | null; visitorId: string; createdAt: Date };
+export type ReportPage = { key: string; page: string; id: string | null; label: string };
+export type PageRow = ReportPage & { views: number; uniques: number; pctOfUsers: number; devices: Record<string, number>; clicks: Record<string, number> };
+export type ClickRow = { pageLabel: string; kind: string; target: string; clicks: number; uniques: number; ctr: number };
+
+const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0);
+
+/**
+ * The stats report: per page (views, unique visitors, % of all visitors,
+ * devices, clicks by kind), clicks per button / link, and views per day in the
+ * org time zone. Older events without a page are filed by their day id.
+ */
+export function funnelReport(input: { events: readonly ReportEvent[]; pages: readonly ReportPage[]; timeZone: string }) {
+  const pageOf = (event: ReportEvent) => event.page ?? (event.dayId ? "day" : "waitlist");
+  const keyOf = (event: ReportEvent) => `${pageOf(event)}:${event.dayId ?? ""}`;
+  const everyone = new Set<string>();
+  const byKey = new Map<string, { views: number; uniques: Set<string>; devices: Map<string, Set<string>>; clicks: Map<string, number> }>();
+  const clickRows = new Map<string, { key: string; kind: string; target: string; clicks: number; uniques: Set<string> }>();
+  const devices = new Map<string, Set<string>>();
+  const daily = new Map<string, { views: number; uniques: Set<string> }>();
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: input.timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+  for (const event of input.events) {
+    everyone.add(event.visitorId);
+    const key = keyOf(event);
+    const slot = byKey.get(key) ?? { views: 0, uniques: new Set(), devices: new Map(), clicks: new Map() };
+    byKey.set(key, slot);
+    const device = event.device ?? "unknown";
+    if (!devices.has(device)) devices.set(device, new Set());
+    devices.get(device)!.add(event.visitorId);
+    if (event.kind === "view") {
+      slot.views += 1;
+      slot.uniques.add(event.visitorId);
+      if (!slot.devices.has(device)) slot.devices.set(device, new Set());
+      slot.devices.get(device)!.add(event.visitorId);
+      const date = day.format(event.createdAt);
+      const bucket = daily.get(date) ?? { views: 0, uniques: new Set() };
+      bucket.views += 1;
+      bucket.uniques.add(event.visitorId);
+      daily.set(date, bucket);
+    } else if (event.kind !== "watch") {
+      slot.clicks.set(event.kind, (slot.clicks.get(event.kind) ?? 0) + 1);
+      const target = (event.target ?? "").slice(0, 600);
+      const rowKey = `${key}|${event.kind}|${target}`;
+      const row = clickRows.get(rowKey) ?? { key, kind: event.kind, target, clicks: 0, uniques: new Set() };
+      row.clicks += 1;
+      row.uniques.add(event.visitorId);
+      clickRows.set(rowKey, row);
+    }
+  }
+  const visitors = everyone.size;
+  const labels = new Map(input.pages.map((page) => [page.key, page.label]));
+  const pages: PageRow[] = input.pages.map((page) => {
+    const slot = byKey.get(page.key);
+    const uniques = slot?.uniques.size ?? 0;
+    return {
+      ...page,
+      views: slot?.views ?? 0,
+      uniques,
+      pctOfUsers: pct(uniques, visitors),
+      devices: Object.fromEntries([...(slot?.devices ?? new Map<string, Set<string>>())].map(([name, set]) => [name, set.size])),
+      clicks: Object.fromEntries(slot?.clicks ?? []),
+    };
+  });
+  const clicks: ClickRow[] = [...clickRows.values()]
+    .map((row) => {
+      const viewers = byKey.get(row.key)?.uniques.size ?? 0;
+      // Resource targets are "<index>|<label>|<url>": show the label and address.
+      const target = row.kind === "resource" ? row.target.split("|").slice(1).join(" · ") : row.kind === "calendar" ? row.target.split("|").slice(1).join("|") || row.target : row.target;
+      return { pageLabel: labels.get(row.key) ?? "Removed page", kind: row.kind, target, clicks: row.clicks, uniques: row.uniques.size, ctr: pct(row.uniques.size, viewers) };
+    })
+    .sort((a, b) => b.clicks - a.clicks);
+  return {
+    visitors,
+    views: pages.reduce((sum, page) => sum + page.views, 0),
+    pages,
+    clicks,
+    devices: Object.fromEntries([...devices].map(([name, set]) => [name, set.size])),
+    daily: [...daily].sort(([a], [b]) => a.localeCompare(b)).map(([date, bucket]) => ({ date, views: bucket.views, uniques: bucket.uniques.size })),
+  };
 }

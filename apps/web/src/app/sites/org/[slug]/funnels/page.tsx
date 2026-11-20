@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { TableScroll } from "@/components/table-scroll";
-import { createFunnel } from "@/features/funnels/actions";
+import { createFunnel, duplicateFunnel } from "@/features/funnels/actions";
+import { PROGRESSIONS, PROGRESSION_LABELS, type Progression } from "../../../../../../../../modules/funnels/state";
 import { listFunnels, orgTimezone, statusBadge } from "@/features/funnels/data";
 import { delegatedFunnelIds, funnelsAccess } from "@/features/funnels/guard";
 import { visibleFunnelIds } from "../../../../../../../../modules/funnels/delegates";
@@ -20,6 +21,7 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
   // A delegate without funnels.read sees only the funnels they were given.
   const visible = new Set(visibleFunnelIds({ read: !delegateOnly, write: canWrite, publish: false }, all.map((funnel) => funnel.id), delegated));
   const funnels = all.filter((funnel) => visible.has(funnel.id));
+  const small = "inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-line bg-white px-2.5 text-xs font-semibold hover:bg-canvas";
 
   return (
     <div>
@@ -37,7 +39,7 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
               <div>
                 <Label htmlFor="funnel-type">Type</Label>
                 <select id="funnel-type" name="siteType" className="pc-control w-full text-sm" defaultValue="launch">
-                  <option value="launch">Launch funnel (waitlist)</option>
+                  <option value="launch">Launch funnel</option>
                   <option value="microsite">Microsite (home page)</option>
                 </select>
               </div>
@@ -49,8 +51,8 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
                 </select>
               </div>
               <div>
-                <Label htmlFor="funnel-days">Days</Label>
-                <Input id="funnel-days" name="days" type="number" min={0} max={10} defaultValue={3} />
+                <Label htmlFor="funnel-days">Days / videos</Label>
+                <Input id="funnel-days" name="days" type="number" min={0} max={30} defaultValue={4} />
               </div>
               <div className="sm:col-span-2 lg:col-span-4">
                 <Button type="submit" className="w-full sm:w-auto">
@@ -63,14 +65,17 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
 
         <div className="rounded-xl border border-line bg-white">
           <TableScroll>
-            <table className="w-full min-w-[620px] text-sm">
+            <table className="w-full min-w-[860px] text-sm">
               <thead className="border-b border-line text-left text-xs uppercase tracking-wider text-muted">
                 <tr>
                   <th className="px-4 py-2.5">Funnel</th>
                   <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5">Starts</th>
+                  <th className="px-4 py-2.5">Mode</th>
                   <th className="px-4 py-2.5 text-right">Days</th>
+                  <th className="px-4 py-2.5">Starts</th>
+                  <th className="px-4 py-2.5">Ends</th>
                   <th className="px-4 py-2.5 text-right">Opt-ins</th>
+                  <th className="px-4 py-2.5" />
                 </tr>
               </thead>
               <tbody>
@@ -81,20 +86,46 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
                         {funnel.name}
                       </Link>
                       <span className="block truncate text-xs text-muted">
-                        /l/{funnel.slug} · {funnel.siteType === "microsite" ? "Microsite" : "Launch"} · {funnel.mode === "live" ? "Live" : "Evergreen"}
+                        /l/{funnel.slug} · {funnel.siteType === "microsite" ? "Microsite" : "Launch funnel"} · {PROGRESSION_LABELS[(PROGRESSIONS as readonly string[]).includes(funnel.progression) ? (funnel.progression as Progression) : "all_open"]}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <Badge tone={statusBadge(funnel.status).tone}>{statusBadge(funnel.status).label}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-muted">{funnel.timing === "per_viewer" && funnel.mode !== "live" ? "On first visit" : funnel.startAt ? formatZoned(funnel.startAt, timeZone, { weekday: false }) : "Not set"}</td>
+                    <td className="px-4 py-3">
+                      {funnel.mode === "live" ? "Live" : "Evergreen"}
+                      {funnel.timing === "per_viewer" && funnel.mode !== "live" ? <span className="block text-xs text-muted">per viewer</span> : null}
+                    </td>
                     <td className="px-4 py-3 text-right tabular-nums">{funnel.dayCount}</td>
+                    <td className="px-4 py-3 text-muted">{funnel.timing === "per_viewer" && funnel.mode !== "live" ? "First visit" : funnel.startAt ? formatZoned(funnel.startAt, timeZone, { weekday: false }) : "Not set"}</td>
+                    <td className="px-4 py-3 text-muted">{funnel.timing === "per_viewer" && funnel.mode !== "live" ? "—" : funnel.endAt ? formatZoned(funnel.endAt, timeZone, { weekday: false }) : "—"}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{funnel.optinCount}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <a href={`/l/${funnel.slug}?preview=1`} target="_blank" rel="noopener" className={small}>
+                          Preview
+                        </a>
+                        <Link href={`/funnels/${funnel.id}/stats`} className={small}>
+                          Stats
+                        </Link>
+                        {canWrite ? (
+                          <form action={duplicateFunnel}>
+                            <input type="hidden" name="funnelId" value={funnel.id} />
+                            <button type="submit" className={small}>
+                              Duplicate
+                            </button>
+                          </form>
+                        ) : null}
+                        <Link href={`/funnels/${funnel.id}`} className={`${small} border-accent bg-accent text-white hover:bg-accent`}>
+                          Edit
+                        </Link>
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {funnels.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted">
+                    <td colSpan={8} className="px-4 py-8 text-center text-muted">
                       No launch funnels yet.
                     </td>
                   </tr>

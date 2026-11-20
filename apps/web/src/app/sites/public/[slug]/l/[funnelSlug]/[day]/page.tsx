@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { dayLabel, funnelRules } from "@/features/funnels/data";
+import { dayLabel } from "@/features/funnels/data";
 import { loadPublicFunnel, publicSiteMatches, type PreviewOptions } from "@/features/funnels/public";
 import { pageContext } from "@/features/funnels/public-context";
-import { AddToCalendar, FunnelShell, NavStrip, funnelIcons } from "@/features/funnels/public-shell";
+import { FunnelShell, NavStrip, funnelIcons } from "@/features/funnels/public-shell";
 import { SmsSlot, smsFormFor, type SmsQuery } from "@/features/funnels/sms-slot";
-import { ClosedView, DayView, PreviewBar } from "@/features/funnels/public-view";
-import { liveSessionEvent } from "../../../../../../../../../../modules/funnels/calendar";
+import { ClosedPage, DayView, PreviewBar, previewLabel } from "@/features/funnels/public-view";
 
 type Params = Promise<{ slug: string; funnelSlug: string; day: string }>;
 type Search = Promise<PreviewOptions & SmsQuery & { k?: string }>;
@@ -38,39 +37,17 @@ export default async function FunnelDayPage({ params, searchParams }: { params: 
   const ctx = await pageContext(loaded, { fresh: query.fresh, presentedKeys: presentedKey ? { [day.id]: presentedKey } : {} });
   const { base, viewer, states, safeDays, theme } = ctx;
   const closed = states[0]?.kind === "closed";
-  if (closed && funnel.closeMode === "redirect" && funnel.closeRedirectUrl && !preview) redirect(funnel.closeRedirectUrl);
-  const previewBar = preview ? <PreviewBar asOf={now} label={[funnel.status === "published" ? "" : "draft", loaded.draftShown ? "unsaved changes" : ""].filter(Boolean).join(", ")} timeZone={timeZone} /> : null;
-  const index = loaded.days.findIndex((item) => item.id === day.id);
-  const state = states[index];
-  const rules = funnelRules(funnel);
-  // Add to calendar on a live session that has not started yet.
-  const upcomingLive = state?.kind === "locked" && rules.mode === "live" && day.isLive && day.liveStartAt && day.liveStartAt > now;
-  const event = upcomingLive
-    ? liveSessionEvent({ funnelId: funnel.id, funnelName: funnel.name, day: { ...day, label: dayLabel(day) }, roomUrl: rules.livestreamUrl, pageUrl: `${ctx.origin}/l/${funnel.slug}/day-${day.position}`, timeZone })
-    : null;
+  // Previews follow the close redirect too, so "preview as of" after the end shows the real behaviour.
+  if (closed && funnel.closeMode === "redirect" && funnel.closeRedirectUrl) redirect(funnel.closeRedirectUrl);
+  const previewBar = preview ? <PreviewBar asOf={now} label={previewLabel(loaded, query.fresh)} timeZone={timeZone} /> : null;
   const nav = <NavStrip funnel={funnel} days={safeDays} states={states} navItems={loaded.navItems} base={base} carry={carry} currentDayId={day.id} />;
+  const sms = smsFormFor(loaded, day.smsFormId);
   return (
-    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={!closed} page={closed ? "close" : "day"} base={base}>
+    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={!closed} page={closed ? "close" : "day"} base={base} nav={closed ? null : nav}>
       {closed ? (
-        <ClosedView funnel={funnel} branding={theme.branding} />
+        <ClosedPage loaded={loaded} ctx={ctx} />
       ) : (
-        <DayView
-          funnel={funnel}
-          days={safeDays}
-          states={states}
-          day={safeDays.find((item) => item.id === day.id)!}
-          branding={theme.branding}
-          timeZone={timeZone}
-          base={base}
-          carry={carry}
-          syncUrl={preview ? null : `${base}/sync`}
-          presentedKey={presentedKey}
-          now={now}
-          preview={preview}
-          nav={nav}
-          sms={smsFormFor(loaded, day.smsFormId) ? <SmsSlot loaded={loaded} form={smsFormFor(loaded, day.smsFormId)!} base={base} back={`${base}/day-${day.position}`} query={query} /> : null}
-          calendar={event ? <AddToCalendar event={event} icsHref={`${base || `/l/${funnel.slug}`}/ics?day=${day.id}`} timeZone={timeZone} tone="dark" /> : null}
-        />
+        <DayView loaded={loaded} ctx={ctx} day={safeDays.find((item) => item.id === day.id)!} presentedKey={presentedKey} nav={null} sms={sms ? <SmsSlot loaded={loaded} form={sms} base={base} back={`${base}/day-${day.position}`} query={query} /> : null} />
       )}
     </FunnelShell>
   );

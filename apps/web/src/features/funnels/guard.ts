@@ -112,3 +112,24 @@ export function withMessage(path: string, kind: "error" | "notice", message: str
 export function orgPublicUrl(requestHost: string, orgSlug: string, pathname: string): string {
   return buildSiteUrl({ rootDomain: rootDomain(), requestHost, site: { kind: "org", slug: orgSlug }, pathname });
 }
+
+/** A link under a funnel's public address, keeping any query the address already has (local dev adds ?org=). */
+export function publicLink(publicUrl: string, path = "", params: Record<string, string> = {}): string {
+  try {
+    const url = new URL(publicUrl);
+    url.pathname = `${url.pathname.replace(/\/$/, "")}${path}`;
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+    return url.toString();
+  } catch {
+    return `${publicUrl}${path}`;
+  }
+}
+
+/** Hidden inputs for the query an address already carries (a GET form drops its action's query). */
+export function actionQuery(publicUrl: string): [string, string][] {
+  try {
+    return [...new URL(publicUrl).searchParams.entries()];
+  } catch {
+    return [];
+  }
+}

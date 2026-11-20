@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { orgPublicUrl } from "@/features/funnels/guard";
 import { isClosed } from "../../../../../../../../../../../modules/funnels/state";
 import { funnelRules } from "@/features/funnels/data";
 import { loadPublicFunnel, publicSiteMatches, viewerFacts, type PreviewOptions } from "@/features/funnels/public";
 import { pageContext } from "@/features/funnels/public-context";
-import { FunnelShell, NavStrip, funnelIcons } from "@/features/funnels/public-shell";
-import { SmsSlot, smsFormFor, type SmsQuery } from "@/features/funnels/sms-slot";
-import { ClosedView, EmailOptin, FormOptin, PreviewBar, Rich } from "@/features/funnels/public-view";
-import { HtmlFrame } from "@/features/funnels/site-client";
-import { pageHref } from "@/features/funnels/site-data";
+import { FunnelShell, funnelIcons } from "@/features/funnels/public-shell";
+import type { SmsQuery } from "@/features/funnels/sms-slot";
+import { ClosedPage, PreviewBar, previewLabel } from "@/features/funnels/public-view";
+import { CustomPageView, customPageNav } from "@/features/funnels/custom-page-view";
 
 type Params = Promise<{ slug: string; funnelSlug: string; pageSlug: string }>;
 type Search = Promise<PreviewOptions & SmsQuery & { joined?: string; error?: string }>;
@@ -35,49 +33,22 @@ export default async function FunnelCustomPage({ params, searchParams }: { param
   const found = await load(slug, funnelSlug, pageSlug, query);
   if (!found) notFound();
   const { loaded, item } = found;
-  const { funnel, timeZone, preview, now, carry } = loaded;
+  const { funnel, timeZone, preview, now } = loaded;
   const ctx = await pageContext(loaded, { fresh: query.fresh });
   const { base, viewer, theme } = ctx;
   const closed = isClosed(funnelRules(funnel), viewerFacts(viewer), now);
-  if (closed && funnel.closeMode === "redirect" && funnel.closeRedirectUrl && !preview) redirect(funnel.closeRedirectUrl);
-  const previewBar = preview ? <PreviewBar asOf={now} label={[funnel.status === "published" ? "" : "draft", loaded.draftShown ? "unsaved changes" : ""].filter(Boolean).join(", ")} timeZone={timeZone} /> : null;
+  if (closed && funnel.closeMode === "redirect" && funnel.closeRedirectUrl) redirect(funnel.closeRedirectUrl);
+  const previewBar = preview ? <PreviewBar asOf={now} label={previewLabel(loaded, query.fresh)} timeZone={timeZone} /> : null;
   if (closed) {
     return (
       <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={false} page="close" base={base}>
-        <ClosedView funnel={funnel} branding={theme.branding} />
+        <ClosedPage loaded={loaded} ctx={ctx} />
       </FunnelShell>
     );
   }
-  const title = item.title.trim() || item.label.trim();
-  const heading = title ? <h1 className="text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">{title}</h1> : null;
-  const back = pageHref(funnel, base, item.slug);
-  const nav = <NavStrip funnel={funnel} days={ctx.safeDays} states={ctx.states} navItems={loaded.navItems} base={base} carry={carry} currentPageSlug={item.slug} />;
   return (
-    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} nav={nav} page="custom" base={base}>
-      <main className="mx-auto max-w-4xl px-4 py-8">
-        {item.titlePlacement === "outside" && heading ? <div className="mb-4">{heading}</div> : null}
-        <article className="pcf-content">
-          {item.titlePlacement === "inside" && heading ? <div className="mb-4">{heading}</div> : null}
-          {item.contentMode === "html" ? (
-            <HtmlFrame html={item.html} title={title || "Page"} textColor={theme.design.content.text ?? theme.design.page.text} linkColor={theme.design.content.link ?? theme.design.page.accent} />
-          ) : (
-            <Rich html={item.bodyHtml} className="text-base" />
-          )}
-        </article>
-        {item.optinMode === "email" ? (
-          <div className="pcf-content mt-6">
-            <EmailOptin funnel={funnel} branding={theme.branding} action={`${base || `/l/${funnel.slug}`}/optin`} back={back} joined={query.joined === "1"} error={query.error} />
-          </div>
-        ) : item.optinMode === "sms" && smsFormFor(loaded, item.smsFormId) ? (
-          <div className="mt-6">
-            <SmsSlot loaded={loaded} form={smsFormFor(loaded, item.smsFormId)!} base={base} back={back} query={query} />
-          </div>
-        ) : item.optinMode === "form" && item.optinFormSlug ? (
-          <div className="mt-6">
-            <FormOptin src={orgPublicUrl(ctx.host, slug, `/embed/${item.optinFormSlug}`)} headline="" />
-          </div>
-        ) : null}
-      </main>
+    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} nav={customPageNav(loaded, ctx, item)} page="custom" base={base}>
+      <CustomPageView loaded={loaded} ctx={ctx} item={item} query={query} orgSlug={slug} />
     </FunnelShell>
   );
 }
