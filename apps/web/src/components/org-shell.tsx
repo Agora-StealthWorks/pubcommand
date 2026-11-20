@@ -63,14 +63,40 @@ export function OrgShell({
         {groups.map((group) => (
           <div key={group.category} className="mt-4">
             <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{group.category}</p>
-            {group.apps.map((app) => (
-              <Link key={app.moduleId} className={navClass(current?.moduleId === app.moduleId)} href={app.href}>
-                <span aria-hidden className="w-5 text-center">
-                  {app.icon}
-                </span>
-                {app.name}
-              </Link>
-            ))}
+            {group.apps.map((app) => {
+              const open = current?.moduleId === app.moduleId;
+              const activeSub = open ? activeSubHref(app.subnav, pathname) : null;
+              return (
+                <div key={app.moduleId}>
+                  <Link className={navClass(open)} href={app.href} aria-expanded={app.subnav.length ? open : undefined}>
+                    <span aria-hidden className="w-5 text-center">
+                      {app.icon}
+                    </span>
+                    {app.name}
+                    {app.subnav.length ? (
+                      <span aria-hidden className="ml-auto text-[10px]">
+                        {open ? "▾" : "▸"}
+                      </span>
+                    ) : null}
+                  </Link>
+                  {open && app.subnav.length ? (
+                    <div className="mb-1 ml-5 mt-1 border-l-2 border-[#e0e7ff] pl-2" aria-label={`${app.name} pages`}>
+                      {app.subnav.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`flex min-h-9 items-center rounded-md px-2.5 text-[13px] ${
+                            activeSub === item.href ? "bg-[#f1f4fb] font-semibold text-[#1e3a8a]" : "text-muted hover:bg-canvas hover:text-ink"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         ))}
       </nav>
@@ -127,6 +153,15 @@ export function OrgShell({
       />
     </div>
   );
+}
+
+/** The sub-menu item for this path: the longest href that matches (so /websites/posts/new beats /websites/posts). */
+function activeSubHref(items: { href: string }[], pathname: string): string | null {
+  let best: string | null = null;
+  for (const item of items) {
+    if ((pathname === item.href || pathname.startsWith(`${item.href}/`)) && (!best || item.href.length > best.length)) best = item.href;
+  }
+  return best;
 }
 
 function navClass(active: boolean) {

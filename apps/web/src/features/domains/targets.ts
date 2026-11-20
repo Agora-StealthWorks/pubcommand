@@ -8,6 +8,7 @@
  *   forms     /f/<slug>      published (OPEN) forms — implemented
  *   funnels   /l/<slug>      published launch funnels
  *   miniblogs /b/<slug>      live Mini-Blogs (old /t/<slug> paths still work)
+ *   websites  /w/<slug>      live Websites (public site; /my is its members area)
  *
  * To add a provider: implement `TargetProvider.list` with `tenantDb(orgId)`
  * (only published/public rows, not soft-deleted), give each target the exact
@@ -74,7 +75,25 @@ export const miniBlogTargets: TargetProvider = {
   },
 };
 
-export const TARGET_PROVIDERS: TargetProvider[] = [formsTargets, funnelTargets, miniBlogTargets];
+export const websiteTargets: TargetProvider = {
+  id: "websites",
+  label: "Websites",
+  prefix: "/w/",
+  async list(organizationId) {
+    const rows = await tenantDb(organizationId).webSite.findMany({
+      where: { status: "live", deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, slug: true },
+      take: 200,
+    });
+    return rows.flatMap((row) => [
+      { id: `website:${row.id}`, label: row.name, path: `/w/${row.slug}`, detail: `/w/${row.slug}` },
+      { id: `website-members:${row.id}`, label: `${row.name} (members area)`, path: `/w/${row.slug}/my`, detail: `/w/${row.slug}/my` },
+    ]);
+  },
+};
+
+export const TARGET_PROVIDERS: TargetProvider[] = [websiteTargets, formsTargets, funnelTargets, miniBlogTargets];
 
 export type TargetGroup = { id: string; label: string; targets: DomainTarget[]; error?: string };
 

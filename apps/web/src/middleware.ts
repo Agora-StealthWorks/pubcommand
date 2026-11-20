@@ -80,8 +80,9 @@ export async function middleware(request: NextRequest) {
   else if (pathname === "/p" || pathname.startsWith("/p/")) url.pathname = `/sites/public/${site.slug}${pathname.slice(2)}`;
   // /f/<form> and /embed/<form> are public form links.
   else if (/^\/(f|embed)\/[a-z0-9-]/.test(pathname)) url.pathname = `/sites/public/${site.slug}${pathname}`;
-  // /l/<funnel> are public launch funnels; /b/<site> are public Mini-Blogs (/t/<site> is their old path).
-  else if (/^\/(l|b|t)\/[a-z0-9-]/.test(pathname)) url.pathname = `/sites/public/${site.slug}${pathname}`;
+  // /l/<funnel> are public launch funnels; /b/<site> are public Mini-Blogs (/t/<site> is their old path);
+  // /w/<site> are public websites (Websites app).
+  else if (/^\/(l|b|t|w)\/[a-z0-9-]/.test(pathname)) url.pathname = `/sites/public/${site.slug}${pathname}`;
   else url.pathname = `/sites/org/${site.slug}${suffix}`;
 
   return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
