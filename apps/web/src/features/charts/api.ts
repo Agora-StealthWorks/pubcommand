@@ -1,4 +1,4 @@
-import { resolveOrgBySlug, tenantDb, type Prisma } from "@pubcommand/db";
+import { organizationHasModule, resolveOrgBySlug, tenantDb, type Prisma } from "@pubcommand/db";
 import { currentRequest } from "@/lib/request";
 import { RATE_WINDOW_MS, bearerKey, hasScope, hashApiKey, rateDecision, type ApiScope } from "../../../../../modules/charts/api-keys";
 import { listTemplates, type Scope, type TemplateRow } from "./server";
@@ -37,14 +37,7 @@ export async function apiOrganization(): Promise<{ id: string; origin: string } 
   if (request.site.kind !== "org") return null;
   const resolved = await resolveOrgBySlug(request.site.slug);
   if (!resolved || resolved.suspendedAt) return null;
-  const org = await tenantDb(resolved.id).organization.findUnique({
-    where: { id: resolved.id },
-    include: { plan: { include: { modules: true } }, modules: true },
-  });
-  if (!org) return null;
-  const inPlan = org.plan.modules.some((row) => row.moduleId === "charts");
-  const toggle = org.modules.find((row) => row.moduleId === "charts");
-  if (!inPlan || (toggle && !toggle.enabled)) return null;
+  if (!(await organizationHasModule(resolved.id, "charts"))) return null;
   return { id: resolved.id, origin: request.origin };
 }
 

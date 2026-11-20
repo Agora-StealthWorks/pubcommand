@@ -258,7 +258,7 @@ export async function recheckDue(providers: Providers, organizationId: string, n
 export async function organizationsWithDomains(): Promise<string[]> {
   const rows = await rawPrisma().$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`;
-    return tx.$queryRaw<{ organization_id: string }[]>`SELECT DISTINCT organization_id FROM custom_domains`;
+    return tx.$queryRaw<{ organization_id: string }[]>`SELECT DISTINCT d.organization_id FROM custom_domains d JOIN organizations o ON o.id = d.organization_id WHERE o.deleted_at IS NULL`;
   });
   return rows.map((row) => row.organization_id);
 }

@@ -16,6 +16,7 @@ export type OrganizationListItem = {
   brands: number;
   workspaces: number;
   suspended: boolean;
+  deleted?: boolean;
 };
 
 const primaryLink =
@@ -84,7 +85,11 @@ export function OrganizationsList({
                       <Link href={detailHref(organization.id)} className="flex min-h-11 min-w-0 items-center break-words font-semibold text-ink">
                         {organization.name}
                       </Link>
-                      {organization.suspended ? <p className="text-xs font-semibold text-[#b42318]">Suspended</p> : null}
+                      {organization.deleted ? (
+                        <p className="text-xs font-semibold text-[#b42318]">Deleted</p>
+                      ) : organization.suspended ? (
+                        <p className="text-xs font-semibold text-[#b42318]">Suspended</p>
+                      ) : null}
                       <a href={publicUrl} className="pc-break block text-xs text-accent">
                         {publicUrl}
                       </a>
@@ -195,6 +200,7 @@ export function OrganizationDetail({
   canImpersonate,
   listHref = "/orgs",
   actions,
+  children,
 }: {
   organization: OrganizationListItem;
   plans: { id: string; name: string }[];
@@ -207,6 +213,7 @@ export function OrganizationDetail({
   canSuspend: boolean;
   canImpersonate: boolean;
   listHref?: string;
+  children?: React.ReactNode;
   actions?: {
     addMember?: FormAction;
     removeMember?: FormAction;
@@ -227,7 +234,7 @@ export function OrganizationDetail({
       <header>
         <h1 className="break-words text-2xl font-semibold tracking-tight text-ink">{organization.name}</h1>
         <p className="mt-1 text-sm text-muted">
-          {organization.suspended ? "Suspended. " : ""}
+          {organization.deleted ? "Deleted. " : organization.suspended ? "Suspended. " : ""}
           {organization.seatsUsed}/{organization.seatLimit} seats · {organization.brands} brands · {organization.workspaces} workspaces
         </p>
       </header>
@@ -326,7 +333,7 @@ export function OrganizationDetail({
           </div>
         ) : null}
       </section>
-      {canSuspend ? (
+      {canSuspend && !organization.deleted ? (
         <section className="rounded-lg border border-line bg-white p-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Access</h2>
           <p className="mt-2 text-sm text-muted">
@@ -342,7 +349,8 @@ export function OrganizationDetail({
           </form>
         </section>
       ) : null}
-      {canImpersonate ? (
+      {children}
+      {canImpersonate && !organization.deleted ? (
         <section className="rounded-lg border border-line bg-white p-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Impersonate</h2>
           <form action={actions?.impersonate} className="pc-form-row mt-3">

@@ -22,6 +22,7 @@ import { performanceImportSync } from "./performance-import-sync";
 import { performancePriceRefresh } from "./performance-price-refresh";
 import { performanceWeeklyReport } from "./performance-weekly-report";
 import { performanceWeeklySummary } from "./performance-weekly-summary";
+import { platformOrgPurge } from "./platform-org-purge";
 import { promoBulkReanalyze } from "./promo-bulk-reanalyze";
 import { promoSheetsSync } from "./promo-sheets-sync";
 import { supportPlatformSync } from "./support-platform-sync";
@@ -56,6 +57,7 @@ export const JOBS: JobDefinition[] = [
   performancePriceRefresh,
   performanceWeeklyReport,
   performanceWeeklySummary,
+  platformOrgPurge,
   promoBulkReanalyze,
   promoSheetsSync,
   supportPlatformSync,

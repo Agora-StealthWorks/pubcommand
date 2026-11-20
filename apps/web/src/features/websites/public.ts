@@ -1,5 +1,5 @@
 import { can } from "@pubcommand/core";
-import { resolveOrgBySlug, tenantDb, type Prisma } from "@pubcommand/db";
+import { organizationHasModule, resolveOrgBySlug, tenantDb, type Prisma } from "@pubcommand/db";
 import { cache } from "react";
 import { createHash } from "node:crypto";
 import { getOrgContext } from "@/lib/org";
@@ -17,14 +17,8 @@ export async function publicSiteMatches(orgSlug: string): Promise<boolean> {
 }
 
 async function moduleEnabled(organizationId: string): Promise<boolean> {
-  const organization = await tenantDb(organizationId).organization.findUnique({
-    where: { id: organizationId },
-    include: { plan: { include: { modules: true } }, modules: true },
-  });
-  if (!organization || organization.suspendedAt) return false;
-  const inPlan = organization.plan.modules.some((row) => row.moduleId === "websites");
-  const toggle = organization.modules.find((row) => row.moduleId === "websites");
-  return inPlan && (!toggle || toggle.enabled);
+  // Plan, staff override, org switch, suspended/deleted: decided in one place.
+  return organizationHasModule(organizationId, "websites");
 }
 
 /** Signed-in PubCommand staff with websites.read may preview drafts and unpublished sites. */

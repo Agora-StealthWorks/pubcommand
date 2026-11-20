@@ -5,7 +5,7 @@ import { buildDigest, decryptToken, isSlackWebhookUrl, isoDay, weekEndOf, weekSt
 import { rootDomain } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import type { IntelBrand } from "./context";
-import { allGmailAccounts, authSecret, brandsWithEmailSince, gmailEnv, loadBrand, syncGmailAccount, type SyncOutcome } from "./gmail";
+import { allGmailAccounts, authSecret, brandsWithEmailSince, gmailEnv, loadBrand, syncGmailAccount, withIntel, type SyncOutcome } from "./gmail";
 import { backfillLinks } from "./registry";
 import { buildRadarDigest, drainExtractions, runRadarNarrative } from "./server";
 import { readSettings, writeSettings } from "./settings";
@@ -179,5 +179,5 @@ export async function digestBrands(): Promise<Touched[]> {
   return rawPrisma().$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`;
     return tx.intelSettings.findMany({ where: { digestEnabled: true }, select: { organizationId: true, brandId: true } });
-  });
+  }).then(withIntel);
 }

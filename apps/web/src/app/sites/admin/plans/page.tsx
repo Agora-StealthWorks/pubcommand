@@ -15,7 +15,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
       include: { modules: true, _count: { select: { organizations: true } } },
       orderBy: [{ archivedAt: "asc" }, { seatLimit: "asc" }],
     }),
-    rawPrisma().organization.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    rawPrisma().organization.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const canEdit = Boolean(staff && platformCan(staff.role, PLATFORM_PERMISSIONS.managePlans));
   const canModules = Boolean(staff && platformCan(staff.role, PLATFORM_PERMISSIONS.manageModules));

@@ -8,7 +8,7 @@ export const manifest = defineModule({
   nav: [{ label: "ChartBuilder", href: "/charts", permission: "charts.read" }],
   routes: [{ path: "/charts", title: "ChartBuilder" }],
   permissions: [
-    { key: "charts.read", description: "Make, save and export charts" },
+    { key: "charts.read", description: "Make, save and export charts", access: "write" },
     { key: "charts.write", description: "Manage chart templates and delete any project" },
   ],
   events: [{ name: "charts.chart.saved", description: "A chart was saved" }],

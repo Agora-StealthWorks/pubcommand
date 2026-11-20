@@ -1,5 +1,5 @@
 import { can } from "@pubcommand/core";
-import { resolveOrgBySlug, tenantDb } from "@pubcommand/db";
+import { organizationHasModule, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { getOrgContext } from "@/lib/org";
@@ -29,14 +29,8 @@ export async function publicBase(prefix: "l" | "t", slug: string): Promise<strin
 }
 
 async function moduleEnabled(organizationId: string): Promise<boolean> {
-  const organization = await tenantDb(organizationId).organization.findUnique({
-    where: { id: organizationId },
-    include: { plan: { include: { modules: true } }, modules: true },
-  });
-  if (!organization || organization.suspendedAt) return false;
-  const inPlan = organization.plan.modules.some((row) => row.moduleId === "funnels");
-  const toggle = organization.modules.find((row) => row.moduleId === "funnels");
-  return inPlan && (!toggle || toggle.enabled);
+  // Plan, staff override, org switch, suspended/deleted: decided in one place.
+  return organizationHasModule(organizationId, "funnels");
 }
 
 /** A signed-in member who may see drafts and time-travel (funnels.read, or a delegate of this funnel). */

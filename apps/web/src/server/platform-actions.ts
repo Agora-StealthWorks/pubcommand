@@ -7,11 +7,20 @@ import {
   platformCan,
   validatePlanDraft,
   canManagePlatformStaff,
+  hostnameConfirmationMatches,
+  parseAppAccessChoice,
 } from "@pubcommand/core";
 import {
   addOrganizationMember as addOrganizationMemberRecord,
   addStaffAsOrganizationAdmin,
+  appendOrgAudit,
   appendPlatformAudit,
+  deleteUserAccount,
+  platformTx,
+  purgeOrganization,
+  restoreOrganization,
+  setOrganizationAppAccess,
+  softDeleteOrganization,
   assignOrganizationPlan,
   changeOrganizationMemberRole as changeOrganizationMemberRoleRecord,
   changeOrganizationSlug,
@@ -33,6 +42,8 @@ import { IMPERSONATION_COOKIE, authCookieBase, hashPassword, normalizeEmail, sea
 import { moduleRegistry } from "@pubcommand/modules";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { clearCustomHostCache } from "@/features/domains/resolve";
+import { detachDomainsFromRailway } from "@/features/platform-admin/domains";
 import { createLoginLink, readSession, readStaff, rootDomain, secret, staffReady } from "@/lib/auth";
 import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
 import { currentRequest, siteUrl } from "@/lib/request";
@@ -579,4 +590,112 @@ export async function runJob(formData: FormData) {
   const result = await runJobNow(name, auth.user.id);
   await appendPlatformAudit({ actorId: auth.user.id, action: "job.run", targetType: "job", targetId: name });
   redirect(result.ok ? `/jobs?notice=${encodeURIComponent(`${name} started.`)}` : `/jobs?error=${encodeURIComponent(result.reason ?? "Could not start.")}`);
+}
+
+// ── Per-organization app access ─────────────────────────────────────────────
+
+export async function setOrgAppAccess(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageModules);
+  const organizationId = String(formData.get("organizationId") ?? "");
+  const moduleId = String(formData.get("moduleId") ?? "");
+  const choice = parseAppAccessChoice(String(formData.get("access") ?? ""));
+  if (!choice) redirect(`${organizationHref(organizationId)}?error=${encodeURIComponent("Choose an access level.")}`);
+  try {
+    await setOrganizationAppAccess({ organizationId, moduleId, choice, actorId: auth.user.id, knownModuleIds: catalogModuleIds() });
+  } catch (error) {
+    redirect(`${organizationHref(organizationId)}?error=${encodeURIComponent(failureMessage(error, "Could not change app access."))}`);
+  }
+  const name = moduleRegistry.getById(moduleId)?.name ?? moduleId;
+  const label = choice === "PLAN" ? "follows the plan" : choice === "ALLOWED" ? "allowed" : "blocked";
+  redirect(`${organizationHref(organizationId)}?notice=${encodeURIComponent(`${name} ${label}. Its data is kept either way.`)}#apps`);
+}
+
+// ── Deletes (super admin: platform.data.delete) ─────────────────────────────
+
+export async function deleteOrganization(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.deleteData);
+  const organizationId = String(formData.get("organizationId") ?? "");
+  const href = organizationHref(organizationId);
+  try {
+    await softDeleteOrganization({ organizationId, actorId: auth.user.id, confirm: String(formData.get("confirm") ?? "") });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not delete the organization."))}`);
+  }
+  clearCustomHostCache();
+  redirect(`${href}?notice=${encodeURIComponent("Organization deleted. Members lost access and its sites stopped serving. You can restore it for 30 days.")}`);
+}
+
+export async function restoreDeletedOrganization(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.deleteData);
+  const organizationId = String(formData.get("organizationId") ?? "");
+  const href = organizationHref(organizationId);
+  let stillSuspended = false;
+  try {
+    const restored = await restoreOrganization({ organizationId, actorId: auth.user.id });
+    const row = await rawPrisma().organization.findUnique({ where: { id: organizationId }, select: { suspendedAt: true } });
+    stillSuspended = Boolean(row?.suspendedAt) && Boolean(restored);
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not restore the organization."))}`);
+  }
+  clearCustomHostCache();
+  redirect(`${href}?notice=${encodeURIComponent(stillSuspended ? "Organization restored. It was suspended before it was deleted, so it is still suspended." : "Organization restored. Members, sites and domains work again.")}`);
+}
+
+export async function purgeOrganizationNow(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.deleteData);
+  const organizationId = String(formData.get("organizationId") ?? "");
+  const href = organizationHref(organizationId);
+  let notice = "";
+  try {
+    const result = await purgeOrganization({
+      organizationId,
+      actorId: auth.user.id,
+      confirm: String(formData.get("confirm") ?? ""),
+      detachDomains: (rows) => detachDomainsFromRailway(rows),
+    });
+    const failed = result.domains.filter((row) => !row.ok).map((row) => row.hostname);
+    notice = `${result.slug} was permanently deleted.`;
+    if (failed.length) notice += ` Remove ${failed.join(", ")} from the Railway service by hand.`;
+    if (result.purchasedDomains.length) notice += ` Registrations kept at the registrar: ${result.purchasedDomains.join(", ")}.`;
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not purge the organization."))}`);
+  }
+  redirect(`/orgs?show=deleted&notice=${encodeURIComponent(notice)}`);
+}
+
+export async function deleteUser(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.deleteData);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  let notice = "";
+  try {
+    const result = await deleteUserAccount({ actorId: auth.user.id, userId, confirm: String(formData.get("confirm") ?? "") });
+    notice = `${result.email} was deleted: signed out, removed from ${result.memberships} organization${result.memberships === 1 ? "" : "s"}, email and name scrubbed.`;
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not delete that account."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent(notice)}`);
+}
+
+export async function removeCustomDomain(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.deleteData);
+  const domainId = String(formData.get("domainId") ?? "");
+  const back = String(formData.get("next") ?? "") === "org" ? null : "/domains";
+  const row = ORGANIZATION_ID.test(domainId)
+    ? await platformTx((tx) => tx.customDomain.findUnique({ where: { id: domainId } }))
+    : null;
+  if (!row) redirect(`/domains?error=${encodeURIComponent("That domain is not connected.")}`);
+  const href = back ?? organizationHref(row.organizationId);
+  if (!hostnameConfirmationMatches(String(formData.get("confirm") ?? ""), row.hostname)) {
+    redirect(`${href}?error=${encodeURIComponent(`Type ${row.hostname} to confirm.`)}`);
+  }
+  const { removeDomain } = await import("@/features/domains/service");
+  const { providersFromEnv } = await import("@/features/domains/access");
+  const result = await removeDomain(providersFromEnv(), row.organizationId, row.id);
+  if (!result.ok) redirect(`${href}?error=${encodeURIComponent(result.error)}`);
+  const metadata = { hostnames: result.hostnames, provider: row.provider, organizationId: row.organizationId, registrationKept: row.provider === "CLOUDFLARE_PURCHASED" };
+  await appendPlatformAudit({ actorId: auth.user.id, action: "domain.removed", targetType: "domain", targetId: row.id, metadata });
+  await appendOrgAudit(row.organizationId, { actorId: auth.user.id, action: "domain.removed", targetType: "domain", targetId: row.id, metadata: { ...metadata, by: "PubCommand staff" } });
+  const kept = row.provider === "CLOUDFLARE_PURCHASED" ? " The registration itself was not cancelled." : "";
+  redirect(`${href}?notice=${encodeURIComponent(`${result.hostnames.join(", ")} removed and no longer served.${kept}`)}`);
 }

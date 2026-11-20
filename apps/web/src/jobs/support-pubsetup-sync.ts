@@ -1,4 +1,4 @@
-import { rawPrisma } from "@pubcommand/db";
+import { organizationsWithModule, rawPrisma } from "@pubcommand/db";
 import { syncFromPubsetup } from "@/features/support/pubsetup-sync";
 import { defineJob } from "@/lib/jobs/types";
 
@@ -27,10 +27,5 @@ export const supportPubsetupSync = defineJob({
 
 /** Organizations whose plan includes Support Knowledge and have not switched it off. */
 export async function entitledOrgs(ids: string[]): Promise<Set<string>> {
-  if (!ids.length) return new Set();
-  const orgs = await rawPrisma().organization.findMany({
-    where: { id: { in: [...new Set(ids)] }, suspendedAt: null },
-    select: { id: true, plan: { select: { modules: { select: { moduleId: true } } } }, modules: { select: { moduleId: true, enabled: true } } },
-  });
-  return new Set(orgs.filter((o) => o.plan.modules.some((m) => m.moduleId === "support") && !o.modules.some((m) => m.moduleId === "support" && !m.enabled)).map((o) => o.id));
+  return organizationsWithModule(ids, "support");
 }
