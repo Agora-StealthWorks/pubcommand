@@ -26,7 +26,7 @@ export default async function EventPage({
   const [loaded, channels] = await Promise.all([loadEvent(ctx.resolved.id, ctx.brand.id, eventId), listChannels(ctx.resolved.id, ctx.brand.id)]);
   if (!loaded) notFound();
   const { event: e, dates, series, followingCount } = loaded;
-  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, e.promoId);
+  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, e.calendarPromoId);
   const spans = stageSpans(dates);
   const channelColor = new Map(channels.map((c) => [c.name, c.color]));
   const metrics = [

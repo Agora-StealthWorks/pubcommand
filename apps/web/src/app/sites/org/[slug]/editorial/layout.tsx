@@ -5,19 +5,22 @@ import { Denied } from "@/components/ui";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { showsTickers } from "@/features/calendar/tickers";
+import { CUB_COLLECTOR_ENABLED, EDITORIAL_ANALYTICS_ENABLED, SEND_STATS_ENABLED, WHATS_WORKING_ENABLED } from "../../../../../../../../modules/editorial/features";
 
-const TABS = [
-  ["/editorial", "List"],
-  ["/editorial/calendar", "Calendar"],
-  ["/editorial/timeline", "Timeline"],
-  ["/editorial/analytics", "Analytics"],
-  ["/editorial/whats-working", "What's Working"],
-  ["/editorial/stats", "Send stats"],
-  ["/editorial/promos", "Promos"],
-  ["/editorial/cub", "CUB Collector"],
-  ["/editorial/tickers", "Tickers"],
-  ["/editorial/setup", "Setup"],
-] as const;
+const ALL_TABS: readonly (readonly [string, string, boolean])[] = [
+  ["/editorial", "List", true],
+  ["/editorial/calendar", "Calendar", true],
+  ["/editorial/timeline", "Timeline", true],
+  ["/editorial/analytics", "Analytics", EDITORIAL_ANALYTICS_ENABLED],
+  ["/editorial/whats-working", "What's Working", WHATS_WORKING_ENABLED],
+  ["/editorial/stats", "Send stats", SEND_STATS_ENABLED],
+  ["/editorial/promos", "Promos", true],
+  ["/editorial/cub", "CUB Collector", CUB_COLLECTOR_ENABLED],
+  ["/editorial/tickers", "Tickers", true],
+  ["/editorial/setup", "Setup", true],
+];
+// Features switched off in modules/editorial/features.ts drop out of the nav.
+const TABS = ALL_TABS.filter(([, , on]) => on).map(([href, label]) => [href, label] as const);
 
 function activeTab(pathname: string): string {
   if (pathname.startsWith("/editorial/events") || pathname.startsWith("/editorial/issues")) return "/editorial";
@@ -44,7 +47,7 @@ export default async function MarketingCalendarLayout({ children, params }: { ch
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
-          <p className="text-sm text-muted">Events, issues and send stats for {ctx.brand.name}.</p>
+          <p className="text-sm text-muted">Events, issues and promos for {ctx.brand.name}.</p>
         </div>
         {writable ? (
           <div className="flex gap-2">

@@ -8,6 +8,7 @@ import { calendarPage } from "@/features/calendar/context";
 import { listPublications, loadIssue } from "@/features/calendar/data";
 import { count, ExternalLink, LinkButton, money, pct, PromoLine, PubChip, Section, Stat } from "@/features/calendar/ui";
 import { findPromo } from "@/features/calendar/promos";
+import { SEND_STATS_ENABLED } from "../../../../../../../../../../modules/editorial/features";
 import { fmtDayFull, toDay } from "../../../../../../../../../../modules/editorial/dates";
 
 export default async function IssuePage({
@@ -24,7 +25,7 @@ export default async function IssuePage({
   const [loaded, publications] = await Promise.all([loadIssue(ctx.resolved.id, ctx.brand.id, issueId), listPublications(ctx.resolved.id, ctx.brand.id, true)]);
   if (!loaded) notFound();
   const { issue: i, mailDate } = loaded;
-  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, i.promoId);
+  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, i.calendarPromoId);
   const pub = publications.find((p) => p.code === i.publicationCode);
   const s = i.stat;
   const revPerThousand = s?.revenue != null && s.delivered ? (s.revenue / s.delivered) * 1000 : null;
@@ -51,6 +52,7 @@ export default async function IssuePage({
         ) : null}
       </header>
 
+      {SEND_STATS_ENABLED ? (
       <section className="rounded-xl border border-[#c7d7fe] bg-[#f5f8ff] p-4 sm:p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold text-[#1e3a8a]">Send stats</h2>
@@ -76,6 +78,7 @@ export default async function IssuePage({
           </p>
         )}
       </section>
+      ) : null}
 
       <Section title="Details">
         <dl className="grid gap-3 text-sm sm:grid-cols-2">

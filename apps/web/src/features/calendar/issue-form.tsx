@@ -58,7 +58,7 @@ export function IssueForm({
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <PromoSelect promos={extras.promos} value={i?.promoId} />
+          <PromoSelect promos={extras.promos} value={i?.calendarPromoId} />
           {extras.tickers ? (
             <Field label="Tickers mentioned" hint="Separate with commas, e.g. NVDA, AAPL. Prices come from market data.">
               <Input name="tickers" maxLength={400} defaultValue={i?.tickers.join(", ") ?? ""} />

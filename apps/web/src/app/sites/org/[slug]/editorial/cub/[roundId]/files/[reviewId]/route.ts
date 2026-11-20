@@ -1,8 +1,10 @@
 import { tenantDb } from "@pubcommand/db";
 import { calendarPage, UUID } from "@/features/calendar/context";
 import { fileResponse } from "@/features/calendar/cub";
+import { CUB_COLLECTOR_ENABLED } from "../../../../../../../../../../../../modules/editorial/features";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string; roundId: string; reviewId: string }> }) {
+  if (!CUB_COLLECTOR_ENABLED) return new Response("Not found", { status: 404 });
   const { slug, roundId, reviewId } = await params;
   const ctx = await calendarPage(slug);
   if (!ctx || !UUID.test(roundId) || !UUID.test(reviewId)) return new Response("Not found", { status: 404 });

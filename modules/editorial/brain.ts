@@ -94,3 +94,32 @@ export function cubBrainNote(round: {
   ].filter((l): l is string => l != null);
   return { title: `CUB round: ${round.promoName}`.slice(0, 180), body: lines.join("\n") };
 }
+
+/** A calendar promo: what it is, who writes it and when it launches. */
+export function promoBrainNote(promo: {
+  name: string;
+  stage: string;
+  promoType: string | null;
+  format: string | null;
+  product: string | null;
+  writers: string[];
+  gurus: string[];
+  launchDate: string | null;
+  launchEstimated: boolean;
+  targetedDate: string | null;
+  notes: string | null;
+}): { title: string; body: string } {
+  const lines = [
+    `Promo on the Calendar's promo pipeline.`,
+    "",
+    line("Stage", promo.stage),
+    line("Type", [promo.promoType, promo.format].filter(Boolean).join(" · ") || null),
+    line("Publication", promo.product),
+    line("Editors", promo.gurus.join(", ") || null),
+    line("Copywriters", promo.writers.join(", ") || null),
+    line("Launch", promo.launchDate ? `${fmtDayFull(promo.launchDate)}${promo.launchEstimated ? " (estimate)" : ""}` : null),
+    line("Targeted", promo.targetedDate ? fmtDayFull(promo.targetedDate) : null),
+    promo.notes ? `\n${promo.notes.trim().slice(0, 1200)}` : null,
+  ].filter((l): l is string => l != null);
+  return { title: `Promo: ${promo.name}`.slice(0, 180), body: lines.join("\n") };
+}

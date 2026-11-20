@@ -13,6 +13,7 @@ import { isStale } from "@/features/calendar/whats-working";
 import { formatStat } from "../../../../../../../../../modules/editorial/analytics";
 import { fmtDay, fmtDayFull, toDay } from "../../../../../../../../../modules/editorial/dates";
 import type { RankedIssue, WhatsWorkingAi, WorkingFacts } from "../../../../../../../../../modules/editorial/whats-working";
+import { WHATS_WORKING_ENABLED } from "../../../../../../../../../modules/editorial/features";
 
 const lift = (v: number | null) => (v == null ? "—" : `${v >= 1 ? "+" : "−"}${Math.abs(Math.round((v - 1) * 100))}%`);
 
@@ -58,6 +59,7 @@ function IssueTable({ rows, why, color }: { rows: RankedIssue[]; why?: Map<strin
 }
 
 export default async function WhatsWorkingPage({ params }: { params: Promise<{ slug: string }> }) {
+  if (!WHATS_WORKING_ENABLED) notFound();
   const { slug } = await params;
   const ctx = await calendarPage(slug);
   if (!ctx) notFound();

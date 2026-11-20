@@ -104,16 +104,14 @@ export function pct(ratio: number | null | undefined): string {
   return ratio == null ? "—" : `${(ratio * 100).toFixed(2)}%`;
 }
 
-export function PromoSelect({ promos, value, name = "promoId", label = "Promo (Promo Analyzer)", hint }: { promos: { id: string; title: string; promoStatus: string | null; stage: string | null }[]; value?: string | null; name?: string; label?: string; hint?: string }) {
+export function PromoSelect({ promos, value, name = "calendarPromoId", label = "Promo", hint }: { promos: { id: string; name: string; stage: string }[]; value?: string | null; name?: string; label?: string; hint?: string }) {
   return (
-    <Field label={label} hint={hint ?? (promos.length ? undefined : "No promos yet. Add them in Promo Analyzer.")}>
+    <Field label={label} hint={hint ?? (promos.length ? undefined : "No promos yet. Add them under Promos.")}>
       <select name={name} className="pc-control w-full" defaultValue={value ?? ""}>
         <option value="">No promo</option>
         {promos.map((p) => (
           <option key={p.id} value={p.id}>
-            {p.title}
-            {p.stage ? ` · ${p.stage}` : ""}
-            {p.promoStatus ? ` (${p.promoStatus})` : ""}
+            {p.name} · {p.stage}
           </option>
         ))}
       </select>
@@ -134,16 +132,15 @@ export function OptionSelect({ name, options, value, label }: { name: string; op
   );
 }
 
-/** A linked Promo Analyzer promo with its pipeline stage and Promo Analyzer status. */
-export function PromoLine({ promo }: { promo: { id: string; title: string; promoStatus: string | null; stage: string | null } | null }) {
+/** A linked calendar promo with its pipeline stage. */
+export function PromoLine({ promo, stage = true }: { promo: { id: string; name: string; stage: string } | null; stage?: boolean }) {
   if (!promo) return <span>—</span>;
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <Link href={`/promo-studio/${promo.id}`} className="break-words [overflow-wrap:anywhere] font-medium text-accent hover:underline">
-        {promo.title}
+      <Link href={`/editorial/promos/${promo.id}`} className="break-words [overflow-wrap:anywhere] font-medium text-accent hover:underline">
+        {promo.name}
       </Link>
-      {promo.stage ? <span className="rounded-full bg-[#fde8f2] px-2 py-0.5 text-xs font-semibold text-[#8a1155]">{promo.stage}</span> : null}
-      {promo.promoStatus ? <span className="rounded-full bg-canvas px-2 py-0.5 text-xs text-muted">{promo.promoStatus}</span> : null}
+      {stage ? <span className="rounded-full bg-[#fde8f2] px-2 py-0.5 text-xs font-semibold text-[#8a1155]">{promo.stage}</span> : null}
     </span>
   );
 }

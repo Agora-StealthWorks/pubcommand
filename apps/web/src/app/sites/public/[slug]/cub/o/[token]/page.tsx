@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { roundByToken, roundReviews } from "@/features/calendar/cub";
 import { CubRoundBody } from "@/features/calendar/cub-view";
+import { CUB_COLLECTOR_ENABLED } from "../../../../../../../../../../modules/editorial/features";
 
 export default async function CubOwnerPage({ params }: { params: Promise<{ slug: string; token: string }> }) {
+  if (!CUB_COLLECTOR_ENABLED) notFound();
   const { slug, token } = await params;
   const found = await roundByToken(slug, "owner", token);
   if (!found) notFound();

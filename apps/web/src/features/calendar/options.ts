@@ -1,6 +1,6 @@
 import { tenantDb } from "@pubcommand/db";
 import { resolveOptions, type OptionLists } from "../../../../../modules/editorial/options";
-import { listPromos, type PromoPick } from "./promos";
+import { listPromos, type PromoRow } from "./promos";
 import { showsTickers } from "./tickers";
 
 /** The brand's dropdown options for every field (built-in defaults where the brand has none). */
@@ -13,7 +13,7 @@ export async function loadOptions(organizationId: string, brandId: string): Prom
   return resolveOptions(rows);
 }
 
-export type FormExtras = { options: OptionLists; promos: PromoPick[]; tickers: boolean };
+export type FormExtras = { options: OptionLists; promos: PromoRow[]; tickers: boolean };
 
 /** What the event and issue forms need beyond the record: option lists, promos to link, and whether tickers show. */
 export async function loadFormExtras(organizationId: string, brand: { id: string; name: string; niche?: string | null }): Promise<FormExtras> {

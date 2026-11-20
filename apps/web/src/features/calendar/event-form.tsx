@@ -49,7 +49,7 @@ export function EventForm({ action, channels, loaded, scope = "single", defaultD
             <option key={t} value={t} />
           ))}
         </datalist>
-        <PromoSelect promos={extras.promos} value={e?.promoId} hint={inSeries ? "Linked to this occurrence only." : undefined} />
+        <PromoSelect promos={extras.promos} value={e?.calendarPromoId} hint={inSeries ? "Linked to this occurrence only." : undefined} />
       </section>
 
       <section className="space-y-4 rounded-xl border border-line bg-white p-4 sm:p-5">

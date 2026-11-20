@@ -13,8 +13,10 @@ import { Button, Input } from "@pubcommand/ui";
 import { listPublications } from "@/features/calendar/data";
 import { deleteListMappingAction, saveListMappingAction } from "@/features/calendar/settings-actions";
 import { loadListMappings } from "@/features/calendar/stats";
+import { SEND_STATS_ENABLED } from "../../../../../../../../../modules/editorial/features";
 
 export default async function StatsPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ import?: string; error?: string; notice?: string }> }) {
+  if (!SEND_STATS_ENABLED) notFound();
   const { slug } = await params;
   const query = await searchParams;
   const ctx = await calendarPage(slug);

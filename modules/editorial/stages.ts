@@ -150,6 +150,8 @@ export type FeedFilter = {
   channel?: string;
   publication?: string;
   stage?: string;
+  /** Event type (issues never match a type filter). */
+  type?: string;
   /** Hide anything that finished before `today`. */
   upcoming?: boolean;
   hideRecurring?: boolean;
@@ -170,6 +172,7 @@ export function filterFeed(items: FeedItem[], f: FeedFilter): FeedItem[] {
     if (f.channel && (it.kind !== "event" || !it.channels.includes(f.channel))) return false;
     if (f.publication && it.publicationCode !== f.publication) return false;
     if (f.stage && it.stage !== f.stage) return false;
+    if (f.type && (it.kind !== "event" || it.type !== f.type)) return false;
     if (f.hideRecurring && it.recurring) return false;
     if (q && !it.search.includes(q)) return false;
     if (f.upcoming) {
