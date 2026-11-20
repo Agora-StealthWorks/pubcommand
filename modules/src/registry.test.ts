@@ -16,6 +16,7 @@ describe("module registry", () => {
       "charts",
       "funnels",
       "miniblog",
+      "websites",
       "pubsetup",
       "wiki",
       "testimonials",
@@ -38,6 +39,8 @@ describe("module registry", () => {
     expect(moduleRegistry.getById("support")?.nav[0]?.href).toBe("/support");
     expect(moduleRegistry.getById("pubsetup")?.nav[0]?.href).toBe("/settings/publication-setup");
     expect(moduleRegistry.getById("miniblog")?.nav[0]?.href).toBe("/mini-blog");
+    expect(moduleRegistry.permissionModules()["websites.members"]).toBe("websites");
+    expect(moduleRegistry.getById("websites")?.nav[0]?.href).toBe("/websites");
     expect(moduleRegistry.jobs().some((job) => job.name === "example.ping")).toBe(true);
   });
 });
