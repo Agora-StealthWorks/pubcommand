@@ -20,7 +20,9 @@ import {
   isValidSlug,
   normalizeEmail,
   normalizeSlug,
-  parseMenu,
+  addNavItems,
+  applyNavForm,
+  navItemsFrom,
   safePostSlug,
   statusForSave,
   teaserHtml,
@@ -162,8 +164,6 @@ export async function saveSettings(formData: FormData) {
       tagline: text(formData, "tagline", 200),
       logoHeight: int(formData, "logoHeight", site.logoHeight, 32, 160),
       theme,
-      menu: parseMenu(text(formData, "menu", 3000)),
-      topics: parseMenu(text(formData, "topics", 3000), 16),
       footerText: text(formData, "footerText", 600),
       disclaimer: text(formData, "disclaimer", 4000),
       signupPublicationId: signupPublicationId && pubs.free.some((pub) => pub.id === signupPublicationId) ? signupPublicationId : null,
@@ -178,6 +178,60 @@ export async function saveSettings(formData: FormData) {
   refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
   if (slug !== site.slug) refreshPublic(slug);
   redirect(withMessage(back, "notice", status === "live" && site.status !== "live" ? "Saved. The website is live." : "Saved."));
+}
+
+/** Which stored menu a form edits: the header menu or the topic bar. */
+function menuKey(formData: FormData): "menu" | "topics" {
+  return text(formData, "menu", 10) === "topics" ? "topics" : "menu";
+}
+
+/** Menus → "Add to menu": ticked pages, categories, publications and built-in pages, or a custom link. */
+export async function addMenuItems(formData: FormData) {
+  const key = menuKey(formData);
+  const back = `/websites/menus?menu=${key === "topics" ? "topics" : "header"}`;
+  const ctx = await websitesAction(back, "websites.publish");
+  const site = await ownSite(ctx, text(formData, "siteId", 40), back);
+  const picked = formData
+    .getAll("item")
+    .map(String)
+    .map((value) => {
+      const [kind = "custom", label = "", ...rest] = value.split("|");
+      return { kind, label, href: rest.join("|") };
+    });
+  const customLabel = text(formData, "customLabel", 40);
+  const customHref = text(formData, "customHref", 300);
+  if (customLabel || customHref) {
+    if (!customLabel || !(customHref.startsWith("/") || /^https?:\/\//i.test(customHref))) redirect(withMessage(back, "error", "A custom link needs a label and an address starting with / or https://."));
+    picked.push({ kind: "custom", label: customLabel, href: customHref });
+  }
+  if (!picked.length) redirect(withMessage(back, "error", "Tick something to add, or fill in a custom link."));
+  const items = addNavItems(navItemsFrom(site[key]), picked);
+  await tenantDb(ctx.resolved.id).webSite.updateMany({ where: { id: site.id }, data: { [key]: items } });
+  await audit(ctx, "websites.menu.items_added", "web_site", site.id, { menu: key, count: picked.length });
+  refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
+  redirect(withMessage(back, "notice", "Added to the menu."));
+}
+
+/** Menus → "Save menu": labels, links, order, dropdown parents and removals. */
+export async function saveMenu(formData: FormData) {
+  const key = menuKey(formData);
+  const back = `/websites/menus?menu=${key === "topics" ? "topics" : "header"}`;
+  const ctx = await websitesAction(back, "websites.publish");
+  const site = await ownSite(ctx, text(formData, "siteId", 40), back);
+  const items = navItemsFrom(site[key]);
+  const rows = items.map((item) => ({
+    id: item.id,
+    label: text(formData, `label_${item.id}`, 40),
+    href: text(formData, `href_${item.id}`, 300),
+    position: int(formData, `pos_${item.id}`, 99, 0, 99),
+    parent: text(formData, `parent_${item.id}`, 20) || null,
+    remove: bool(formData, `remove_${item.id}`),
+  }));
+  const saved = applyNavForm(items, rows);
+  await tenantDb(ctx.resolved.id).webSite.updateMany({ where: { id: site.id }, data: { [key]: saved } });
+  await audit(ctx, "websites.menu.saved", "web_site", site.id, { menu: key, items: saved.length });
+  refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
+  redirect(withMessage(back, "notice", "Menu saved."));
 }
 
 /** Homepage builder: section order and on/off, and the hero banner. */

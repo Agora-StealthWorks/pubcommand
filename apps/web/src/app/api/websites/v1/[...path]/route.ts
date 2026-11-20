@@ -167,12 +167,13 @@ async function postHandler(request: Request, api: ApiSite, path: string[]): Prom
     if (site.status !== "live") return json({ ok: true, recorded: false });
     const ipHash = hashIp(typeof input.ip === "string" ? input.ip.slice(0, 64) : null);
     if (ipHash && (await db.webSignup.count({ where: { siteId: site.id, ipHash, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } })) >= 12) return json({ error: "rate_limited" }, 429);
-    const member = (await db.webMember.findFirst({ where: { siteId: site.id, email }, select: { id: true } })) ?? (await db.webMember.create({ data: { organizationId, siteId: site.id, email }, select: { id: true } }));
+    // A sign-up is an email subscription, not an account. It is linked to a member only if they already are one.
+    const member = await db.webMember.findFirst({ where: { siteId: site.id, email }, select: { id: true } });
     const source = typeof input.source === "string" ? input.source.slice(0, 500) : "";
     for (const pub of pubs) {
       const found = await db.webSignup.findFirst({ where: { siteId: site.id, email, publicationId: pub.id }, select: { id: true } });
-      if (found) await db.webSignup.updateMany({ where: { id: found.id }, data: { status: "subscribed", memberId: member.id } });
-      else await db.webSignup.create({ data: { organizationId, siteId: site.id, memberId: member.id, email, publicationId: pub.id, source, ipHash } });
+      if (found) await db.webSignup.updateMany({ where: { id: found.id }, data: { status: "subscribed", memberId: member?.id ?? null } });
+      else await db.webSignup.create({ data: { organizationId, siteId: site.id, memberId: member?.id ?? null, email, publicationId: pub.id, source, ipHash } });
     }
     return json({ ok: true, recorded: true });
   }

@@ -11,6 +11,10 @@ import {
   parseMenu,
   homepageFrom,
   orderSections,
+  addNavItems,
+  applyNavForm,
+  menuFrom,
+  navItemsFrom,
   passwordProblem,
   safeHref,
   parseTickerSymbols,
@@ -88,8 +92,8 @@ describe("access", () => {
     const anyPaid = { access: "members", publicationId: null };
 
     expect(canRead({ access: "public", publicationId: null }, anon)).toEqual({ allowed: true });
-    expect(canRead({ access: "free", publicationId: null }, anon)).toEqual({ allowed: false, reason: "sign-in" });
-    expect(canRead({ access: "free", publicationId: null }, free)).toEqual({ allowed: true });
+    // No free accounts: an old "free" post is public.
+    expect(canRead({ access: "free", publicationId: null }, anon)).toEqual({ allowed: true });
     expect(canRead(fmiPost, anon)).toEqual({ allowed: false, reason: "upgrade" });
     expect(canRead(fmiPost, free)).toEqual({ allowed: false, reason: "upgrade" });
     expect(canRead(fmiPost, fmi)).toEqual({ allowed: true });
@@ -183,5 +187,29 @@ describe("homepage builder", () => {
     expect(safeHref("javascript:alert(1)")).toBe("");
     expect(safeHref("//evil.com")).toBe("");
     expect(homepageFrom({ hero: { buttonHref: "javascript:x", imageAssetId: "nope" } }).hero).toMatchObject({ buttonHref: "", imageAssetId: null });
+  });
+});
+
+describe("menus", () => {
+  it("reads old menus, drops bad links and builds dropdowns", () => {
+    const items = navItemsFrom([{ label: "Latest", href: "/" }, { label: "Bad", href: "javascript:x" }, { id: "kid", label: "Income", href: "/category/income", parent: "n0" }]);
+    expect(items.map((item) => item.id)).toEqual(["n0", "kid"]);
+    expect(menuFrom(items)).toEqual([{ label: "Latest", href: "/", children: [{ label: "Income", href: "/category/income" }] }]);
+    expect(navItemsFrom([{ id: "a", label: "A", href: "/a", parent: "a" }])[0]?.parent).toBeNull();
+  });
+
+  it("adds items once and saves order, labels, nesting and removals", () => {
+    let items = addNavItems([], [{ label: "Home", href: "/", kind: "builtin" }, { label: "Research", href: "/research", kind: "builtin" }, { label: "Again", href: "/", kind: "custom" }]);
+    expect(items.map((item) => item.label)).toEqual(["Home", "Research"]);
+    items = addNavItems(items, [{ label: "Income", href: "/category/income", kind: "category" }]);
+    const [home, research, income] = items;
+    const saved = applyNavForm(items, [
+      { id: home!.id, label: "Home", href: "/", position: 3, parent: null, remove: false },
+      { id: research!.id, label: "Our Research", href: "/research", position: 1, parent: null, remove: false },
+      { id: income!.id, label: "Income", href: "/category/income", position: 2, parent: research!.id, remove: false },
+    ]);
+    expect(menuFrom(saved)).toEqual([{ label: "Our Research", href: "/research", children: [{ label: "Income", href: "/category/income" }] }, { label: "Home", href: "/" }]);
+    const removed = applyNavForm(saved, [{ id: research!.id, label: "x", href: "/research", position: 1, parent: null, remove: true }]);
+    expect(menuFrom(removed)).toEqual([{ label: "Income", href: "/category/income" }, { label: "Home", href: "/" }]);
   });
 });

@@ -40,7 +40,7 @@ export default async function MembersPage({ params, searchParams }: { params: Pr
   const productName = new Map(products.map((product) => [product.id, product.name]));
   return (
     <div>
-      <PageHeader title="Members" description="Readers with an account on the website: paying members and free subscribers. Access comes from the products they hold." />
+      <PageHeader title="Members" description="Members of the website: the people who can sign in. Access comes from the products they hold. Newsletter sign-ups are not members (see Free sign-ups)." />
       <Flash error={query.error} notice={query.notice} />
       <SiteBar sites={sites} site={site} back="/websites/members" />
       <div className="mb-4 grid gap-4 lg:grid-cols-[1fr_380px]">
@@ -95,7 +95,7 @@ export default async function MembersPage({ params, searchParams }: { params: Pr
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {active.length ? active.map((entitlement) => <Badge key={entitlement.productId} tone={entitlement.status === "past_due" ? "warn" : "ok"}>{productName.get(entitlement.productId) ?? "Product"}</Badge>) : <Badge>Free</Badge>}
+                        {active.length ? active.map((entitlement) => <Badge key={entitlement.productId} tone={entitlement.status === "past_due" ? "warn" : "ok"}>{productName.get(entitlement.productId) ?? "Product"}</Badge>) : <Badge>No active product</Badge>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-muted">{formatDate(member.createdAt, timeZone)}</td>

@@ -48,7 +48,7 @@ export default async function SignInPage({ params, searchParams }: { params: Par
               <button className="btn btn-navy">Email me a sign-in link</button>
             </form>
             <p style={{ fontSize: 14, marginTop: 18 }}>
-              Not a member yet? <a href={`${loaded.base}/newsletters`} style={{ color: "var(--dgold)", fontWeight: 600 }}>Join free</a>
+              Not a member yet? <a href={`${loaded.base}/research`} style={{ color: "var(--dgold)", fontWeight: 600 }}>See our research</a>
             </p>
           </>
         )}

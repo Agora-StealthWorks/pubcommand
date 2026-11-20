@@ -60,7 +60,6 @@ export function PostStatusBadge({ post, now }: { post: { status: string; publish
 
 export function AccessBadge({ access }: { access: string }) {
   if (access === "members") return <Badge tone="warn">🔒 Members</Badge>;
-  if (access === "free") return <Badge tone="accent">Free subscribers</Badge>;
   return <Badge tone="ok">Public</Badge>;
 }
 

@@ -42,7 +42,7 @@ export default async function MemberAccount({ params }: { params: Params }) {
               </div>
             );
           })}
-          {member.entitlements.length === 0 ? <p style={{ color: "var(--muted)" }}>You are a free member.</p> : null}
+          {member.entitlements.length === 0 ? <p style={{ color: "var(--muted)" }}>You have no active subscriptions.</p> : null}
           <h3 className="osw" style={{ fontSize: 16, color: "var(--navy)", margin: "24px 0 8px" }}>Free newsletters</h3>
           <p style={{ color: "var(--muted)", margin: 0 }}>
             {signups.map((row) => loaded.publications.find((pub) => pub.id === row.publicationId)?.name).filter(Boolean).join(", ") || "None yet."}{" "}

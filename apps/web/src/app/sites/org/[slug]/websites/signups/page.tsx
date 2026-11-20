@@ -32,7 +32,7 @@ export default async function SignupsPage({ params, searchParams }: { params: Pr
   const name = new Map(pubs.all.map((pub) => [pub.id, pub.name]));
   return (
     <div>
-      <PageHeader title="Free sign-ups" description="Readers who signed up for a free newsletter on the website. Each sign-up also gets a free member account, so they can sign in." />
+      <PageHeader title="Free sign-ups" description="Website visitors who signed up for a free newsletter. These are email subscriptions, not accounts: only members sign in." />
       <Flash error={query.error} notice={query.notice} />
       <SiteBar sites={sites} site={site} back="/websites/signups" />
       <p className="mb-4 rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">
