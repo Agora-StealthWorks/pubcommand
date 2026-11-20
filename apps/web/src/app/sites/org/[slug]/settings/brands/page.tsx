@@ -2,6 +2,8 @@ import { brandProfile, can, NICHE_LABELS, NICHES } from "@pubcommand/core";
 import { Button, Input, Label, Textarea } from "@pubcommand/ui";
 import { notFound } from "next/navigation";
 import { Denied, Flash, PageHeader } from "@/components/ui";
+import Link from "next/link";
+import { canManagePublications } from "@/features/pubsetup/module";
 import { getOrgContext } from "@/lib/org";
 import { createBrand, updateBrand } from "@/server/org-actions";
 
@@ -45,6 +47,7 @@ export default async function BrandsPage({
   const ctx = await getOrgContext(slug);
   if (ctx.kind !== "ok") notFound();
   if (!can(ctx.subject, "settings.manage", ctx.scope)) return <Denied />;
+  const pubsetupOn = ctx.subject.entitledModuleIds.includes("pubsetup");
   return (
     <div className="max-w-2xl min-w-0">
       <PageHeader
@@ -66,9 +69,16 @@ export default async function BrandsPage({
                 <Input id={`name-${brand.id}`} name="name" defaultValue={brand.name} maxLength={80} required />
               </div>
               <BrandFields id={brand.id} niche={brand.niche} audience={brand.audience} complianceNotes={brand.complianceNotes} />
-              <Button type="submit" className="w-full sm:w-auto">
-                Save brand
-              </Button>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="submit" className="w-full sm:w-auto">
+                  Save brand
+                </Button>
+                {pubsetupOn && canManagePublications(ctx.subject, { ...ctx.scope, brandId: brand.id }) ? (
+                  <Link href={`/settings/brands/${brand.id}/branding`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">
+                    Brand defaults: logos, colors, fonts →
+                  </Link>
+                ) : null}
+              </div>
             </form>
           </details>
         ))}

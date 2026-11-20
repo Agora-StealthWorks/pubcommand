@@ -66,8 +66,10 @@ export function OrgShell({
           Dashboard
         </Link>
         {groups.map((group) => (
-          <div key={group.category} className="mt-4">
-            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{group.category}</p>
+          <div key={group.category} className={group.category === "Pinned" ? "" : "mt-4"}>
+            {group.category === "Pinned" ? null : (
+              <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">{group.category}</p>
+            )}
             {group.apps.map((app) => {
               const open = current?.moduleId === app.moduleId;
               const activeSub = open ? activeSubHref(app.subnav, pathname) : null;

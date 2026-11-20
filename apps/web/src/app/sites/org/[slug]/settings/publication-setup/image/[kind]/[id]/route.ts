@@ -8,6 +8,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const { slug, kind, id } = await params;
   const access = await pubsetupPage(slug);
   if (access.kind !== "ok" || !(KINDS as readonly string[]).includes(kind)) return new Response("Not found", { status: 404 });
+  // Brand logos are keyed by brand id; serve only brands this person can see.
+  if (kind.startsWith("brand-") && !access.ctx.brands.some((b) => b.id === id)) return new Response("Not found", { status: 404 });
   const image = await getImage(access.ctx.resolved.id, kind as ImageKind, id, access.ctx.brand.id);
   if (!image) return new Response("Not found", { status: 404 });
   return new Response(Buffer.from(image.data), {

@@ -12,7 +12,7 @@ export const manifest = defineModule({
     { path: "/settings/publication-setup/publications/:id/branding", title: "Publication branding" },
     { path: "/settings/publication-setup/editors", title: "Editors" },
     { path: "/settings/publication-setup/editors/:id", title: "Editor" },
-    { path: "/settings/publication-setup/brand", title: "Brand defaults" },
+    { path: "/settings/brands/:id/branding", title: "Brand defaults" },
   ],
   permissions: [{ key: "pubsetup.manage", description: "Add and edit publications, editors and branding (admins only)" }],
   events: [],

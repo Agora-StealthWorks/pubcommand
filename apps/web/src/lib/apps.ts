@@ -8,7 +8,8 @@ type AppCard = {
   name: string;
   description: string;
   icon: string;
-  category: "Setup" | "Copy & Promos" | "Editorial" | "Research & Knowledge" | "Performance" | "Media & Audience";
+  /** "Pinned" apps sit right under Dashboard in the sidebar, with no section heading. */
+  category: "Pinned" | "Copy & Promos" | "Research & Knowledge" | "Performance" | "Media & Audience";
   /** Only show for brands in these niches. Omit to show for every brand. */
   niches?: Niche[];
 };
@@ -33,7 +34,7 @@ const CARDS: AppCard[] = [
     name: "Calendar",
     description: "Events, editorial issues and send stats for every publication, on one calendar.",
     icon: "🗓️",
-    category: "Editorial",
+    category: "Pinned",
   },
   {
     moduleId: "knowledge",
@@ -117,9 +118,8 @@ const CARDS: AppCard[] = [
 ];
 
 export const CATEGORY_ORDER: AppCard["category"][] = [
-  "Setup",
+  "Pinned",
   "Copy & Promos",
-  "Editorial",
   "Research & Knowledge",
   "Performance",
   "Media & Audience",
