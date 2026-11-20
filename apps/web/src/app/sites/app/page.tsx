@@ -1,4 +1,5 @@
 import { buildSiteUrl } from "@pubcommand/core";
+import { BrandLogo } from "@/components/brand";
 import { rawPrisma } from "@pubcommand/db";
 import { redirect } from "next/navigation";
 import { readSession, readStaff, rootDomain, staffReady } from "@/lib/auth";
@@ -37,7 +38,7 @@ export default async function OrgPickerPage() {
 
   return (
     <main data-surface="app" className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
-      <p className="text-sm font-semibold uppercase tracking-wide text-accent">PubCommand</p>
+      <BrandLogo className="h-9 w-auto" />
       <h1 className="mt-2 break-words text-3xl font-semibold">Choose a workspace</h1>
       <p className="pc-break mt-2 text-sm text-muted">{auth.user.email}</p>
       {staff ? (

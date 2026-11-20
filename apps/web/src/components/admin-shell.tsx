@@ -1,4 +1,5 @@
 import { platformCan, PLATFORM_PERMISSIONS, type PlatformRole } from "@pubcommand/core";
+import { BrandLogo } from "./brand";
 import Link from "next/link";
 import { AppFrame } from "./app-frame";
 
@@ -30,8 +31,10 @@ export function AdminShell({
     <AppFrame
       sidebar={
         <div className="px-3 py-4">
-          <p className="px-2 text-xs font-semibold uppercase tracking-wide text-muted">Platform</p>
-          <p className="px-2 text-lg font-semibold">PubCommand</p>
+          <div className="px-2">
+            <BrandLogo className="h-8 w-auto" />
+          </div>
+          <p className="mt-1 px-2 text-xs font-semibold uppercase tracking-wide text-muted">Platform console</p>
           <nav className="mt-4">
             {visible.map((link) => (
               <Link key={link.href} href={link.href} className={navClass(isCurrent(pathname, link.href))}>

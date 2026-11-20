@@ -92,5 +92,6 @@ export const config = {
   // Node.js runtime (stable in Next 15.5) so the custom-domain lookup can use
   // Prisma in-process with a small in-memory cache; Edge cannot reach the DB.
   runtime: "nodejs",
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // /brand/* is PubCommand's own logo and icons (apps/web/public/brand), served as static files on every host.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|brand/).*)"],
 };

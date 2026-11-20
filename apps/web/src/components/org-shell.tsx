@@ -5,6 +5,7 @@ import { appForPath, CATEGORY_ORDER, visibleApps } from "@/lib/apps";
 import { canManagePublications } from "@/features/pubsetup/module";
 import { stopImpersonation } from "@/server/platform-actions";
 import { AppFrame } from "./app-frame";
+import { BrandLogo } from "./brand";
 import { BrandSwitcher } from "./brand-switcher";
 import { CommandPalette } from "./command-palette";
 
@@ -49,9 +50,8 @@ export function OrgShell({
   const sidebar = (
     <div className="flex min-h-full flex-col">
       <div className="space-y-3 px-4 py-4">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-sm font-bold text-white">P</span>
-          <span className="text-base font-semibold">PubCommand</span>
+        <Link href="/" className="flex items-center" aria-label="PubCommand dashboard">
+          <BrandLogo className="h-8 w-auto" />
         </Link>
         <div className="rounded-lg border border-line px-2 py-1.5">
           <p className="px-1 text-[11px] font-medium text-muted">Brand</p>

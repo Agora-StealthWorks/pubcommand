@@ -1,3 +1,5 @@
+import type { Viewport } from "next";
+import { brandMetadata, brandThemeColor } from "@/components/brand";
 import { canAccessPlatformConsole } from "@pubcommand/core";
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
@@ -5,6 +7,10 @@ import { readSession, readStaff, staffTwoFactorRequired } from "@/lib/auth";
 import { currentRequest } from "@/lib/request";
 
 export const dynamic = "force-dynamic";
+/** PubCommand's favicon and icons on its own pages (public customer sites set their own). */
+export const metadata = brandMetadata;
+export const viewport: Viewport = { themeColor: brandThemeColor };
+
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const request = await currentRequest();

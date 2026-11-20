@@ -1,3 +1,5 @@
+import type { Viewport } from "next";
+import { brandMetadata, brandThemeColor } from "@/components/brand";
 import { buildSiteUrl } from "@pubcommand/core";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { OrgShell } from "@/components/org-shell";
@@ -7,6 +9,10 @@ import { getOrgContext } from "@/lib/org";
 import { rawPrisma } from "@pubcommand/db";
 
 export const dynamic = "force-dynamic";
+/** PubCommand's favicon and icons on its own pages (public customer sites set their own). */
+export const metadata = brandMetadata;
+export const viewport: Viewport = { themeColor: brandThemeColor };
+
 
 export default async function OrgLayout({
   children,

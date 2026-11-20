@@ -1,5 +1,6 @@
 import { Button, Card, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand";
 import { exposeMagicLinkOnPage } from "@/lib/mail";
 import { currentRequest } from "@/lib/request";
 
@@ -17,8 +18,8 @@ export default async function LoginPage({
 
   return (
     <main data-surface="login" className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
-      <Link href="/" className="text-sm font-semibold text-accent">
-        PubCommand
+      <Link href="/" className="self-start" aria-label="PubCommand home">
+        <BrandLogo className="h-9 w-auto" />
       </Link>
       <h1 className="mt-4 text-3xl font-semibold">Log in</h1>
       <p className="mt-2 text-sm text-muted">First login is a magic link. Password is optional and is never seeded.</p>
