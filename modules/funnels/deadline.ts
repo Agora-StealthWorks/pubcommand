@@ -52,7 +52,7 @@ export function deadlineText(template: string, at: Date, timeZone: string): stri
 /** Page kinds the deadline bar can show on. The close page never shows it. */
 export const DEADLINE_PAGES = ["home", "waitlist", "day", "custom"] as const;
 export type DeadlinePage = (typeof DEADLINE_PAGES)[number];
-export const DEADLINE_PAGE_LABELS: Record<DeadlinePage, string> = { home: "Home page", waitlist: "Waitlist", day: "Day pages", custom: "Custom pages" };
+export const DEADLINE_PAGE_LABELS: Record<DeadlinePage, string> = { home: "Home page", waitlist: "Waitlist", day: "Module pages", custom: "Custom pages" };
 
 /** Only known page kinds, in order. An empty list means the bar shows nowhere. */
 export function normalizeDeadlinePages(value: unknown): DeadlinePage[] {

@@ -66,7 +66,7 @@ export function HomeTab({ funnel, days, navItems, hosts, forms, smsForms = [], t
   return (
     <>
       {funnel.siteType !== "microsite" ? (
-        <p className="mb-4 rounded-lg border border-[#fedf89] bg-[#fffaeb] px-4 py-3 text-sm text-[#93370d]">This funnel is a launch funnel, so its front door is the waitlist. Switch the type to Microsite (Setup) to use this home page.</p>
+        <p className="mb-4 rounded-lg border border-[#fedf89] bg-[#fffaeb] px-4 py-3 text-sm text-[#93370d]">This funnel is a launch funnel, so its front door is the waitlist. Switch the type to Microsite (Mode & schedule) to use this home page.</p>
       ) : null}
       <HomeBuilder
         funnelId={funnel.id}
@@ -99,6 +99,14 @@ export function HostsTab({ funnel, hosts, openId, canWrite }: { funnel: FunnelRo
             <Field label="Heading" htmlFor="hostsTitle">
               <Input id="hostsTitle" name="hostsTitle" defaultValue={funnel.hostsTitle} maxLength={120} />
             </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Section background" htmlFor="hostsBg" hint="#rrggbb, or blank for the page background.">
+                <Input id="hostsBg" name="hostsBg" defaultValue={funnel.hostsBg} maxLength={7} placeholder="#f3f4f6" className="font-mono" />
+              </Field>
+              <Field label="Heading colour" htmlFor="hostsTitleColor" hint="#rrggbb, or blank.">
+                <Input id="hostsTitleColor" name="hostsTitleColor" defaultValue={funnel.hostsTitleColor} maxLength={7} placeholder="#111827" className="font-mono" />
+              </Field>
+            </div>
             {canWrite ? <Button type="submit">Save</Button> : null}
           </Section>
         </fieldset>
@@ -228,6 +236,7 @@ export function PagesTab({ funnel, days, navItems, forms, smsForms = [], openId,
 
                   {item.kind === "page" ? (
                     <>
+                      {funnel.siteType !== "microsite" ? <Check name="isHome" label="Use as the funnel's home page" defaultChecked={item.isHome} hint="The funnel's link shows this page instead of the waitlist or the current module (until the funnel closes). Pair it with “Show in the navigation” off for a page reached only at the front door." /> : null}
                       <div className="grid gap-4 sm:grid-cols-3">
                         <Field label="Page title" htmlFor={id("title")}>
                           <Input id={id("title")} name="title" defaultValue={item.title} maxLength={160} />
@@ -310,7 +319,7 @@ export function PagesTab({ funnel, days, navItems, forms, smsForms = [], openId,
                         <Check name="showLock" label="Show a lock icon" defaultChecked={item.showLock} />
                         <Check name="faded" label="Faded look" defaultChecked={item.faded} />
                       </div>
-                      <Check name="showInAgenda" label="List it in the agenda" defaultChecked={item.showInAgenda} hint="In its position among the modules: on the waitlist and in home page agenda blocks." />
+                      <Check name="showInAgenda" label="List it in the agenda" defaultChecked={item.showInAgenda} hint="In its position among the modules: on the waitlist, module agenda boxes and home page agenda blocks." />
                       <div className="grid gap-4 sm:grid-cols-2">
                         <Field label="Agenda title" htmlFor={id("title")} hint="Empty = the navigation label.">
                           <Input id={id("title")} name="title" defaultValue={item.title} maxLength={160} />
@@ -418,7 +427,19 @@ export function DeadlineTab({ funnel, days, timeZone, zone, canWrite }: { funnel
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <ColorField name="deadlineBarBg" label="Background" value={safeColor(funnel.deadlineBarBg, "#b42318")} />
             <ColorField name="deadlineBarColor" label="Text" value={safeColor(funnel.deadlineBarColor, "#ffffff")} />
+            <Field label="Countdown digits" htmlFor="deadlineBarDigitColor" hint="#rrggbb, or blank = text colour.">
+              <Input id="deadlineBarDigitColor" name="deadlineBarDigitColor" defaultValue={funnel.deadlineBarDigitColor ?? ""} maxLength={7} className="font-mono" />
+            </Field>
+            <Field label="Button colour" htmlFor="deadlineBarButtonBg" hint="#rrggbb, or blank = accent.">
+              <Input id="deadlineBarButtonBg" name="deadlineBarButtonBg" defaultValue={funnel.deadlineBarButtonBg ?? ""} maxLength={7} className="font-mono" />
+            </Field>
           </div>
+          <Field label="Spacing on desktop" htmlFor="deadlineBarSpacing">
+            <select id="deadlineBarSpacing" name="deadlineBarSpacing" defaultValue={funnel.deadlineBarSpacing} className="pc-control w-full text-sm">
+              <option value="narrow">Narrow: grouped around the countdown</option>
+              <option value="wide">Wide: spread across the bar</option>
+            </select>
+          </Field>
           {canWrite ? <Button type="submit">Save deadline bar</Button> : null}
         </Section>
       </fieldset>

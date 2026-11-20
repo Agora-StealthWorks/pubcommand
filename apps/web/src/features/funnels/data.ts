@@ -1,7 +1,7 @@
 import { tenantDb } from "@pubcommand/db";
 import { contrastText, isHttpUrl, safeColor } from "../../../../../modules/funnels/checks";
 import type { DayRules, FunnelRules } from "../../../../../modules/funnels/state";
-import { CLOSE_MODES, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, SITE_TYPES, TIMING_MODES } from "../../../../../modules/funnels/state";
+import { BETWEEN_SESSIONS, CLOSE_MODES, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, SITE_TYPES, TIMING_MODES } from "../../../../../modules/funnels/state";
 import { normalizeDesign, type Design } from "../../../../../modules/funnels/design";
 import { aggregateFunnel, type FunnelStats } from "../../../../../modules/funnels/stats";
 import { filterTraffic } from "../../../../../modules/funnels/traffic";
@@ -30,8 +30,11 @@ export function dayVideo(day: Pick<DayRow, "videoId" | "videoProvider">): VideoR
   return parseVideo(day.videoId, day.videoProvider);
 }
 
-export function funnelRules(funnel: FunnelRow): FunnelRules {
+export function funnelRules(funnel: FunnelRow, timeZone?: string): FunnelRules {
   return {
+    lockFirstModule: funnel.lockFirstModule && (funnel.progression === "scheduled" || funnel.progression === "url_key"),
+    betweenSessions: pick(funnel.betweenSessions, BETWEEN_SESSIONS, "hybrid"),
+    ...(timeZone ? { timeZone } : {}),
     mode: pick(funnel.mode, FUNNEL_MODES, "evergreen"),
     timing: pick(funnel.timing, TIMING_MODES, "fixed"),
     startAt: funnel.startAt,
@@ -61,11 +64,29 @@ export function assetSrc(funnel: Pick<FunnelRow, "slug">, assetId: string, versi
   return `/l/${funnel.slug}/asset/${assetId}${v ? `?v=${v}` : ""}`;
 }
 
-export function dayRules(day: DayRow): DayRules {
+/**
+ * A text module replaces the video box, except on a live session day (live
+ * funnel + live day), which always keeps the video box (countdown, live
+ * redirect, replay) and shows its text underneath.
+ */
+export function isTextModule(day: Pick<DayRow, "kind" | "isLive">, mode: string): boolean {
+  return day.kind === "text" && !(mode === "live" && day.isLive);
+}
+
+export function hasBody(html: string): boolean {
+  return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim().length > 0 || /<(img|iframe)\b/i.test(html);
+}
+
+/** "Has content": a video for video modules, a body for text modules. */
+export function hasContent(day: DayRow, mode: string): boolean {
+  return isTextModule(day, mode) ? hasBody(day.bodyHtml) : Boolean(dayVideo(day));
+}
+
+export function dayRules(day: DayRow, mode = "evergreen"): DayRules {
   return {
     id: day.id,
     position: day.position,
-    hasVideo: Boolean(dayVideo(day)),
+    hasVideo: hasContent(day, mode),
     unlockOffsetHours: day.unlockOffsetHours,
     unlockAt: day.unlockAt,
     unlockKey: day.unlockKey,
@@ -85,8 +106,8 @@ export function dayLabel(day: Pick<DayRow, "position" | "navLabel">): string {
 export function dayThumb(day: DayRow, base: string, open: boolean): string | null {
   if (day.thumbAssetId) return `${base}/thumb/${day.id}?v=${day.updatedAt.getTime()}`;
   if (day.thumbUrl && /^https:\/\//i.test(day.thumbUrl)) return day.thumbUrl;
+  if (day.videoThumbUrl && (open || !day.videoId)) return day.videoThumbUrl;
   if (!open) return null;
-  if (day.videoThumbUrl) return day.videoThumbUrl;
   const video = dayVideo(day);
   return video ? fallbackThumbnail(video) : null;
 }

@@ -1,7 +1,7 @@
 import { isHttpUrl, type FunnelCheckInput } from "../../../../../modules/funnels/checks";
 import { normalizeBlocks, type Block } from "../../../../../modules/funnels/blocks";
 import { designCss, fontHref, normalizeDesign, type Design, type FooterLink } from "../../../../../modules/funnels/design";
-import { assetSrc, funnelBranding, funnelDesign, funnelRules, type Branding, type DayRow, type FunnelRow, type NavItemRow } from "./data";
+import { assetSrc, funnelBranding, funnelDesign, funnelRules, type Branding, type DayRow, type FunnelRow, type NavItemRow, hasBody } from "./data";
 import { richFromInput } from "./sanitize";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -144,7 +144,8 @@ export function funnelCheckInput(funnel: FunnelRow, days: DayRow[], navItems: Na
     privacyUrl: themePrivacyUrl ?? funnel.privacyUrl,
     optinMode: funnel.siteType === "microsite" ? "none" : funnel.optinMode === "email" || funnel.optinMode === "form" ? funnel.optinMode : "none",
     optinFormSlug: funnel.optinFormSlug,
-    days,
+    days: days.map((day) => ({ ...day, hasBody: hasBody(day.bodyHtml) })),
+    calendar: { enabled: funnel.calendarEnabled, mode: funnel.calendarMode, url: funnel.calendarUrl },
     siteType: rules.siteType,
     homeBlockCount: homeBlocks(funnel).length,
     navItems,

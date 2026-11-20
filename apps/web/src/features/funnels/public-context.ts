@@ -4,6 +4,8 @@ import type { ViewerCookie } from "../../../../../modules/funnels/viewer";
 import type { DayRow } from "./data";
 import { publicBase, publicDays, readViewer, statesFor, type LoadedFunnel } from "./public";
 import { funnelTheme, type FunnelTheme } from "./site-data";
+import { agendaEntries } from "./home-view";
+import type { AgendaPlaceholder } from "./public-view";
 
 export type PageContext = {
   base: string;
@@ -15,6 +17,8 @@ export type PageContext = {
   homeHref: string;
   host: string;
   origin: string;
+  /** Agenda entries: safe days with "list in the agenda" placeholders placed among them. */
+  agenda: (DayRow | AgendaPlaceholder)[];
 };
 
 /** What every public funnel page works out first: link base, viewer, day states and the design. */
@@ -25,5 +29,6 @@ export async function pageContext(loaded: LoadedFunnel, options: { fresh?: strin
   const states = statesFor(loaded, viewer, options.presentedKeys ?? {});
   const homeHref = `${base || "/"}${carry}`;
   const [theme, request] = await Promise.all([funnelTheme(loaded.organizationId, funnel, base, homeHref), currentRequest()]);
-  return { base, viewer, states, safeDays: publicDays(loaded.days, states), theme, homeHref, host: request.host, origin: request.origin };
+  const safeDays = publicDays(loaded.days, states);
+  return { base, viewer, states, safeDays, theme, homeHref, host: request.host, origin: request.origin, agenda: agendaEntries(safeDays, loaded.navItems) };
 }

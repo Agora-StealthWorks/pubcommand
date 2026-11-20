@@ -359,7 +359,10 @@ export async function saveNavItem(formData: FormData) {
       optinMode: optinMode === "sms" && !smsFormId ? "none" : optinMode,
       optinFormSlug: form?.slug ?? null,
       smsFormId,
+      isHome: bool(formData, "isHome"),
     });
+    // Only one home page: setting this one clears the others.
+    if (bool(formData, "isHome")) await db.funnelNavItem.updateMany({ where: { funnelId: funnel.id, id: { not: item.id } }, data: { isHome: false } });
   } else if (item.kind === "link") {
     const link = text(formData, "url", 1000);
     if (link && !isHttpUrl(link)) redirect(withMessage(back, "error", "The link must be a web address starting with https://."));

@@ -71,7 +71,20 @@ export type FunnelCheckInput = {
     liveStartAt: Date | null;
     liveUrl: string | null;
     unlockKey: string;
+    /** Optional (older callers): text modules, CTA and calendar checks. */
+    navLabel?: string | null;
+    kind?: string;
+    hasBody?: boolean;
+    liveEndAt?: Date | null;
+    liveOverride?: string;
+    calendarUrl?: string | null;
+    ctaReveal?: string;
+    ctaText?: string;
+    ctaUrl?: string;
+    ctaAt?: Date | null;
   }[];
+  /** Add to calendar (live funnels). */
+  calendar?: { enabled: boolean; mode: string; url: string | null };
   /** Microsite checks. Optional so older callers keep working (defaults: launch, no extras). */
   siteType?: SiteType;
   homeBlockCount?: number;
@@ -99,19 +112,36 @@ export function checkFunnel(input: FunnelCheckInput): CheckResult {
   if (!isHttpUrl(input.privacyUrl)) errors.push("Add a privacy-policy link (Design → Footer). Every public page shows it.");
   if (input.optinMode === "form" && !input.optinFormSlug) errors.push("Pick the form to show on the waitlist, or switch the opt-in off.");
   const positions = new Set<number>();
+  const calendarByUrl = input.mode === "live" && input.calendar?.enabled && input.calendar.mode === "url" && !isHttpUrl(input.calendar.url);
+  const missingCalendar: string[] = [];
   for (const day of input.days) {
-    const label = day.title.trim() || `Day ${day.position}`;
+    const label = day.navLabel?.trim() || `Day ${day.position}`;
     if (positions.has(day.position)) errors.push(`Two days share position ${day.position}.`);
     positions.add(day.position);
+    const liveDay = input.mode === "live" && day.isLive;
+    const text = day.kind === "text" && !liveDay;
     const hasVideo = Boolean(day.videoId && parseVideo(day.videoId, day.videoProvider));
-    if (day.videoId && !hasVideo) errors.push(`${label}: the video link is not a Wistia or YouTube video.`);
-    if (input.buildMode === "prebuilt" && !hasVideo && !(input.mode === "live" && day.isLive)) errors.push(`${label}: add its video (pre-built funnels need every video before publishing).`);
-    if (input.mode === "live" && day.isLive) {
-      if (!day.liveStartAt) errors.push(`${label}: set the live session's start time.`);
+    const hasContent = text ? Boolean(day.hasBody) : hasVideo;
+    if (!day.title.trim()) warnings.push(`${label} has no title.`);
+    if (!text && day.videoId && !hasVideo) errors.push(`${label}: the video is not a Wistia, YouTube or Vidalytics video.`);
+    if (liveDay) {
+      if (!day.liveStartAt && (day.liveOverride ?? "auto") === "auto") errors.push(`${label}: set the live session's start time.`);
       if (!isHttpUrl(day.liveUrl) && !isHttpUrl(input.livestreamUrl)) errors.push(`${label}: add a livestream room link (on the day or for the whole funnel).`);
+      if (day.liveStartAt && day.liveEndAt && day.liveEndAt <= day.liveStartAt) warnings.push(`${label}: the live end time is before the start, so it is treated as a 3-hour session. Fix the end time.`);
+      if (calendarByUrl && !isHttpUrl(day.calendarUrl)) missingCalendar.push(label);
+    } else if (!hasContent) {
+      const what = text ? "content" : "video";
+      if (input.buildMode === "prebuilt") errors.push(`${label} has no ${what} (pre-built funnels need every module before publishing).`);
+      else warnings.push(`${label} has no ${what} yet, so it shows “coming soon”.`);
     }
+    const reveal = day.ctaReveal ?? "none";
+    if (reveal !== "none" && (!(day.ctaText ?? "").trim() || !(day.ctaUrl ?? "").trim())) errors.push(`${label}: the call-to-action button needs both text and a link.`);
+    if (reveal === "datetime" && !day.ctaAt) errors.push(`${label}: set the time the call-to-action appears.`);
+    if (reveal === "video_time" && text) warnings.push(`${label}: text modules have no video, so a call to action timed to the video never appears.`);
+    else if (reveal === "video_time" && !hasVideo && !liveDay) warnings.push(`${label}: the call to action is timed to the video, but there is no video yet.`);
     if (input.progression === "url_key" && day.position > 1 && !day.unlockKey.trim()) errors.push(`${label}: it needs an unlock key.`);
   }
+  if (missingCalendar.length) warnings.push(`Add to calendar uses a calendar link, but none is set for: ${missingCalendar.join(", ")}. No button shows there.`);
   const pageSlugs = new Set<string>();
   for (const item of input.navItems ?? []) {
     const label = item.label.trim() || item.title.trim() || (item.kind === "link" ? "A link" : item.kind === "placeholder" ? "A placeholder" : "A page");
@@ -128,7 +158,6 @@ export function checkFunnel(input: FunnelCheckInput): CheckResult {
     if (input.deadlineBar.target === "end" && fixedClock && !input.endAt) warnings.push("The deadline bar counts down to the close, but no close date is set, so it never shows.");
     if (input.deadlineBar.target === "end" && !fixedClock && !input.closeAfterHours) warnings.push("The deadline bar counts down to each viewer's close, but “close after” hours are not set, so it never shows.");
   }
-  if (input.days.length && !input.days.some((day) => day.title.trim())) warnings.push("None of the days has a title yet; the agenda will show “Day 1”, “Day 2”…");
   return { errors, warnings };
 }
 

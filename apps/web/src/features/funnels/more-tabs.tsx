@@ -211,7 +211,7 @@ export function SmsFormsTab({
   return (
     <div className="space-y-4">
       <Notice>SMS forms collect a mobile number with the exact consent text shown, for your texting platform. PubCommand does not send text messages yet (no SMS provider is connected): download the sign-ups as CSV from here or the Publish tab.</Notice>
-      <Section title="SMS opt-in forms" description="Place a form on the waitlist (Waitlist tab), in a home page Opt-in block, under a day's video (Days tab) or under a custom page (Pages & links).">
+      <Section title="SMS opt-in forms" description="Place a form on the waitlist (Waitlist tab), in a home page Opt-in block, under a module's video (Modules tab) or under a custom page (Pages & links).">
         {forms.length === 0 ? <p className="text-sm text-muted">No SMS forms yet.</p> : null}
         {canWrite ? (
           <form action={addSmsForm} className="flex flex-wrap items-end gap-2">

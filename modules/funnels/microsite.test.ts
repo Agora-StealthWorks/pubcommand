@@ -278,10 +278,27 @@ describe("add to calendar", () => {
       timeZone: "America/New_York",
     })!;
     expect(live.title).toBe("Summit: Q&A");
-    expect(live.end.getTime() - live.start.getTime()).toBe(2 * HOUR);
+    expect(live.end.getTime() - live.start.getTime()).toBe(3 * HOUR);
     expect(live.location).toBe("https://room.example");
     expect(live.description).toContain("Tuesday, November 3 at 3:00 PM EST");
-    expect(live.description).toContain("• Topic A");
+    expect(live.description).toContain("Join the livestream here:\nhttps://room.example");
+    expect(live.reminders).toEqual([1440, 60, 15]);
+    const custom = liveSessionEvent({
+      funnelId: "f1",
+      funnelName: "Summit",
+      day: { id: "d2", label: "Day 2", title: "Q&A", topics: ["Topic A"], liveStartAt: new Date("2026-11-03T20:00:00Z"), liveEndAt: null, liveUrl: "https://own.example" },
+      roomUrl: "https://room.example",
+      pageUrl: "https://acme.example/l/summit/day-2",
+      timeZone: "America/New_York",
+      invite: { titleTemplate: "{day} · {funnel}", descTemplate: "{topics}\n{time}\n{page_url}\n{agenda}", reminders: [30], agenda: [{ label: "Day 2", title: "Q&A", topics: ["Topic A"], liveStartAt: new Date("2026-11-03T20:00:00Z") }] },
+    })!;
+    expect(custom.title).toBe("Day 2 · Summit");
+    expect(custom.location).toBe("https://own.example");
+    expect(custom.description).toContain("• Topic A");
+    expect(custom.description).toContain("3:00 PM EST");
+    expect(custom.description).toContain("https://acme.example/l/summit/day-2");
+    expect(custom.description).toContain("• Day 2: Q&A — Tuesday, November 3 at 3:00 PM EST\n   – Topic A");
+    expect(custom.reminders).toEqual([30]);
     expect(liveSessionEvent({ funnelId: "f1", funnelName: "S", day: { id: "d", label: "Day 1", title: "", topics: [], liveStartAt: null, liveEndAt: null, liveUrl: null }, roomUrl: null, pageUrl: "https://x", timeZone: "UTC" })).toBeNull();
     const box = eventBoxEvent({ funnelId: "f1", blockId: "b1", title: "Summit", start: new Date("2026-11-03T20:00:00Z"), minutes: 90, pageUrl: "https://acme.example/l/summit", timeZone: "America/New_York" })!;
     expect(box.end.getTime() - box.start.getTime()).toBe(90 * 60_000);

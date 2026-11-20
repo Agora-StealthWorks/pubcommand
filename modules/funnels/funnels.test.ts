@@ -80,8 +80,8 @@ describe("state engine precedence", () => {
   it("2. a session with no end runs for the default length", () => {
     const live = funnel({ mode: "live" });
     const d = day(1, { isLive: true, liveStartAt: at(1) });
-    expect(isLiveNow(live, d, at(2.9))).toBe(true);
-    expect(isLiveNow(live, d, at(3.1))).toBe(false);
+    expect(isLiveNow(live, d, at(3.9))).toBe(true);
+    expect(isLiveNow(live, d, at(4.1))).toBe(false);
   });
 
   it("3. not started locks every day until the start (day 1 included)", () => {
@@ -342,7 +342,7 @@ describe("videos, checks and exports", () => {
         "Closing by redirect needs a web address to send people to.",
         expect.stringContaining("privacy-policy"),
         expect.stringContaining("Pick the form"),
-        "One: add its video (pre-built funnels need every video before publishing).",
+        "Day 1 has no video (pre-built funnels need every module before publishing).",
         "Day 2: set the live session's start time.",
       ]),
     );
@@ -385,7 +385,9 @@ describe("aggregates and Brain notes", () => {
     expect(stats).toMatchObject({ waitlistViews: 1, visitors: 2, optins: 3, ctaClicks: 1 });
     expect(stats.days[0]).toEqual({ dayId: ids[0], views: 3, viewers: 2, avgWatch: 75, completed: 1, ctaClicks: 0 });
     const note = funnelBrainNote({ name: "Spring", brandName: "Gazette", mode: "evergreen", progression: "watch_percent", startLabel: null, days: [{ position: 1, title: "Intro", topics: ["Why"], isLive: false }, { position: 2, title: "Deep dive", topics: [], isLive: false }], stats });
-    expect(note.body).toContain("Day 1: 2 viewers, average watched 75%");
+    expect(note.body).toContain("Day 1: Intro: Why");
+    // No traffic reaches the Brain.
+    expect(note.body).not.toMatch(/viewers|watched \d|CTA clicks|opt-ins: \d/);
     expect(note.body).not.toMatch(/@|visitorId/);
   });
 });

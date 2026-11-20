@@ -1,3 +1,4 @@
+import sanitizeHtml from "sanitize-html";
 import { sanitizeRichText } from "@/components/rich-text-editor/sanitize";
 
 /**
@@ -44,4 +45,57 @@ export function richToInput(html: string | null | undefined): string {
       .replace(/<\/p>\s*<p>/g, "\n\n")
       .replace(/<\/?p>/g, ""),
   ).trim();
+}
+
+
+/**
+ * Calendar-button embed code (e.g. a Livendar "Add to calendar" snippet).
+ * Scripts, event handlers, iframes and forms are stripped; links, images and
+ * their inline styling are kept, and every link opens in a new tab. Run on save
+ * and again on render.
+ */
+export function sanitizeEmbed(html: string | null | undefined, max = 50_000): string {
+  const input = String(html ?? "").slice(0, max);
+  if (!input.trim()) return "";
+  return sanitizeHtml(input, {
+    allowedTags: ["a", "div", "span", "p", "br", "img", "strong", "em", "b", "i", "small", "ul", "ol", "li", "button", "svg", "path", "g", "circle", "rect"],
+    allowedAttributes: {
+      "*": ["class", "style", "title", "aria-label", "role"],
+      a: ["href", "target", "rel"],
+      img: ["src", "alt", "width", "height"],
+      svg: ["viewBox", "width", "height", "fill", "xmlns"],
+      path: ["d", "fill"],
+      circle: ["cx", "cy", "r", "fill"],
+      rect: ["x", "y", "width", "height", "rx", "fill"],
+      g: ["fill"],
+    },
+    allowedSchemes: ["https", "http", "mailto"],
+    allowedSchemesByTag: { img: ["https"] },
+    allowedStyles: {
+      "*": {
+        color: [/^#[0-9a-f]{3,8}$/i, /^rgba?\([\d\s.,%]+\)$/i, /^[a-z]+$/i],
+        "background-color": [/^#[0-9a-f]{3,8}$/i, /^rgba?\([\d\s.,%]+\)$/i, /^[a-z]+$/i],
+        background: [/^#[0-9a-f]{3,8}$/i, /^rgba?\([\d\s.,%]+\)$/i, /^[a-z]+$/i],
+        "border-radius": [/^[\d.]+(px|em|rem|%)$/],
+        border: [/^[\d.]+px\s+(solid|dashed|dotted)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+        padding: [/^([\d.]+(px|em|rem)\s*){1,4}$/],
+        margin: [/^([\d.]+(px|em|rem)|auto)(\s+([\d.]+(px|em|rem)|auto)){0,3}$/],
+        "font-size": [/^[\d.]+(px|em|rem)$/],
+        "font-weight": [/^(bold|normal|[1-9]00)$/],
+        "font-family": [/^[\w\s,"'-]+$/],
+        "text-decoration": [/^(none|underline)$/],
+        "text-align": [/^(left|right|center)$/],
+        display: [/^(inline-block|inline-flex|block|flex|inline)$/],
+        gap: [/^[\d.]+(px|em|rem)$/],
+        "line-height": [/^[\d.]+(px|em|rem)?$/],
+        width: [/^[\d.]+(px|em|rem|%)$/],
+        height: [/^[\d.]+(px|em|rem|%)$/],
+        "max-width": [/^[\d.]+(px|em|rem|%)$/],
+        "align-items": [/^(center|flex-start|flex-end)$/],
+        "justify-content": [/^(center|flex-start|flex-end|space-between)$/],
+        "flex-wrap": [/^(wrap|nowrap)$/],
+      },
+    },
+    transformTags: { a: sanitizeHtml.simpleTransform("a", { target: "_blank", rel: "noopener noreferrer" }) },
+  });
 }

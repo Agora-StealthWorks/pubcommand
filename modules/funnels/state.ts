@@ -21,6 +21,7 @@ export const PROGRESSIONS = ["all_open", "scheduled", "watch_percent", "url_key"
 export const CLOSE_MODES = ["page", "redirect", "never"] as const;
 export const LIVE_OVERRIDES = ["auto", "on", "off"] as const;
 export const SITE_TYPES = ["launch", "microsite"] as const;
+export const BETWEEN_SESSIONS = ["hybrid", "recent", "next"] as const;
 
 export type FunnelMode = (typeof FUNNEL_MODES)[number];
 export type TimingMode = (typeof TIMING_MODES)[number];
@@ -28,6 +29,7 @@ export type Progression = (typeof PROGRESSIONS)[number];
 export type CloseMode = (typeof CLOSE_MODES)[number];
 export type LiveOverride = (typeof LIVE_OVERRIDES)[number];
 export type SiteType = (typeof SITE_TYPES)[number];
+export type BetweenSessions = (typeof BETWEEN_SESSIONS)[number];
 
 export const SITE_TYPE_LABELS: Record<SiteType, string> = {
   launch: "Launch funnel",
@@ -55,6 +57,17 @@ export type FunnelRules = {
   waitlistEnabled: boolean;
   /** Microsite: the front door is the block-built home page. Default launch. */
   siteType?: SiteType;
+  /** The first module follows scheduled / link-key progression too, instead of opening at the start. */
+  lockFirstModule?: boolean;
+  /**
+   * Live funnels, where the front door goes between sessions:
+   *   hybrid (default)  the most recent session, until the calendar day of the next one; that day, the next one
+   *   recent            always the most recent session (its replay / replay pending)
+   *   next              always the next session to come
+   */
+  betweenSessions?: BetweenSessions;
+  /** Calendar days ("today") are worked out in this zone. Default America/New_York. */
+  timeZone?: string;
 };
 
 export type DayRules = {
@@ -93,7 +106,7 @@ export type DayState =
   | { kind: "coming_soon" };
 
 /** A live session with no (valid) end is treated as running this long. */
-export const DEFAULT_LIVE_HOURS = 2;
+export const DEFAULT_LIVE_HOURS = 3;
 const HOUR = 3_600_000;
 
 export const emptyViewer = (): ViewerFacts => ({ watched: {}, keys: [] });
@@ -141,12 +154,6 @@ export function isLiveNow(funnel: FunnelRules, day: DayRules, now: Date): boolea
 export function scheduledUnlock(day: Pick<DayRules, "unlockAt" | "unlockOffsetHours">, start: Date | null): Date | null {
   if (day.unlockAt) return day.unlockAt;
   return start ? new Date(start.getTime() + Math.max(0, day.unlockOffsetHours) * HOUR) : null;
-}
-
-function later(a: Date | null, b: Date | null): Date | null {
-  if (!a) return b;
-  if (!b) return a;
-  return a > b ? a : b;
 }
 
 function progressionLock(
@@ -200,16 +207,21 @@ export function computeDayStates(
   const beforeStart = Boolean(start) && now < start!;
   return ordered.map((day, index) => {
     const liveDay = isLiveDay(funnel, day);
+    // Progression applies to every module but the first (unless lockFirstModule); never to live days.
+    const followsProgression = (index > 0 || Boolean(funnel.lockFirstModule)) && !liveDay;
+    // Live now beats everything but "closed": a forced-on session is live even before the start.
     if (isLiveNow(funnel, day, now)) return { kind: "live", url: day.liveUrl || funnel.livestreamUrl };
-    if (beforeStart) {
-      const own = liveDay ? day.liveStartAt : funnel.progression === "scheduled" && index > 0 ? scheduledUnlock(day, start) : null;
-      return { kind: "locked", reason: "not_started", unlockAt: later(start, own) };
-    }
+    // A live session still to come counts down to ITS OWN time, even before the funnel start.
     if (liveDay && day.liveOverride === "auto" && day.liveStartAt && now < day.liveStartAt) {
       return { kind: "locked", reason: "live_upcoming", unlockAt: day.liveStartAt };
     }
-    // Day 1 is never progression-locked; live days follow their session times instead.
-    if (index > 0 && !liveDay) {
+    // Before the start nothing opens, except live sessions with a time: those follow only their
+    // session (once it has happened the module opens: replay or replay pending).
+    if (beforeStart && !(liveDay && day.liveStartAt)) {
+      const own = funnel.progression === "scheduled" && followsProgression ? scheduledUnlock(day, start) ?? start : start;
+      return { kind: "locked", reason: "not_started", unlockAt: own };
+    }
+    if (followsProgression) {
       const lock = progressionLock(funnel, day, ordered[index - 1], viewer, start, now, presentedKeys);
       if (lock) return lock;
     }
@@ -246,15 +258,50 @@ export function entryDecision(funnel: FunnelRules, days: readonly DayRules[], vi
   const liveIndex = states.findIndex((state) => state.kind === "live");
   if (liveIndex >= 0) return { kind: "day", position: ordered[liveIndex]!.position };
   const start = effectiveStart(funnel, viewer, now);
-  if (start && now < start && funnel.waitlistEnabled) return { kind: "waitlist", startAt: start };
+  // Once a live session has happened the funnel is underway: no more waitlist.
+  const underway = funnel.mode === "live" && states.some(isOpen);
+  if (funnel.waitlistEnabled && start && now < start && !underway) return { kind: "waitlist", startAt: start };
   if (funnel.mode === "live") {
+    let recent: DayRules | undefined;
     for (let index = ordered.length - 1; index >= 0; index -= 1) {
-      if (isOpen(states[index]!)) return { kind: "day", position: ordered[index]!.position };
+      if (isOpen(states[index]!)) {
+        recent = ordered[index];
+        break;
+      }
     }
     const next = nextSession(funnel, ordered, now);
-    if (next) return { kind: "day", position: next.position };
+    const rule = funnel.betweenSessions ?? "hybrid";
+    const zone = funnel.timeZone ?? DEFAULT_ZONE;
+    const pick =
+      rule === "recent" ? recent ?? next : rule === "next" ? next ?? recent : next && dayKey(next.liveStartAt!, zone) === dayKey(now, zone) ? next : recent ?? next;
+    if (pick) return { kind: "day", position: pick.position };
   }
   return { kind: "day", position: ordered[0]?.position ?? 1 };
+}
+
+export const DEFAULT_ZONE = "America/New_York";
+
+/** "2026-10-05": the calendar day of an instant in a time zone (DST-aware). */
+export function dayKey(date: Date, timeZone: string = DEFAULT_ZONE): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  }
+}
+
+/**
+ * For a live module still to come: the earliest EARLIER session (by start time)
+ * that is not over yet, live now or still ahead. While one exists the later
+ * module shows no countdown of its own; if that session is today, the page
+ * points people to it instead.
+ */
+export function earlierPendingSession(funnel: FunnelRules, days: readonly DayRules[], day: DayRules, now: Date): DayRules | undefined {
+  if (funnel.mode !== "live" || !day.liveStartAt) return undefined;
+  return days
+    .filter((other) => other.id !== day.id && other.isLive && other.liveStartAt && other.liveStartAt < day.liveStartAt! && other.liveOverride !== "off")
+    .filter((other) => isLiveNow(funnel, other, now) || (other.liveOverride === "auto" && liveWindow(other).end! > now))
+    .sort((a, b) => a.liveStartAt!.getTime() - b.liveStartAt!.getTime())[0];
 }
 
 /** The next live session that has not started (automatic schedule only). */

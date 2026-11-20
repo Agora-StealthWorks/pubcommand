@@ -317,7 +317,7 @@ export function designCss(input: Design | unknown, images: DesignImages = {}): s
     `.pcf-content a{color:${contentLink}}`,
     `.pcf-accent{color:var(--pcf-accent)}`,
     `.pcf-nav{${d.nav.bg ? `background:${d.nav.bg};` : ""}color:${navText}}`,
-    `.pcf-tile{width:min(var(--pcf-thumb-w),40vw)}`,
+    `.pcf-tile{width:var(--pcf-thumb-w)}@media (max-width:600px){.pcf-tile{width:min(var(--pcf-thumb-w),120px)}}`,
     `.pcf-thumb{border-radius:${THUMB_RADIUS[d.nav.thumbStyle]};overflow:hidden}`,
     d.nav.activeStyle === "ring"
       ? `.pcf-tile[aria-current="page"] .pcf-thumb{box-shadow:0 0 0 3px var(--pcf-accent)}`
