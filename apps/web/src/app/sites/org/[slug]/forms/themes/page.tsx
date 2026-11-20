@@ -3,9 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { deleteTheme, saveTheme } from "@/features/forms/actions";
-import { listThemes, previewTheme } from "@/features/forms/data";
+import { adminLogoSrc, listThemes, previewTheme } from "@/features/forms/data";
 import { formsAccess } from "@/features/forms/guard";
-import { FormHeader } from "@/features/forms/renderer";
+import { LiveThemePreview } from "@/features/forms/theme-preview";
 
 export default async function FormThemesPage({
   params,
@@ -23,7 +23,6 @@ export default async function FormThemesPage({
   const themes = await listThemes(ctx.resolved.id, ctx.brand.id);
   const editing = themes.find((theme) => theme.id === query.edit) ?? null;
   const showForm = canWrite && (editing || query.edit === "new" || themes.length === 0);
-  const preview = previewTheme(editing, ctx.brand.name);
 
   return (
     <div className="max-w-5xl">
@@ -62,10 +61,10 @@ export default async function FormThemesPage({
         {showForm ? (
           <div className="min-w-0 space-y-4">
             <div className="overflow-hidden rounded-xl border border-line">
-              <FormHeader theme={preview} />
-              <p className="bg-white px-4 py-2 text-xs text-muted">Header preview{editing ? "" : " (save to see your logo)"}. Without a logo, the brand name is shown.</p>
+              <LiveThemePreview formId="theme-form" brandName={ctx.brand.name} uploadedLogoSrc={editing?.logoFileId ? adminLogoSrc(editing) : null} initial={previewTheme(editing, ctx.brand.name)} />
+              <p className="bg-white px-4 py-2 text-xs text-muted">Live header preview: it updates as you edit. Without a logo, the brand name is shown.</p>
             </div>
-            <form action={saveTheme} encType="multipart/form-data" className="space-y-4 rounded-xl border border-line bg-white p-5">
+            <form id="theme-form" key={editing?.id ?? "new"} action={saveTheme} encType="multipart/form-data" className="space-y-4 rounded-xl border border-line bg-white p-5">
               {editing ? <input type="hidden" name="themeId" value={editing.id} /> : null}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
