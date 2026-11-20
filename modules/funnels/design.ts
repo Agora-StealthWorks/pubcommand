@@ -132,6 +132,41 @@ export const DEFAULT_DESIGN: Design = {
   footer: { bg: "#ffffff", text: "#4b5563", showLogo: false, logoAssetId: null, logoUrl: null, logoHeight: null, links: [] },
 };
 
+/**
+ * The look a NEW funnel starts with: the old Launch Funnels app's defaults
+ * (dark #222 header with the logo on the left and not clickable, white page,
+ * light grey navigation where every tile but the current one is faded, square
+ * thumbnails, green accent, 3px buttons). Stored on the funnel when it is
+ * created, so existing funnels, whose missing values fall back to
+ * DEFAULT_DESIGN, keep exactly the look they have today.
+ */
+export const NEW_FUNNEL_DESIGN: Design = {
+  header: { ...DEFAULT_DESIGN.header, bg: "#222222", logoAlign: "left", logoLink: "none", logoHeight: 44, dim: 0, paddingY: 14, width: "standard" },
+  page: { ...DEFAULT_DESIGN.page, bg: "#ffffff", text: "#2b2b2b", accent: "#7fbf6e", buttonText: "#ffffff", buttonRadius: 3, buttonStyle: "fill", font: "system" },
+  content: { ...DEFAULT_DESIGN.content, bg: "#ffffff", border: "#e3e3e3", borderWidth: 1, radius: 6 },
+  nav: { ...DEFAULT_DESIGN.nav, bg: "#f2f2f2", thumbWidth: 160, thumbStyle: "square", activeStyle: "ring", lockedStyle: "lock_dim", fade: "others" },
+  footer: { ...DEFAULT_DESIGN.footer, bg: "#ffffff", text: "#777777", showLogo: false },
+};
+
+/** The other new-funnel settings that follow the old app (colour columns outside the design JSON). */
+export const NEW_FUNNEL_COLUMNS = {
+  headerBg: "#222222",
+  pageBg: "#ffffff",
+  textColor: "#2b2b2b",
+  accentColor: "#7fbf6e",
+  logoHeight: 44,
+  waitlistBg: "#111827",
+  waitlistText: "#ffffff",
+  countdownBoxBg: "#ffffff",
+  countdownDigit: "#111827",
+  agendaBg: "#ffffff",
+  agendaText: "#1f2937",
+  hostsBg: "#f3f4f6",
+  hostsTitleColor: "#111827",
+  deadlineBarBg: "#e11d2a",
+  deadlineBarColor: "#ffffff",
+} as const;
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function obj(value: unknown): Record<string, unknown> {

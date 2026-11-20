@@ -5,6 +5,7 @@ import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { starterBlocks } from "../../../../../modules/funnels/blocks";
+import { NEW_FUNNEL_COLUMNS, NEW_FUNNEL_DESIGN } from "../../../../../modules/funnels/design";
 import { checkFunnel, isValidSlug, newUnlockKey, normalizeSlug } from "../../../../../modules/funnels/checks";
 import { DEADLINE_PAGES, DEADLINE_TARGETS, normalizeDeadlineButtonUrl, normalizeDeadlinePages } from "../../../../../modules/funnels/deadline";
 import { BETWEEN_SESSIONS, CLOSE_MODES, CTA_REVEALS, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, SITE_TYPES, TIMING_MODES } from "../../../../../modules/funnels/state";
@@ -61,6 +62,9 @@ export async function createFunnel(formData: FormData) {
       siteType,
       homeBlocks: siteType === "microsite" ? (JSON.parse(JSON.stringify(starterBlocks(name))) as Prisma.InputJsonValue) : [],
       formThemeId: themes[0]?.id ?? null,
+      // New funnels start with the old app's look; existing ones keep theirs.
+      design: JSON.parse(JSON.stringify(NEW_FUNNEL_DESIGN)) as Prisma.InputJsonValue,
+      ...NEW_FUNNEL_COLUMNS,
       companyName: ctx.brand.name,
       createdById: ctx.actorId,
     },

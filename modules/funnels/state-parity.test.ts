@@ -292,3 +292,17 @@ describe("stats report", () => {
     expect(report.daily).toEqual([{ date: "2026-10-12", views: 3, uniques: 2 }]);
   });
 });
+
+describe("new funnel design", () => {
+  it("starts new funnels with the old app's look and leaves the fallback for existing ones unchanged", async () => {
+    const { DEFAULT_DESIGN, NEW_FUNNEL_DESIGN, normalizeDesign } = await import("./design");
+    const stored = normalizeDesign(JSON.parse(JSON.stringify(NEW_FUNNEL_DESIGN)));
+    expect(stored).toEqual(NEW_FUNNEL_DESIGN);
+    expect(stored.header).toMatchObject({ logoAlign: "left", logoLink: "none", bg: "#222222" });
+    expect(stored.nav.fade).toBe("others");
+    // A funnel created before stores {}: it keeps today's computed look.
+    expect(normalizeDesign({})).toEqual(DEFAULT_DESIGN);
+    expect(DEFAULT_DESIGN.header).toMatchObject({ logoAlign: "center", logoLink: "home" });
+    expect(DEFAULT_DESIGN.nav.fade).toBe("locked");
+  });
+});
