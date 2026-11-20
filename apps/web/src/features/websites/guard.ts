@@ -10,6 +10,9 @@ export type WebsitesPermission = "websites.read" | "websites.write" | "websites.
 /** Cookie remembering which of the brand's sites the sub-menu pages work on. */
 export const SITE_COOKIE = "pc_web_site";
 
+/** Cookie that carries a new API key to the settings page once (2 minutes, that path only). */
+export const NEW_KEY_COOKIE = "pc_web_new_key";
+
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function allowed(ctx: { subject: AccessSubject; scope: AccessScope }, permissions: WebsitesPermission[]) {

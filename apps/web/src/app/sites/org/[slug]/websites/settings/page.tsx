@@ -3,10 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { menuToText, themeFrom } from "../../../../../../../../../modules/websites/content";
 import { Denied, Flash, PageHeader } from "@/components/ui";
-import { saveSettings } from "@/features/websites/actions";
+import { cookies } from "next/headers";
+import { generateApiKey, saveSettings } from "@/features/websites/actions";
+import { webhookSecret } from "@/features/websites/api";
 import { NoSite, SiteBar } from "@/features/websites/admin-ui";
 import { sitePublications } from "@/features/websites/data";
-import { websitesAccess } from "@/features/websites/guard";
+import { NEW_KEY_COOKIE, websitesAccess } from "@/features/websites/guard";
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -36,6 +38,8 @@ export default async function SettingsPage({ params, searchParams }: { params: P
   if (!site) return <NoSite />;
   const pubs = await sitePublications(ctx.resolved.id, ctx.brand.id);
   const theme = themeFrom(site.theme);
+  const newKey = (await cookies()).get(NEW_KEY_COOKIE)?.value;
+  const apiBase = `${ctx.request.origin}/api/websites/v1`;
   const logo = (id: string | null, label: string, field: string, hint: string, dark: boolean) => (
     <div>
       <Label htmlFor={field}>{label}</Label>
@@ -62,6 +66,13 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       <SiteBar sites={sites} site={site} back="/websites/settings" />
       <form action={saveSettings} className="space-y-5">
         <input type="hidden" name="siteId" value={site.id} />
+        <Section title="Separate site app" description="FreeMarketSociety.org runs as its own app (its own GitHub repo and Railway project) and reads everything from here. Put its address here so sign-in emails and publish refreshes go to it.">
+          <div>
+            <Label htmlFor="s-public-url">Site address</Label>
+            <Input id="s-public-url" name="publicUrl" defaultValue={site.publicUrl ?? ""} maxLength={300} placeholder="https://freemarketsociety.org" />
+          </div>
+        </Section>
+
         <Section title="Site">
           <div>
             <Label htmlFor="s-name">Site name</Label>
@@ -163,6 +174,31 @@ export default async function SettingsPage({ params, searchParams }: { params: P
           <Button>Save settings</Button>
         </div>
       </form>
+
+      <section id="api" className="mt-5 rounded-xl border border-line bg-white p-5">
+        <h2 className="font-semibold">API key for the site app</h2>
+        <p className="mt-1 text-sm text-muted">The site app sends this key with every request. Put these three values in its Railway variables. Only the key&apos;s fingerprint is kept here, so copy it when it is shown.</p>
+        {newKey ? (
+          <div className="mt-4 rounded-lg border border-[#abefc6] bg-[#ecfdf3] p-4 text-sm">
+            <p className="font-semibold text-[#067647]">Copy the key now. It is shown only this once.</p>
+            <dl className="mt-3 grid gap-2 font-mono text-xs [overflow-wrap:anywhere]">
+              <div><dt className="text-muted">PUBCOMMAND_API_URL</dt><dd>{apiBase}</dd></div>
+              <div><dt className="text-muted">PUBCOMMAND_SITE_KEY</dt><dd>{newKey}</dd></div>
+              <div><dt className="text-muted">PUBCOMMAND_WEBHOOK_SECRET</dt><dd>{webhookSecret(site)}</dd></div>
+            </dl>
+          </div>
+        ) : site.apiKeyPrefix ? (
+          <p className="mt-3 text-sm">
+            Current key: <span className="font-mono">{site.apiKeyPrefix}</span> · API address <span className="font-mono text-xs">{apiBase}</span>
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-muted">No key yet.</p>
+        )}
+        <form action={generateApiKey} className="mt-4">
+          <input type="hidden" name="siteId" value={site.id} />
+          <Button variant={site.apiKeyPrefix ? "secondary" : "primary"}>{site.apiKeyPrefix ? "Replace key (the old one stops working)" : "Make API key"}</Button>
+        </form>
+      </section>
     </div>
   );
 }

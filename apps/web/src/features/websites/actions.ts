@@ -4,6 +4,7 @@ import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { zonedLocalToUtc } from "../../../../../modules/miniblog/time";
 import {
   DEFAULT_THEME,
@@ -23,8 +24,9 @@ import {
 } from "../../../../../modules/websites/content";
 import { sanitizeRichText } from "@/components/rich-text-editor/sanitize";
 import { assetPath, orgTimezone, siteEditors, sitePublications } from "./data";
-import { SITE_COOKIE, UUID_RE, ownSite, websitesAction, websitesWriteCtx, withMessage, type WebsitesCtx } from "./guard";
+import { NEW_KEY_COOKIE, SITE_COOKIE, UUID_RE, ownSite, websitesAction, websitesWriteCtx, withMessage, type WebsitesCtx } from "./guard";
 import { storeAsset } from "./media";
+import { createApiKey, notifyExternalSite } from "./api";
 import { sendMemberSignInLink } from "./members";
 
 // ---------------------------------------------------------------------------
@@ -61,8 +63,10 @@ function audit(ctx: WebsitesCtx, action: string, targetType: string, targetId: s
 }
 
 /** Public pages are rendered per request; this drops any cached copy Next holds. */
-function refreshPublic(siteSlug: string) {
+function refreshPublic(siteSlug: string, external?: { organizationId: string; siteId: string }) {
   revalidatePath(`/sites/public/[slug]/w/${siteSlug}`, "layout");
+  // A site running as its own app is told to refresh its cached pages (after the response).
+  if (external) after(() => notifyExternalSite(external.organizationId, external.siteId));
 }
 
 async function uniqueSiteSlug(organizationId: string, wanted: string, exceptId?: string): Promise<string> {
@@ -163,13 +167,36 @@ export async function saveSettings(formData: FormData) {
       showTicker: bool(formData, "showTicker"),
       tickerText: text(formData, "tickerText", 2000),
       supportEmail: normalizeEmail(text(formData, "supportEmail", 254)),
+      publicUrl: siteUrlFrom(text(formData, "publicUrl", 300)),
       ...uploads,
     },
   });
   await audit(ctx, "websites.site.saved", "web_site", site.id, { status });
-  refreshPublic(site.slug);
+  refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
   if (slug !== site.slug) refreshPublic(slug);
   redirect(withMessage(back, "notice", status === "live" && site.status !== "live" ? "Saved. The website is live." : "Saved."));
+}
+
+/** "https://freemarketsociety.org" (no path); anything else is dropped. */
+function siteUrlFrom(value: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+    return url.protocol === "https:" || url.hostname === "localhost" || url.hostname.endsWith(".localhost") ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Make (or replace) the key the separate site app uses to read from PubCommand. */
+export async function generateApiKey(formData: FormData) {
+  const back = "/websites/settings";
+  const ctx = await websitesAction(back, "websites.publish");
+  const site = await ownSite(ctx, text(formData, "siteId", 40), back);
+  const { key, prefix } = await createApiKey(ctx.resolved.id, site.id);
+  await audit(ctx, site.apiKeyHash ? "websites.api_key.replaced" : "websites.api_key.created", "web_site", site.id, { prefix });
+  (await cookies()).set(NEW_KEY_COOKIE, key, { path: "/websites/settings", httpOnly: true, sameSite: "strict", secure: ctx.request.origin.startsWith("https://"), maxAge: 120 });
+  redirect(withMessage(`${back}#api`, "notice", site.apiKeyHash ? "New key made. The old key stopped working." : "Key made."));
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +290,7 @@ export async function savePost(formData: FormData) {
   }
 
   await audit(ctx, existing ? "websites.post.saved" : "websites.post.created", "web_post", id!, { status: next.status, intent });
-  refreshPublic(site.slug);
+  refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
   const message =
     next.status === "published" ? (existing?.status === "published" ? "Updated." : "Published.") : next.status === "scheduled" ? "Scheduled." : next.status === "pending" ? "Submitted for review." : "Draft saved.";
   redirect(withMessage(`/websites/posts/${id}`, "notice", message));
@@ -286,7 +313,7 @@ export async function trashPost(formData: FormData) {
     await db.webPost.updateMany({ where: { id: post.id }, data: { deletedAt: restore ? null : new Date(), ...(restore ? {} : { featured: false }) } });
   }
   await audit(ctx, restore ? "websites.post.restored" : bool(formData, "forever") ? "websites.post.deleted" : "websites.post.trashed", "web_post", post.id);
-  refreshPublic(site.slug);
+  refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
   redirect(withMessage(back, "notice", restore ? "Restored." : bool(formData, "forever") ? "Deleted for good." : "Moved to the trash."));
 }
 
@@ -354,7 +381,7 @@ export async function saveTerm(formData: FormData) {
   if (bool(formData, "delete") && UUID_RE.test(termId)) {
     await db.webTerm.deleteMany({ where: { id: termId, siteId: site.id } });
     await audit(ctx, "websites.term.deleted", "web_term", termId);
-    refreshPublic(site.slug);
+    refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
     redirect(withMessage(back, "notice", "Deleted."));
   }
   const kind = text(formData, "kind", 10) === "tag" ? "tag" : "category";
@@ -367,7 +394,7 @@ export async function saveTerm(formData: FormData) {
   if (UUID_RE.test(termId)) await db.webTerm.updateMany({ where: { id: termId, siteId: site.id }, data });
   else await db.webTerm.create({ data: { ...data, organizationId: ctx.resolved.id, siteId: site.id, kind } });
   await audit(ctx, "websites.term.saved", "web_term", termId || slug);
-  refreshPublic(site.slug);
+  refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
   redirect(withMessage(back, "notice", "Saved."));
 }
 

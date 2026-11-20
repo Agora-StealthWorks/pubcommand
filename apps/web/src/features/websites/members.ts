@@ -29,7 +29,9 @@ function newToken(): string {
  * The site's own address for links in emails: its live custom domain if one
  * points at it, else the org host path (/w/<site>).
  */
-export async function siteBaseUrl(organizationId: string, site: Pick<SiteRow, "slug">, fallbackOrigin: string): Promise<string> {
+export async function siteBaseUrl(organizationId: string, site: Pick<SiteRow, "slug" | "publicUrl">, fallbackOrigin: string): Promise<string> {
+  // A site that runs as its own app (separate repo/Railway project) has its address in Site settings.
+  if (site.publicUrl) return site.publicUrl.replace(/\/+$/, "");
   const own = sitePath(site.slug);
   const domain = await tenantDb(organizationId).customDomain.findFirst({
     where: { status: "ACTIVE", redirectToHost: null, targetPath: own },
@@ -96,7 +98,11 @@ export type SignedInMember = { id: string; email: string; name: string; access: 
 
 /** The member signed in on this site (from the cookie), with what they can read today. */
 export async function readMember(organizationId: string, siteId: string, now = new Date()): Promise<SignedInMember | null> {
-  const value = (await cookies()).get(memberCookieName(siteId))?.value;
+  return readMemberByToken(organizationId, siteId, (await cookies()).get(memberCookieName(siteId))?.value, now);
+}
+
+/** The member for a session token (the separate site app sends it with each API call). */
+export async function readMemberByToken(organizationId: string, siteId: string, value: string | null | undefined, now = new Date()): Promise<SignedInMember | null> {
   if (!value || !/^[A-Za-z0-9_-]{20,100}$/.test(value)) return null;
   const db = tenantDb(organizationId);
   const session = await db.webMemberSession.findFirst({ where: { tokenHash: hashToken(value) } });

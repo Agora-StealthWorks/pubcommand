@@ -19,6 +19,18 @@ Given to the `owner` and `admin` roles by migration `20261119120000_websites`; p
 
 Nothing about publications is copied. Posts (`web_posts.publication_id`) and products (`web_products.publication_ids`) hold `calendar_publications` ids. Free vs paid uses the Publication Setup funnel rule (`funnelGroup()`: type "Free newsletter" or tier "Free / lead gen" = free). Publication logos (dark-background slot), editors, bios and photos are read from Publication Setup and served by the site's own routes. Editor emails are never shown.
 
+## Running the site as its own app (FreeMarketSociety.org)
+
+FreeMarketSociety.org runs as a separate Next.js app (its own GitHub repo and Railway project) with no database. PubCommand stays the admin; the site reads everything through the **Website API**:
+
+- Site settings → **Site address** (`web_sites.public_url`): sign-in emails link there, and publish refreshes are sent there.
+- Site settings → **Make API key**: `pcw_<orgIdHex>_<siteIdHex>_<secret>`; only its SHA-256 and a short fingerprint are stored, the key is shown once. Replacing it stops the old one.
+- `GET/POST /api/websites/v1/…` (`app/api/websites/v1/[...path]/route.ts`), `Authorization: Bearer <key>`, reader session in `x-member-session`:
+  `site` · `posts?publication=&publications=&term=&type=&access=&featured=1&exclude=&take=&skip=` · `posts/<slug>` (full text or teaser + decision) · `terms/<category|tag>/<slug>` · `me` · `media/<id>`, `logo?bg=`, `pub-logo/<id>?bg=`, `editor-photo/<id>` · POST `subscribe`, `auth/link`, `auth/verify`, `auth/sign-out`.
+- Every save that changes the public site (`refreshPublic` in `actions.ts`) also POSTs `<site address>/api/revalidate` after the response, signed with `x-pubcommand-signature` = HMAC-SHA256(body) using the webhook secret shown with the key (derived from `AUTH_SECRET`, the site id and the key, so it changes with the key).
+
+The `/w/<site>` pages below keep working as a preview of the same content.
+
 ## Public URLs
 
 On the org host: `/w/<site>/…` (middleware rewrites to `app/sites/public/[slug]/w/[siteSlug]/…`). On the site's own domain (Settings → Domains, provider "Websites") the root is the site, so URLs are clean (`freemarketsociety.org/my`). `LoadedSite.base` is the link prefix: `/w/<site>` on the org host or a domain pointing elsewhere (e.g. a members subdomain), `""` on a domain whose target is the site root.
