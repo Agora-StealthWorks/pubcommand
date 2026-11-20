@@ -315,3 +315,16 @@
   .ws .gate .pb{justify-content:center}
 .ws .gate h3{font-size:23px}
 }
+
+/* Homepage hero banner */
+.ws .herob{position:relative;background:var(--navy);color:var(--cream);overflow:hidden}
+.ws .herob .bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.35}
+.ws .herob::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--navy) 0%,color-mix(in srgb,var(--navy) 70%,transparent) 60%,transparent 100%);pointer-events:none}
+.ws .herob .wrap{position:relative;z-index:1;padding-top:88px;padding-bottom:96px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:48px;align-items:center}
+.ws .herob h1{font-family:var(--ws-serif),serif;font-weight:700;font-size:58px;line-height:1.05;color:#fff;margin:14px 0 18px}
+.ws .herob p.lead{font-size:19px;line-height:1.55;color:#d3d8e0;margin:0 0 28px;max-width:620px}
+.ws .herob .acts{display:flex;gap:12px;flex-wrap:wrap}
+.ws .herob .signup-card{box-shadow:0 20px 50px rgba(0,0,0,.35)}
+@media(max-width:820px){.ws .herob .wrap{grid-template-columns:1fr;padding-top:44px;padding-bottom:52px;gap:28px}.ws .herob h1{font-size:36px}.ws .herob p.lead{font-size:16px}}
+.ws .signup-card .pb .nm{color:var(--navy)}
+.ws .signup-card .pb .nm small{color:var(--dgold)}

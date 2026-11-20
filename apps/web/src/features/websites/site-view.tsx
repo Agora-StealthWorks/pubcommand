@@ -3,6 +3,7 @@ import type { Publication } from "@/features/pubsetup/read";
 import { contentTypeLabel, menuHref } from "../../../../../modules/websites/content";
 import type { CardPost, LoadedSite } from "./public";
 import type { SignedInMember } from "./members";
+import { formatPrice, tickerQuotes } from "./ticker";
 
 /** Theme colors and logo size as CSS variables on the .ws root. */
 export function themeStyle(loaded: LoadedSite): CSSProperties {
@@ -127,19 +128,19 @@ export function FormNote({ status }: { status?: string }) {
   return null;
 }
 
-function Ticker({ text }: { text: string }) {
-  const items = text
-    .split(/\r?\n/)
-    .map((line) => line.split("|").map((part) => part.trim()))
-    .filter((parts) => parts[0] && parts[1])
-    .slice(0, 12);
-  if (!items.length) return null;
+/** Live strip from Massive (cached 5 minutes); hidden when nothing can be priced. */
+async function Ticker({ text }: { text: string }) {
+  const quotes = await tickerQuotes(text);
+  if (!quotes.length) return null;
   return (
     <div className="ticker" aria-label="Markets">
       <div className="wrap">
-        {items.map(([label, value, change], index) => (
-          <span key={index}>
-            <b>{label}</b> {value} {change ? <span className={change.startsWith("-") || change.startsWith("−") ? "dn" : "up"}>{change.startsWith("-") || change.startsWith("−") ? "▼" : "▲"} {change.replace(/^[+\-−]/, "")}</span> : null}
+        {quotes.map((quote) => (
+          <span key={quote.symbol}>
+            <b>{quote.label}</b> {formatPrice(quote.price, quote.symbol)}{" "}
+            <span className={quote.change < 0 ? "dn" : "up"}>
+              {quote.change < 0 ? "▼" : "▲"} {Math.abs(quote.changePct).toFixed(2)}%
+            </span>
           </span>
         ))}
       </div>
