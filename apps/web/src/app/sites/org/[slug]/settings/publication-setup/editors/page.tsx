@@ -22,21 +22,21 @@ export default async function EditorsPage({ params, searchParams }: { params: Pr
       <Flash error={query.error} notice={query.notice} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 text-sm">
-          <Link href="/publication-setup/editors" className={`inline-flex min-h-11 items-center rounded-md px-3 font-medium ${showArchived ? "text-muted hover:bg-white" : "bg-white text-ink shadow-sm"}`}>
+          <Link href="/settings/publication-setup/editors" className={`inline-flex min-h-11 items-center rounded-md px-3 font-medium ${showArchived ? "text-muted hover:bg-white" : "bg-white text-ink shadow-sm"}`}>
             Current · {all.length - archivedCount}
           </Link>
-          <Link href="/publication-setup/editors?show=archived" className={`inline-flex min-h-11 items-center rounded-md px-3 font-medium ${showArchived ? "bg-white text-ink shadow-sm" : "text-muted hover:bg-white"}`}>
+          <Link href="/settings/publication-setup/editors?show=archived" className={`inline-flex min-h-11 items-center rounded-md px-3 font-medium ${showArchived ? "bg-white text-ink shadow-sm" : "text-muted hover:bg-white"}`}>
             Archived · {archivedCount}
           </Link>
         </div>
-        <Link href="/publication-setup/editors/new" className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
+        <Link href="/settings/publication-setup/editors/new" className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
           + Add editor
         </Link>
       </div>
       <ul className="grid gap-3 md:grid-cols-2">
         {editors.map((editor) => (
           <li key={editor.id} className="min-w-0">
-            <Link href={`/publication-setup/editors/${editor.id}`} className="flex h-full min-w-0 gap-3 rounded-xl border border-line bg-white p-4 hover:border-accent">
+            <Link href={`/settings/publication-setup/editors/${editor.id}`} className="flex h-full min-w-0 gap-3 rounded-xl border border-line bg-white p-4 hover:border-accent">
               {editor.hasPhoto ? (
                 <img src={imageUrl("editor-photo", editor.id, editor.updatedAt)} alt="" className="h-12 w-12 shrink-0 rounded-full border border-line object-cover" />
               ) : (

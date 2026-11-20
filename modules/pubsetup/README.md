@@ -1,6 +1,6 @@
 # Publication Setup
 
-Route `/publication-setup` (module id and slug `pubsetup`; `/pubsetup` redirects). **Admins only.**
+Route `/settings/publication-setup` (module id and slug `pubsetup`; `/pubsetup` redirects). **Admins only.**
 
 The one place a publisher records each publication, its editors and its branding. Every other app reads it; the Brain learns from it; the wiki only displays it.
 
@@ -26,7 +26,7 @@ Rules:
 - `active` stays the calendar's "show in pickers" flag: it is `false` for `status = retired` and for archived rows.
 - Archive = `deleted_at` (soft delete). Archived publications drop out of pickers but old issues and stats keep them; restore puts them back. Nothing is hard-deleted.
 - Changing a code updates `calendar_issues.publication_code` so issues stay attached (as the calendar did).
-- Images (logos, cover, editor photo, brand logos) are `Bytes` columns. `/publication-setup/image/<kind>/<id>` serves them to admins; other apps call `getImage()` and serve from their own route.
+- Images (logos, cover, editor photo, brand logos) are `Bytes` columns. `/settings/publication-setup/image/<kind>/<id>` serves them to admins; other apps call `getImage()` and serve from their own route.
 - Email branding (email header image, default sender name/email, email footer) was removed from the app on 2026-11-17. Its columns stay (additive-only policy) but nothing reads or writes them. Nothing outside Publication Setup ever read them (funnels, Mini-Blog, forms and Calendar CUB emails have their own settings).
 
 ## Logos: two slots
@@ -103,7 +103,7 @@ getPickerOptions(orgId, brandId): Promise<{ publications: { code, name }[]; edit
 
 Used today by Promo Analyzer (publisher/product/guru pickers) and Packager (publication block in prompts). `Editor.email` is internal: never show it on public or wiki pages.
 
-## Import (`/publication-setup/import`)
+## Import (`/settings/publication-setup/import`)
 
 Admins can bring publications, editors and images in from a JSON file. The rules live
 in `import.ts` (pure, tested in `import.test.ts`):

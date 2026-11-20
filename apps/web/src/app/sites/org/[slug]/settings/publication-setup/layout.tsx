@@ -10,7 +10,7 @@ export default async function PublicationSetupLayout({ children, params }: { chi
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
   const { pathname } = await currentRequest();
-  const active = pathname.startsWith("/publication-setup/editors") ? "editors" : pathname.startsWith("/publication-setup/brand") ? "brand" : pathname.startsWith("/publication-setup/import") ? "import" : "publications";
+  const active = pathname.startsWith("/settings/publication-setup/editors") ? "editors" : pathname.startsWith("/settings/publication-setup/brand") ? "brand" : pathname.startsWith("/settings/publication-setup/import") ? "import" : "publications";
   return (
     <div className="min-w-0">
       <div className="mb-4">

@@ -75,7 +75,7 @@ export default async function WikiPublicationPage({ params }: { params: Promise<
             <ExternalLink href={pub.signupUrl}>Sign-up page</ExternalLink>
             <ExternalLink href={pub.archiveUrl}>Archive</ExternalLink>
             {can.editSetup ? (
-              <Link href={`/publication-setup/publications/${pub.id}`} className="text-accent hover:underline">
+              <Link href={`/settings/publication-setup/publications/${pub.id}`} className="text-accent hover:underline">
                 Edit in Publication Setup
               </Link>
             ) : null}

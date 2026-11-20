@@ -48,7 +48,7 @@ export default async function PublicationPage({ params, searchParams }: { params
 
   return (
     <div className="space-y-5">
-      <Link href={pub.archived ? "/publication-setup?show=archived" : "/publication-setup"} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
+      <Link href={pub.archived ? "/settings/publication-setup?show=archived" : "/settings/publication-setup"} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
         ← Publications
       </Link>
       <Flash error={query.error} notice={query.notice} />
@@ -67,10 +67,10 @@ export default async function PublicationPage({ params, searchParams }: { params
           </p>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Link href={`/publication-setup/publications/${pub.id}/edit`} className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
+          <Link href={`/settings/publication-setup/publications/${pub.id}/edit`} className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
             Edit details
           </Link>
-          <Link href={`/publication-setup/publications/${pub.id}/branding`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
+          <Link href={`/settings/publication-setup/publications/${pub.id}/branding`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
             Branding
           </Link>
           <form action={setPublicationArchived}>
@@ -151,7 +151,7 @@ export default async function PublicationPage({ params, searchParams }: { params
           {!pub.description && !pub.positioning && !pub.audience ? (
             <p className="text-sm text-muted">
               Add a description, positioning and audience under{" "}
-              <Link href={`/publication-setup/publications/${pub.id}/edit`} className="text-accent hover:underline">
+              <Link href={`/settings/publication-setup/publications/${pub.id}/edit`} className="text-accent hover:underline">
                 Edit details
               </Link>
               : AI drafts and the Brain use them.
@@ -165,7 +165,7 @@ export default async function PublicationPage({ params, searchParams }: { params
             <ul className="divide-y divide-line">
               {pub.editors.map((editor) => (
                 <li key={editor.id} className="py-3">
-                  <Link href={`/publication-setup/editors/${editor.id}`} className="font-medium [overflow-wrap:anywhere] hover:text-accent">
+                  <Link href={`/settings/publication-setup/editors/${editor.id}`} className="font-medium [overflow-wrap:anywhere] hover:text-accent">
                     {editor.name}
                   </Link>
                   {editor.title ? <span className="block text-xs text-muted">{editor.title}</span> : null}
@@ -211,7 +211,7 @@ export default async function PublicationPage({ params, searchParams }: { params
                 </div>
               </form>
             ) : null}
-            <Link href="/publication-setup/editors/new" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent">
+            <Link href="/settings/publication-setup/editors/new" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent">
               + New editor
             </Link>
           </section>
@@ -220,7 +220,7 @@ export default async function PublicationPage({ params, searchParams }: { params
             <section className="rounded-xl border border-line bg-white p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h3 className="font-semibold">Branding</h3>
-                <Link href={`/publication-setup/publications/${pub.id}/branding`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
+                <Link href={`/settings/publication-setup/publications/${pub.id}/branding`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
                   Edit
                 </Link>
               </div>

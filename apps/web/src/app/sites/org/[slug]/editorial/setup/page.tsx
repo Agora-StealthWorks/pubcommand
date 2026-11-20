@@ -65,7 +65,7 @@ export default async function SetupPage({ params, searchParams }: { params: Prom
             Each newsletter or list {ctx.brand.name} mails. The code is how send stats find the right issues. Publications, their editors and branding are managed in Publication Setup.
           </p>
           {canManage ? (
-            <Link href="/publication-setup" className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
+            <Link href="/settings/publication-setup" className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
               Manage in Publication Setup →
             </Link>
           ) : (
@@ -80,7 +80,7 @@ export default async function SetupPage({ params, searchParams }: { params: Prom
               <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] font-medium">{pub.name}</span>
               {!pub.active ? <span className="text-xs text-muted">Retired</span> : null}
               {canManage ? (
-                <Link href={`/publication-setup/publications/${pub.id}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
+                <Link href={`/settings/publication-setup/publications/${pub.id}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
                   Edit
                 </Link>
               ) : null}

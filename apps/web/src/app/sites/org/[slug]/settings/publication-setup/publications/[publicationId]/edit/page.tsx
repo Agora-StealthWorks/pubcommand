@@ -15,7 +15,7 @@ export default async function EditPublicationPage({ params, searchParams }: { pa
   if (!pub || pub.id !== publicationId) notFound();
   return (
     <div>
-      <Link href={`/publication-setup/publications/${pub.id}`} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
+      <Link href={`/settings/publication-setup/publications/${pub.id}`} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
         ← {pub.name}
       </Link>
       <h2 className="mb-4 text-lg font-semibold">Edit {pub.name}</h2>

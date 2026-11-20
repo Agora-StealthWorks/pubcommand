@@ -5,7 +5,7 @@ import { pubsetupPage } from "@/features/pubsetup/guard";
 import { getPublications } from "@/features/pubsetup/read";
 import { PubChip, PubLogoTile, StatusBadge } from "@/features/pubsetup/ui";
 import { EDITOR_ROLE_LABELS } from "@/features/pubsetup/module";
-import { groupByFunnel } from "../../../../../../../../modules/pubsetup/groups";
+import { groupByFunnel } from "../../../../../../../../../modules/pubsetup/groups";
 
 export default async function PublicationsPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string; show?: string }> }) {
   const { slug } = await params;
@@ -25,14 +25,14 @@ export default async function PublicationsPage({ params, searchParams }: { param
       <Flash error={query.error} notice={query.notice} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 text-sm">
-          <Link href="/publication-setup" className={`inline-flex min-h-11 items-center rounded-md px-3 font-medium ${showArchived ? "text-muted hover:bg-white" : "bg-white text-ink shadow-sm"}`}>
+          <Link href="/settings/publication-setup" className={`inline-flex min-h-11 items-center rounded-md px-3 font-medium ${showArchived ? "text-muted hover:bg-white" : "bg-white text-ink shadow-sm"}`}>
             Current · {all.length - archivedCount}
           </Link>
-          <Link href="/publication-setup?show=archived" className={`inline-flex min-h-11 items-center rounded-md px-3 font-medium ${showArchived ? "bg-white text-ink shadow-sm" : "text-muted hover:bg-white"}`}>
+          <Link href="/settings/publication-setup?show=archived" className={`inline-flex min-h-11 items-center rounded-md px-3 font-medium ${showArchived ? "bg-white text-ink shadow-sm" : "text-muted hover:bg-white"}`}>
             Archived · {archivedCount}
           </Link>
         </div>
-        <Link href="/publication-setup/publications/new" className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
+        <Link href="/settings/publication-setup/publications/new" className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
           + Add publication
         </Link>
       </div>
@@ -47,7 +47,7 @@ export default async function PublicationsPage({ params, searchParams }: { param
               const lead = pub.editors.find((e) => e.role === "lead") ?? pub.editors[0];
               return (
                 <li key={pub.id} className="min-w-0">
-                  <Link href={`/publication-setup/publications/${pub.id}`} className="flex h-full min-w-0 gap-3 rounded-xl border border-line bg-white p-4 hover:border-accent">
+                  <Link href={`/settings/publication-setup/publications/${pub.id}`} className="flex h-full min-w-0 gap-3 rounded-xl border border-line bg-white p-4 hover:border-accent">
                     <PubLogoTile pub={pub} />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2">

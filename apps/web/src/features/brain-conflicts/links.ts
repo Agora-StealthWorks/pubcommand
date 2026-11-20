@@ -8,7 +8,7 @@ import { siteUrl } from "@/lib/request";
  * not members open it through the existing impersonation flow.
  */
 export async function setupUrl(input: { organizationSlug: string; kind: string; id: string }): Promise<string> {
-  const path = input.kind === "editor" ? `/publication-setup/editors/${input.id}` : `/publication-setup/publications/${input.id}`;
+  const path = input.kind === "editor" ? `/settings/publication-setup/editors/${input.id}` : `/settings/publication-setup/publications/${input.id}`;
   return siteUrl({ kind: "org", slug: input.organizationSlug }, path);
 }
 

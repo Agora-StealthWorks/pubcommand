@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import { readStaff, rootDomain } from "@/lib/auth";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
-import { buildSiteUrl } from "@pubcommand/core";
+import { buildSiteUrl, can } from "@pubcommand/core";
+import { canManagePublications } from "@/features/pubsetup/module";
 
+const PUBLICATIONS_TAB = { href: "/settings/publication-setup", label: "Publications" };
 const TABS = [
   { href: "/settings", label: "General" },
   { href: "/settings/users", label: "Users" },
@@ -30,12 +32,21 @@ export default async function SettingsLayout({
   const consoleHref = staff
     ? buildSiteUrl({ rootDomain: rootDomain(), requestHost: request.host, site: { kind: "admin" }, pathname: "/" })
     : null;
+  const scope = ctx.scope;
+  const canSettings = can(ctx.subject, "settings.manage", scope);
+  const canPublications = ctx.subject.entitledModuleIds.includes("pubsetup") && canManagePublications(ctx.subject, scope);
+  // Publications sits right after Brands. People who can only manage publications see just that tab.
+  const tabs = [
+    ...(canSettings ? TABS.slice(0, 4) : []),
+    ...(canPublications ? [PUBLICATIONS_TAB] : []),
+    ...(canSettings ? TABS.slice(4) : []),
+  ];
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-line">
         <nav className="-mb-px flex flex-wrap gap-1" aria-label="Settings">
-          {TABS.map((tab) => {
-            const active = request.pathname === tab.href;
+          {tabs.map((tab) => {
+            const active = tab.href === "/settings" ? request.pathname === tab.href : request.pathname === tab.href || request.pathname.startsWith(`${tab.href}/`);
             return (
               <Link
                 key={tab.href}

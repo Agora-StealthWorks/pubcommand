@@ -15,7 +15,7 @@ export default async function EditEditorPage({ params, searchParams }: { params:
   if (!editor || editor.id !== editorId) notFound();
   return (
     <div>
-      <Link href={`/publication-setup/editors/${editor.id}`} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
+      <Link href={`/settings/publication-setup/editors/${editor.id}`} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
         ← {editor.name}
       </Link>
       <h2 className="mb-4 text-lg font-semibold">Edit {editor.name}</h2>

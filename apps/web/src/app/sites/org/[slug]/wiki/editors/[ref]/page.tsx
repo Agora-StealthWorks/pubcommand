@@ -41,7 +41,7 @@ export default async function WikiEditorPage({ params }: { params: Promise<{ slu
               </ExternalLink>
             ))}
             {can.editSetup ? (
-              <Link href={`/publication-setup/editors/${editor.id}`} className="text-accent hover:underline">
+              <Link href={`/settings/publication-setup/editors/${editor.id}`} className="text-accent hover:underline">
                 Edit in Publication Setup
               </Link>
             ) : null}

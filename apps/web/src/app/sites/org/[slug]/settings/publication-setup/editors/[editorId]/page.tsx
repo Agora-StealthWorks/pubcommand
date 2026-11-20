@@ -23,7 +23,7 @@ export default async function EditorPage({ params, searchParams }: { params: Pro
 
   return (
     <div className="space-y-5">
-      <Link href={editor.archived ? "/publication-setup/editors?show=archived" : "/publication-setup/editors"} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
+      <Link href={editor.archived ? "/settings/publication-setup/editors?show=archived" : "/settings/publication-setup/editors"} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
         ← Editors
       </Link>
       <Flash error={query.error} notice={query.notice} />
@@ -44,7 +44,7 @@ export default async function EditorPage({ params, searchParams }: { params: Pro
           <p className="mt-1 text-xs text-muted">URL name: {editor.slug}</p>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Link href={`/publication-setup/editors/${editor.id}/edit`} className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
+          <Link href={`/settings/publication-setup/editors/${editor.id}/edit`} className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">
             Edit
           </Link>
           <form action={setEditorArchived}>
@@ -87,7 +87,7 @@ export default async function EditorPage({ params, searchParams }: { params: Pro
           <ul className="divide-y divide-line">
             {editor.publications.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <Link href={`/publication-setup/publications/${p.id}`} className="min-w-0 font-medium [overflow-wrap:anywhere] hover:text-accent">
+                <Link href={`/settings/publication-setup/publications/${p.id}`} className="min-w-0 font-medium [overflow-wrap:anywhere] hover:text-accent">
                   {p.name} <span className="text-xs text-muted">({p.code})</span>
                   <span className="block text-xs font-normal text-muted">{EDITOR_ROLE_LABELS[p.role] ?? p.role}</span>
                 </Link>

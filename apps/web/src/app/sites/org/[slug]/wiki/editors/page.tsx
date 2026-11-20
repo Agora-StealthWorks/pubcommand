@@ -33,7 +33,7 @@ export default async function WikiEditorsPage({ params, searchParams }: { params
           <span />
         )}
         {can.editSetup ? (
-          <Link href="/publication-setup/editors" className="inline-flex min-h-11 items-center text-accent hover:underline">
+          <Link href="/settings/publication-setup/editors" className="inline-flex min-h-11 items-center text-accent hover:underline">
             Edit in Publication Setup
           </Link>
         ) : null}

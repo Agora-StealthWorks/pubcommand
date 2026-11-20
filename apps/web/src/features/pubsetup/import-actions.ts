@@ -9,7 +9,7 @@ import { classifyLogo } from "./logo-tone";
 import { pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
 import { refreshEditor, refreshPublication } from "./teach";
 
-const BACK = "/publication-setup/import";
+const BACK = "/settings/publication-setup/import";
 const MAX_FILE_BYTES = 40 * 1024 * 1024;
 
 export type ImportSummaryRow = { kind: "publication" | "editor"; name: string; code: string | null; action: "create" | "fill" | "same"; detail: string };
@@ -228,5 +228,5 @@ export async function commitImport(formData: FormData) {
   });
 
   const parts = [`${plan.counts.create} added`, `${plan.counts.fill} filled in`, `${linked} editor link${linked === 1 ? "" : "s"}`];
-  redirect(withMessage("/publication-setup", "notice", `Import done: ${parts.join(", ")}.`));
+  redirect(withMessage("/settings/publication-setup", "notice", `Import done: ${parts.join(", ")}.`));
 }

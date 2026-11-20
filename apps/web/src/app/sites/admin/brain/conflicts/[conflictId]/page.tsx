@@ -57,7 +57,7 @@ export default async function ConflictPage({ params, searchParams }: { params: P
   const context = note && where ? { before: note.body.slice(Math.max(0, where.start - 220), where.start), quote: note.body.slice(where.start, where.end), after: note.body.slice(where.end, where.end + 220) } : null;
   const open = row.status === "OPEN";
   const ai = aiConfigured();
-  const setupPath = row.entityKind === "editor" ? `/publication-setup/editors/${row.entityId}` : `/publication-setup/publications/${row.entityId}`;
+  const setupPath = row.entityKind === "editor" ? `/settings/publication-setup/editors/${row.entityId}` : `/settings/publication-setup/publications/${row.entityId}`;
   const brandName = names.brands.get(row.entityBrandId)?.name ?? "the brand";
 
   return (

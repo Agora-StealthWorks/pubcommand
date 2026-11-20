@@ -133,7 +133,7 @@ export function ImageField({ name, label, src, hint, round }: { name: string; la
 }
 
 export function imageUrl(kind: string, id: string, version: Date | string | number): string {
-  return `/publication-setup/image/${kind}/${id}?v=${encodeURIComponent(version instanceof Date ? version.getTime() : String(version))}`;
+  return `/settings/publication-setup/image/${kind}/${id}?v=${encodeURIComponent(version instanceof Date ? version.getTime() : String(version))}`;
 }
 
 /** The admin URL of a publication's best logo for a background (see logoFor), or null. */
@@ -173,10 +173,10 @@ export function StatusBadge({ status, archived }: { status: string; archived?: b
 
 export function SubNav({ active }: { active: "publications" | "editors" | "brand" | "import" }) {
   const tabs = [
-    ["publications", "/publication-setup", "Publications"],
-    ["editors", "/publication-setup/editors", "Editors"],
-    ["brand", "/publication-setup/brand", "Brand defaults"],
-    ["import", "/publication-setup/import", "Import"],
+    ["publications", "/settings/publication-setup", "Publications"],
+    ["editors", "/settings/publication-setup/editors", "Editors"],
+    ["brand", "/settings/publication-setup/brand", "Brand defaults"],
+    ["import", "/settings/publication-setup/import", "Import"],
   ] as const;
   return (
     <nav className="-mx-1 mb-5 flex gap-1 overflow-x-auto border-b border-line" aria-label="Publication Setup sections">

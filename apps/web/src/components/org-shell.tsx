@@ -2,6 +2,7 @@ import type { AccessSubject } from "@pubcommand/core";
 import { brandProfile, can } from "@pubcommand/core";
 import Link from "next/link";
 import { appForPath, CATEGORY_ORDER, visibleApps } from "@/lib/apps";
+import { canManagePublications } from "@/features/pubsetup/module";
 import { stopImpersonation } from "@/server/platform-actions";
 import { AppFrame } from "./app-frame";
 import { BrandSwitcher } from "./brand-switcher";
@@ -37,6 +38,10 @@ export function OrgShell({
   const current = appForPath(apps, pathname);
   const inSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const canSettings = can(subject, "settings.manage", scope);
+  // Publication Setup lives under Settings; publication admins without settings.manage land straight on it.
+  const canPublications = subject.entitledModuleIds.includes("pubsetup") && canManagePublications(subject, scope);
+  const settingsHref = canSettings ? "/settings" : "/settings/publication-setup";
+  const showSettings = canSettings || canPublications;
   const groups = CATEGORY_ORDER.map((category) => ({ category, apps: apps.filter((app) => app.category === category) })).filter(
     (group) => group.apps.length > 0,
   );
@@ -75,8 +80,8 @@ export function OrgShell({
         ))}
       </nav>
       <div className="border-t border-line px-2 py-3">
-        {canSettings ? (
-          <Link className={navClass(inSettings)} href="/settings">
+        {showSettings ? (
+          <Link className={navClass(inSettings)} href={settingsHref}>
             <span aria-hidden className="w-5 text-center">
               ⚙️
             </span>
@@ -122,7 +127,8 @@ export function OrgShell({
         items={[
           { label: "Dashboard", href: "/" },
           ...apps.map((app) => ({ label: app.name, href: app.href })),
-          ...(canSettings ? [{ label: "Settings", href: "/settings" }] : []),
+          ...(showSettings ? [{ label: "Settings", href: settingsHref }] : []),
+          ...(canPublications ? [{ label: "Publication Setup", href: "/settings/publication-setup" }] : []),
         ]}
       />
     </div>

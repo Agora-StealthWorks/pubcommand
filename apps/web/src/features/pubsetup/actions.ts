@@ -68,7 +68,7 @@ async function linkedPublicationIds(ctx: PubsetupCtx, editorId: string): Promise
 
 export async function savePublication(formData: FormData) {
   const id = idOf(formData, "publicationId");
-  const back = id ? `/publication-setup/publications/${id}/edit` : "/publication-setup/publications/new";
+  const back = id ? `/settings/publication-setup/publications/${id}/edit` : "/settings/publication-setup/publications/new";
   const ctx = await pubsetupAction(back);
   const db = tenantDb(ctx.resolved.id);
   const parsed = parseFields(PUBLICATION_FIELDS, formData);
@@ -76,7 +76,7 @@ export async function savePublication(formData: FormData) {
   const v = parsed.values;
   const code = str(v, "code")!;
   const existing = id ? await db.calendarPublication.findFirst({ where: { id, brandId: ctx.brand.id } }) : null;
-  if (id && !existing) redirect(withMessage("/publication-setup", "error", "That publication no longer exists."));
+  if (id && !existing) redirect(withMessage("/settings/publication-setup", "error", "That publication no longer exists."));
 
   const codeClash = await db.calendarPublication.findFirst({ where: { brandId: ctx.brand.id, code, ...(id ? { id: { not: id } } : {}) }, select: { name: true, deletedAt: true } });
   if (codeClash) redirect(withMessage(back, "error", `Code ${code} is already used by ${codeClash.name}${codeClash.deletedAt ? " (archived: restore it instead)" : ""}.`));
@@ -145,16 +145,16 @@ export async function savePublication(formData: FormData) {
     await audit(ctx, "pubsetup.publication.created", "calendar_publication", created.id, { code });
   }
   scheduleRefresh(ctx, [publicationId], await linkedEditorIds(ctx, publicationId));
-  redirect(withMessage(`/publication-setup/publications/${publicationId}`, "notice", withNote(`${data.name} saved.`, logos.note)));
+  redirect(withMessage(`/settings/publication-setup/publications/${publicationId}`, "notice", withNote(`${data.name} saved.`, logos.note)));
 }
 
 export async function setPublicationArchived(formData: FormData) {
   const id = idOf(formData, "publicationId");
   const archive = formData.get("archive") === "1";
-  const ctx = await pubsetupAction(`/publication-setup/publications/${id}`);
+  const ctx = await pubsetupAction(`/settings/publication-setup/publications/${id}`);
   const db = tenantDb(ctx.resolved.id);
   const pub = id ? await db.calendarPublication.findFirst({ where: { id, brandId: ctx.brand.id }, select: { id: true, name: true, status: true } }) : null;
-  if (!pub) redirect(withMessage("/publication-setup", "error", "That publication no longer exists."));
+  if (!pub) redirect(withMessage("/settings/publication-setup", "error", "That publication no longer exists."));
   await db.calendarPublication.updateMany({
     where: { id: pub.id },
     // Archived publications drop out of every picker but old issues and stats keep them.
@@ -162,16 +162,16 @@ export async function setPublicationArchived(formData: FormData) {
   });
   await audit(ctx, archive ? "pubsetup.publication.archived" : "pubsetup.publication.restored", "calendar_publication", pub.id);
   scheduleRefresh(ctx, [pub.id], await linkedEditorIds(ctx, pub.id));
-  redirect(withMessage(archive ? "/publication-setup?show=archived" : `/publication-setup/publications/${pub.id}`, "notice", `${pub.name} ${archive ? "archived" : "restored"}.`));
+  redirect(withMessage(archive ? "/settings/publication-setup?show=archived" : `/settings/publication-setup/publications/${pub.id}`, "notice", `${pub.name} ${archive ? "archived" : "restored"}.`));
 }
 
 export async function savePublicationBranding(formData: FormData) {
   const id = idOf(formData, "publicationId");
-  const back = `/publication-setup/publications/${id}/branding`;
+  const back = `/settings/publication-setup/publications/${id}/branding`;
   const ctx = await pubsetupAction(back);
   const db = tenantDb(ctx.resolved.id);
   const pub = id ? await db.calendarPublication.findFirst({ where: { id, brandId: ctx.brand.id }, select: { id: true, name: true } }) : null;
-  if (!pub) redirect(withMessage("/publication-setup", "error", "That publication no longer exists."));
+  if (!pub) redirect(withMessage("/settings/publication-setup", "error", "That publication no longer exists."));
   const parsed = parseFields(PUB_BRANDING_FIELDS, formData);
   if (!parsed.ok) redirect(withMessage(back, "error", firstError(PUB_BRANDING_FIELDS, parsed.errors)));
   const v = parsed.values;
@@ -184,7 +184,7 @@ export async function savePublicationBranding(formData: FormData) {
 }
 
 export async function saveBrandDefaults(formData: FormData) {
-  const back = "/publication-setup/brand";
+  const back = "/settings/publication-setup/brand";
   const ctx = await pubsetupAction(back);
   const db = tenantDb(ctx.resolved.id);
   const parsed = parseFields(BRANDING_FIELDS, formData);
@@ -209,14 +209,14 @@ export async function saveBrandDefaults(formData: FormData) {
 
 export async function saveEditor(formData: FormData) {
   const id = idOf(formData, "editorId");
-  const back = id ? `/publication-setup/editors/${id}/edit` : "/publication-setup/editors/new";
+  const back = id ? `/settings/publication-setup/editors/${id}/edit` : "/settings/publication-setup/editors/new";
   const ctx = await pubsetupAction(back);
   const db = tenantDb(ctx.resolved.id);
   const parsed = parseFields(EDITOR_FIELDS, formData);
   if (!parsed.ok) redirect(withMessage(back, "error", firstError(EDITOR_FIELDS, parsed.errors)));
   const v = parsed.values;
   const existing = id ? await db.pubEditor.findFirst({ where: { id, brandId: ctx.brand.id }, select: { id: true } }) : null;
-  if (id && !existing) redirect(withMessage("/publication-setup/editors", "error", "That editor no longer exists."));
+  if (id && !existing) redirect(withMessage("/settings/publication-setup/editors", "error", "That editor no longer exists."));
 
   const typedSlug = String(formData.get("slug") ?? "").trim() !== "";
   let slug = str(v, "slug") ?? "editor";
@@ -253,20 +253,20 @@ export async function saveEditor(formData: FormData) {
     await audit(ctx, "pubsetup.editor.created", "pubsetup_editor", created.id);
   }
   scheduleRefresh(ctx, await linkedPublicationIds(ctx, editorId), [editorId]);
-  redirect(withMessage(`/publication-setup/editors/${editorId}`, "notice", `${data.name} saved.`));
+  redirect(withMessage(`/settings/publication-setup/editors/${editorId}`, "notice", `${data.name} saved.`));
 }
 
 export async function setEditorArchived(formData: FormData) {
   const id = idOf(formData, "editorId");
   const archive = formData.get("archive") === "1";
-  const ctx = await pubsetupAction(`/publication-setup/editors/${id}`);
+  const ctx = await pubsetupAction(`/settings/publication-setup/editors/${id}`);
   const db = tenantDb(ctx.resolved.id);
   const editor = id ? await db.pubEditor.findFirst({ where: { id, brandId: ctx.brand.id }, select: { id: true, name: true } }) : null;
-  if (!editor) redirect(withMessage("/publication-setup/editors", "error", "That editor no longer exists."));
+  if (!editor) redirect(withMessage("/settings/publication-setup/editors", "error", "That editor no longer exists."));
   await db.pubEditor.updateMany({ where: { id: editor.id }, data: { deletedAt: archive ? new Date() : null, updatedById: ctx.actorId } });
   await audit(ctx, archive ? "pubsetup.editor.archived" : "pubsetup.editor.restored", "pubsetup_editor", editor.id);
   scheduleRefresh(ctx, await linkedPublicationIds(ctx, editor.id), [editor.id]);
-  redirect(withMessage(archive ? "/publication-setup/editors?show=archived" : `/publication-setup/editors/${editor.id}`, "notice", `${editor.name} ${archive ? "archived" : "restored"}.`));
+  redirect(withMessage(archive ? "/settings/publication-setup/editors?show=archived" : `/settings/publication-setup/editors/${editor.id}`, "notice", `${editor.name} ${archive ? "archived" : "restored"}.`));
 }
 
 // ── Who writes what ────────────────────────────────────────────────────────
@@ -279,7 +279,7 @@ function roleOf(formData: FormData): string {
 export async function linkEditor(formData: FormData) {
   const publicationId = idOf(formData, "publicationId");
   const editorId = idOf(formData, "editorId");
-  const back = String(formData.get("back") ?? "") === "editor" ? `/publication-setup/editors/${editorId}` : `/publication-setup/publications/${publicationId}`;
+  const back = String(formData.get("back") ?? "") === "editor" ? `/settings/publication-setup/editors/${editorId}` : `/settings/publication-setup/publications/${publicationId}`;
   const ctx = await pubsetupAction(back);
   const db = tenantDb(ctx.resolved.id);
   const [pub, editor] = await Promise.all([
@@ -302,7 +302,7 @@ export async function linkEditor(formData: FormData) {
 export async function unlinkEditor(formData: FormData) {
   const publicationId = idOf(formData, "publicationId");
   const editorId = idOf(formData, "editorId");
-  const back = String(formData.get("back") ?? "") === "editor" ? `/publication-setup/editors/${editorId}` : `/publication-setup/publications/${publicationId}`;
+  const back = String(formData.get("back") ?? "") === "editor" ? `/settings/publication-setup/editors/${editorId}` : `/settings/publication-setup/publications/${publicationId}`;
   const ctx = await pubsetupAction(back);
   const db = tenantDb(ctx.resolved.id);
   const pub = publicationId ? await db.calendarPublication.findFirst({ where: { id: publicationId, brandId: ctx.brand.id }, select: { id: true } }) : null;

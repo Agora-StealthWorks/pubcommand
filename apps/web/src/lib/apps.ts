@@ -15,13 +15,6 @@ type AppCard = {
 
 const CARDS: AppCard[] = [
   {
-    moduleId: "pubsetup",
-    name: "Publication Setup",
-    description: "Your publications, editors and branding in one place. Every app uses it.",
-    icon: "🏷️",
-    category: "Setup",
-  },
-  {
     moduleId: "promo-studio",
     name: "Promo Analyzer",
     description: "Upload promos, score them, and build the copy package from what works.",

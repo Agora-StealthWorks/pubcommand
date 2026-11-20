@@ -26,7 +26,7 @@ export function PublicationForm({ pub }: { pub?: Publication | null }) {
       </fieldset>
       <div className="flex flex-wrap gap-2">
         <Button type="submit">{pub ? "Save publication" : "Add publication"}</Button>
-        <Link href={pub ? `/publication-setup/publications/${pub.id}` : "/publication-setup"} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold">
+        <Link href={pub ? `/settings/publication-setup/publications/${pub.id}` : "/settings/publication-setup"} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold">
           Cancel
         </Link>
       </div>
@@ -46,7 +46,7 @@ export function EditorForm({ editor }: { editor?: Editor | null }) {
       <FieldSections defs={EDITOR_FIELDS} values={values} />
       <div className="flex flex-wrap gap-2">
         <Button type="submit">{editor ? "Save editor" : "Add editor"}</Button>
-        <Link href={editor ? `/publication-setup/editors/${editor.id}` : "/publication-setup/editors"} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold">
+        <Link href={editor ? `/settings/publication-setup/editors/${editor.id}` : "/settings/publication-setup/editors"} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold">
           Cancel
         </Link>
       </div>

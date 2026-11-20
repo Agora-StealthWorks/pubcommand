@@ -17,7 +17,7 @@ export async function pubsetupPage(slug: string) {
 }
 
 /** Server-action guard. Redirects with a message instead of throwing. */
-export async function pubsetupAction(back = "/publication-setup") {
+export async function pubsetupAction(back = "/settings/publication-setup") {
   const request = await currentRequest();
   if (request.site.kind !== "org") redirect("/");
   const ctx = await getOrgContext(request.site.slug);

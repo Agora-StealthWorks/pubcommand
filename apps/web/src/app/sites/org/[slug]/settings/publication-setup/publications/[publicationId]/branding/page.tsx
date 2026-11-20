@@ -25,12 +25,12 @@ export default async function PublicationBrandingPage({ params, searchParams }: 
   const fields = BRANDING_FIELDS.filter((f) => f.key !== "tagline");
   return (
     <div>
-      <Link href={`/publication-setup/publications/${own.id}`} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
+      <Link href={`/settings/publication-setup/publications/${own.id}`} className="inline-flex min-h-11 items-center text-sm text-muted hover:text-ink">
         ← {own.name}
       </Link>
       <h2 className="mb-1 text-lg font-semibold">Branding · {own.name}</h2>
       <p className="mb-4 text-sm text-muted">
-        Leave a field blank to use the <Link href="/publication-setup/brand" className="text-accent hover:underline">brand defaults</Link>. The wiki and other apps use the result.
+        Leave a field blank to use the <Link href="/settings/publication-setup/brand" className="text-accent hover:underline">brand defaults</Link>. The wiki and other apps use the result.
       </p>
       <Flash error={query.error} notice={query.notice} />
       <BrandingForm

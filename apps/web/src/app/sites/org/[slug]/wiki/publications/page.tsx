@@ -44,7 +44,7 @@ export default async function WikiPublicationsPage({ params, searchParams }: { p
           ))}
         </div>
         {can.editSetup ? (
-          <Link href="/publication-setup" className="inline-flex min-h-11 items-center text-sm text-accent hover:underline">
+          <Link href="/settings/publication-setup" className="inline-flex min-h-11 items-center text-sm text-accent hover:underline">
             Edit in Publication Setup
           </Link>
         ) : null}

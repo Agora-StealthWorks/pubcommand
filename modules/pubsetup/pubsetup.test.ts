@@ -218,7 +218,7 @@ describe("permission gating", () => {
 
   it("shows the app only to people who can manage it", () => {
     const manifest = moduleRegistry.getById("pubsetup");
-    expect(manifest?.nav[0]).toEqual({ label: "Publication Setup", href: "/publication-setup", permission: "pubsetup.manage" });
+    expect(manifest?.nav[0]).toEqual({ label: "Publication Setup", href: "/settings/publication-setup", permission: "pubsetup.manage" });
     expect(manifest?.permissions.map((p) => p.key)).toEqual(["pubsetup.manage"]);
   });
 });
