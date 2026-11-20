@@ -4,6 +4,9 @@ export type ModuleNavItem = {
   permission?: string;
 };
 
+/** read = look at data; write = create/change/publish; admin = organization administration only. */
+export type PermissionAccess = "read" | "write" | "admin";
+
 export type ModuleManifest = {
   id: string;
   slug: string;
@@ -11,7 +14,12 @@ export type ModuleManifest = {
   description: string;
   nav: readonly ModuleNavItem[];
   routes: readonly { path: string; title: string }[];
-  permissions: readonly { key: string; description: string }[];
+  /**
+   * `access` classifies the permission for the built-in User and Editor roles and per-member app access
+   * (see member-access.ts). Leave it out when the key ends in `.read` / `.view` (read) or names a change
+   * (write). Set it whenever the name would mislead, e.g. a ".read" key that lets people create things.
+   */
+  permissions: readonly { key: string; description: string; access?: PermissionAccess }[];
   events: readonly { name: string; description: string }[];
   jobs: readonly { name: string; description: string }[];
   settingsSchema: Record<string, unknown>;

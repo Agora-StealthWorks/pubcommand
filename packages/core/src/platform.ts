@@ -16,6 +16,8 @@ export const PLATFORM_PERMISSIONS = {
   manageJobs: "platform.jobs.manage",
   /** The main Brain: platform-level knowledge, learning provenance and push-down to brands. */
   manageBrain: "platform.brain.manage",
+  /** Delete, restore and purge organizations, delete accounts, remove domains. Super admin only. */
+  deleteData: "platform.data.delete",
 } as const;
 
 export type PlatformPermission = (typeof PLATFORM_PERMISSIONS)[keyof typeof PLATFORM_PERMISSIONS];

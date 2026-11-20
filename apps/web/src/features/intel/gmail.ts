@@ -1,5 +1,5 @@
 import { buildSiteUrl } from "@pubcommand/core";
-import { appendOrgAudit, rawPrisma, tenantDb } from "@pubcommand/db";
+import { appendOrgAudit, organizationsWithModule, rawPrisma, tenantDb } from "@pubcommand/db";
 import {
   GMAIL_CALLBACK_PATH,
   decryptToken,
@@ -126,10 +126,17 @@ export async function syncGmailAccount(input: { organizationId: string; accountI
 
 /** Every connected inbox across organizations (for the cron route). Ids only. */
 export async function allGmailAccounts(): Promise<{ id: string; organizationId: string; brandId: string }[]> {
-  return rawPrisma().$transaction(async (tx) => {
+  const rows = await rawPrisma().$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`;
     return tx.intelGmailAccount.findMany({ select: { id: true, organizationId: true, brandId: true }, orderBy: { createdAt: "asc" } });
   });
+  return withIntel(rows);
+}
+
+/** Keep only rows whose organization has Intel on (not blocked, deleted or suspended). */
+export async function withIntel<T extends { organizationId: string }>(rows: T[]): Promise<T[]> {
+  const on = await organizationsWithModule(rows.map((row) => row.organizationId), "intel");
+  return rows.filter((row) => on.has(row.organizationId));
 }
 
 /** Brands with competitor email in a window (for the weekly radar cron). */
@@ -138,7 +145,7 @@ export async function brandsWithEmailSince(since: Date): Promise<{ organizationI
     await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`;
     const rows = await tx.intelEmail.groupBy({ by: ["organizationId", "brandId"], where: { receivedAt: { gte: since }, deletedAt: null } });
     return rows.map((row) => ({ organizationId: row.organizationId, brandId: row.brandId }));
-  });
+  }).then(withIntel);
 }
 
 export async function loadBrand(organizationId: string, brandId: string): Promise<IntelBrand | null> {

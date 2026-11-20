@@ -32,6 +32,9 @@ model Organization {
   planId      String    @map("plan_id") @db.Uuid
   seatLimit   Int       @map("seat_limit")
   suspendedAt DateTime? @map("suspended_at")
+  /// Soft delete by platform staff. Restorable for 30 days, then purged by admin.org-purge.
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by_id") @db.Uuid
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
@@ -146,6 +149,9 @@ model User {
   name         String?
   passwordHash String?        @map("password_hash")
   disabledAt   DateTime?      @map("disabled_at")
+  /// Deleted by platform staff: email/name scrubbed, login disabled, row kept so authored content stays valid.
+  deletedAt    DateTime?      @map("deleted_at")
+  deletedById  String?        @map("deleted_by_id") @db.Uuid
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
   memberships  Membership[]

@@ -1,5 +1,5 @@
 import { brandProfile, type BrandProfile } from "@pubcommand/core";
-import { resolveOrgBySlug, tenantDb } from "@pubcommand/db";
+import { entitledFromState, loadEntitlementState, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
 import { currentRequest } from "@/lib/request";
 import { RATE_WINDOW_MS, hashKey, presentedKey, rateDecision } from "../../../../../modules/support/keys";
 import { normalizeScope, type Scope } from "../../../../../modules/support/scope";
@@ -36,10 +36,9 @@ export async function supportOrganization(): Promise<{ id: string; origin: strin
   if (request.site.kind !== "org") return null;
   const resolved = await resolveOrgBySlug(request.site.slug);
   if (!resolved || resolved.suspendedAt || resolved.redirected) return null;
-  const org = await tenantDb(resolved.id).organization.findUnique({ where: { id: resolved.id }, include: { plan: { include: { modules: true } }, modules: true } });
-  if (!org) return null;
-  const disabled = new Set(org.modules.filter((m) => !m.enabled).map((m) => m.moduleId));
-  const entitled = org.plan.modules.map((m) => m.moduleId).filter((id) => !disabled.has(id));
+  const state = await loadEntitlementState(resolved.id);
+  if (!state || state.suspended) return null;
+  const entitled = entitledFromState(state);
   if (!entitled.includes("support")) return null;
   return { id: resolved.id, origin: request.origin, entitled };
 }

@@ -1,5 +1,7 @@
-import type { AccessSubject } from "@pubcommand/core";
+import { classifyPermissions, memberAppAccessRules, type AccessSubject } from "@pubcommand/core";
+import { moduleRegistry } from "@pubcommand/modules";
 import type { Prisma } from "@prisma/client";
+import { entitledFromState, loadEntitlementState, superAdminEntitledFromState } from "./entitlements";
 import { tenantDb } from "./tenant";
 
 export async function loadAccessSubject(
@@ -13,38 +15,45 @@ export async function loadAccessSubject(
     include: { role: { include: { grants: true } } },
   });
   if (!membership) return null;
-  const organization = await db.organization.findUnique({
-    where: { id: organizationId },
-    include: { plan: { include: { modules: true } }, modules: true },
+  const state = await loadEntitlementState(organizationId);
+  if (!state || state.deleted) return null;
+  const [exclusions, appLevels] = await Promise.all([
+    db.exclusion.findMany(),
+    db.memberAppAccess.findMany({ where: { userId } }),
+  ]);
+  const member = memberAppAccessRules({
+    userId,
+    levels: Object.fromEntries(appLevels.map((row) => [row.moduleId, row.level])),
+    classified: classifyPermissions(moduleRegistry.all()),
   });
-  if (!organization) return null;
-  const exclusions = await db.exclusion.findMany();
-  const entitled = new Set<string>(["settings"]);
-  for (const planModule of organization.plan.modules) {
-    const toggle = organization.modules.find((row) => row.moduleId === planModule.moduleId);
-    if (!toggle || toggle.enabled) entitled.add(planModule.moduleId);
-  }
   return {
     userId,
     organizationId,
     roleId: membership.roleId,
     membershipBrandId: membership.brandId,
     membershipWorkspaceId: membership.workspaceId,
-    grants: membership.role.grants.map((grant) => ({
-      permission: grant.permission,
-      effect: grant.effect === "DENY" ? "deny" : "allow",
-      brandId: membership.role.brandId,
-      workspaceId: membership.role.workspaceId,
-      roleId: membership.roleId,
-    })),
-    exclusions: exclusions.map((exclusion) => ({
-      permission: exclusion.permission,
-      userId: exclusion.userId,
-      roleId: exclusion.roleId,
-      brandId: exclusion.brandId,
-      workspaceId: exclusion.workspaceId,
-    })),
-    entitledModuleIds: [...entitled],
+    grants: [
+      ...membership.role.grants.map((grant) => ({
+        permission: grant.permission,
+        effect: grant.effect === "DENY" ? ("deny" as const) : ("allow" as const),
+        brandId: membership.role.brandId,
+        workspaceId: membership.role.workspaceId,
+        roleId: membership.roleId,
+      })),
+      // Per-member app access (Settings → Users). Scoped like the member's role.
+      ...member.grants.map((grant) => ({ ...grant, brandId: membership.role.brandId, workspaceId: membership.role.workspaceId })),
+    ],
+    exclusions: [
+      ...exclusions.map((exclusion) => ({
+        permission: exclusion.permission,
+        userId: exclusion.userId,
+        roleId: exclusion.roleId,
+        brandId: exclusion.brandId,
+        workspaceId: exclusion.workspaceId,
+      })),
+      ...member.exclusions,
+    ],
+    entitledModuleIds: entitledFromState(state),
     permissionModules,
   };
 }
@@ -52,23 +61,15 @@ export async function loadAccessSubject(
 /**
  * Full access for the platform SUPER_ADMIN in any organization, even without a
  * membership. The caller must confirm the user is an active SUPER_ADMIN with a
- * 2FA-verified session. Org module toggles still apply; the plan does not.
+ * 2FA-verified session. Staff blocks and org module toggles still apply; the plan does not.
  */
 export async function loadSuperAdminSubject(
   organizationId: string,
   userId: string,
   permissionModules: Readonly<Record<string, string>>,
 ): Promise<AccessSubject | null> {
-  const organization = await tenantDb(organizationId).organization.findUnique({
-    where: { id: organizationId },
-    include: { modules: true },
-  });
-  if (!organization) return null;
-  const disabled = new Set(organization.modules.filter((row) => !row.enabled).map((row) => row.moduleId));
-  const entitled = new Set<string>(["settings"]);
-  for (const moduleId of Object.values(permissionModules)) {
-    if (!disabled.has(moduleId)) entitled.add(moduleId);
-  }
+  const state = await loadEntitlementState(organizationId);
+  if (!state || state.deleted) return null;
   const roleId = "platform-super-admin";
   return {
     userId,
@@ -84,7 +85,7 @@ export async function loadSuperAdminSubject(
       roleId,
     })),
     exclusions: [],
-    entitledModuleIds: [...entitled],
+    entitledModuleIds: superAdminEntitledFromState(state, [...new Set(Object.values(permissionModules))]),
     permissionModules,
   };
 }

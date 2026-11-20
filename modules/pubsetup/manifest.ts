@@ -14,7 +14,7 @@ export const manifest = defineModule({
     { path: "/settings/publication-setup/editors/:id", title: "Editor" },
     { path: "/settings/brands/:id/branding", title: "Brand defaults" },
   ],
-  permissions: [{ key: "pubsetup.manage", description: "Add and edit publications, editors and branding (admins only)" }],
+  permissions: [{ key: "pubsetup.manage", description: "Add and edit publications, editors and branding (admins only)", access: "admin" }],
   events: [],
   jobs: [],
   settingsSchema: {

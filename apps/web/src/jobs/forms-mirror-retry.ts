@@ -9,7 +9,7 @@ export const formsMirrorRetry = defineJob({
   description: "Retry failed copies of form responses to Airtable or Google Sheets.",
   schedule: "*/15 * * * *",
   async run() {
-    const orgs = await rawPrisma().organization.findMany({ select: { id: true } });
+    const orgs = await rawPrisma().organization.findMany({ where: { deletedAt: null }, select: { id: true } });
     const now = new Date();
     let ok = 0;
     let failed = 0;

@@ -1,7 +1,19 @@
 "use server";
 
-import { buildSiteUrl, can, isNiche, slugifyName } from "@pubcommand/core";
-import { appendOrgAudit, appendPlatformAudit, changeOrganizationSlug, rawPrisma, tenantDb } from "@pubcommand/db";
+import {
+  adjustableModule,
+  buildSiteUrl,
+  can,
+  classifyPermissions,
+  isAlwaysOnModule,
+  isNiche,
+  memberAccessChangeBlocked,
+  moduleAllowed,
+  parseMemberAppChoice,
+  slugifyName,
+} from "@pubcommand/core";
+import { moduleRegistry } from "@pubcommand/modules";
+import { appendOrgAudit, appendPlatformAudit, changeOrganizationSlug, loadEntitlementState, rawPrisma, tenantDb } from "@pubcommand/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createLoginLink, normalizeEmail } from "@/lib/auth";
@@ -104,11 +116,13 @@ export async function inviteUser(formData: FormData) {
   if (!role) redirect("/settings/users?error=Choose a role.");
   const existing = await rawPrisma().user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
   const user = existing ?? (await rawPrisma().user.create({ data: { email, passwordHash: null } }));
-  await tenantDb(ctx.resolved.id).membership.upsert({
-    where: { organizationId_userId: { organizationId: ctx.resolved.id, userId: user.id } },
-    create: { organizationId: ctx.resolved.id, userId: user.id, roleId, status: "INVITED" },
-    update: { roleId, status: "INVITED" },
-  });
+  const existingMember = await tenantDb(ctx.resolved.id).membership.findFirst({ where: { userId: user.id } });
+  if (existingMember?.status === "ACTIVE") redirect("/settings/users?error=That person is already a member. Change their role from their profile.");
+  if (existingMember) {
+    await tenantDb(ctx.resolved.id).membership.updateMany({ where: { id: existingMember.id }, data: { roleId, status: "INVITED" } });
+  } else {
+    await tenantDb(ctx.resolved.id).membership.create({ data: { organizationId: ctx.resolved.id, userId: user.id, roleId, status: "INVITED" } });
+  }
   const link = await createLoginLink(user.id);
   await audit(ctx, "user.invited", "user", user.id, { email });
   const request = await currentRequest();
@@ -183,13 +197,15 @@ export async function toggleModule(formData: FormData) {
   const ctx = await orgMutation("settings.modules.manage");
   const moduleId = String(formData.get("moduleId") ?? "");
   const enabled = String(formData.get("enabled") ?? "") === "1";
-  await tenantDb(ctx.resolved.id).organizationModule.upsert({
-    where: { organizationId_moduleId: { organizationId: ctx.resolved.id, moduleId } },
-    create: { organizationId: ctx.resolved.id, moduleId, enabled },
-    update: { enabled },
-  });
+  if (isAlwaysOnModule(moduleId)) redirect("/settings/modules?error=Settings is always on.");
+  // Only apps PubCommand allows (plan or staff override) can be switched; data is never deleted.
+  const state = await loadEntitlementState(ctx.resolved.id);
+  if (!state || !moduleAllowed(moduleId, state)) redirect("/settings/modules?error=That app is not included. Ask PubCommand to add it.");
+  const db = tenantDb(ctx.resolved.id);
+  const updated = await db.organizationModule.updateMany({ where: { moduleId }, data: { enabled } });
+  if (updated.count === 0) await db.organizationModule.create({ data: { organizationId: ctx.resolved.id, moduleId, enabled } });
   await audit(ctx, "module.entitlement.changed", "module", moduleId, { enabled: String(enabled) });
-  redirect("/settings/modules?notice=App updated.");
+  redirect(`/settings/modules?notice=${encodeURIComponent(enabled ? "App turned on." : "App turned off. Its data is kept; turning it back on restores it.")}`);
 }
 
 function brandFields(formData: FormData) {
@@ -226,4 +242,66 @@ export async function updateBrand(formData: FormData) {
   if (result.count === 0) redirect("/settings/brands?error=Unknown brand.");
   await audit(ctx, "brand.updated", "brand", brandId, { name, niche: fields.niche });
   redirect(`/settings/brands?notice=${encodeURIComponent(`${name} saved.`)}`);
+}
+
+// ── Member profile: role and per-app access (Settings → Users → member) ─────────
+
+function memberHref(userId: string): string {
+  return /^[0-9a-f-]{36}$/i.test(userId) ? `/settings/users/${userId}` : "/settings/users";
+}
+
+export async function setMemberAppAccess(formData: FormData) {
+  const ctx = await orgMutation("settings.users.manage");
+  const userId = String(formData.get("userId") ?? "");
+  const moduleId = String(formData.get("moduleId") ?? "");
+  const choice = parseMemberAppChoice(String(formData.get("level") ?? ""));
+  const href = memberHref(userId);
+  if (!choice) redirect(`${href}?error=Choose an access level.`);
+  const db = tenantDb(ctx.resolved.id);
+  const member = await db.membership.findFirst({ where: { userId, status: { in: ["ACTIVE", "INVITED"] } } });
+  if (!member) redirect("/settings/users?error=Unknown member.");
+  const classified = classifyPermissions(moduleRegistry.all());
+  const blocked = memberAccessChangeBlocked({
+    actorUserId: ctx.effectiveUserId,
+    targetUserId: userId,
+    moduleEntitled: ctx.subject.entitledModuleIds.includes(moduleId),
+    moduleAdjustable: adjustableModule(moduleId, classified),
+  });
+  if (blocked) redirect(`${href}?error=${encodeURIComponent(blocked)}`);
+  const before = await db.memberAppAccess.findFirst({ where: { userId, moduleId } });
+  if (choice === "ROLE") {
+    await db.memberAppAccess.deleteMany({ where: { userId, moduleId } });
+  } else if (before) {
+    await db.memberAppAccess.updateMany({ where: { userId, moduleId }, data: { level: choice, updatedById: ctx.auth.user.id } });
+  } else {
+    await db.memberAppAccess.create({ data: { organizationId: ctx.resolved.id, userId, moduleId, level: choice, updatedById: ctx.auth.user.id } });
+  }
+  await audit(ctx, "member.app_access.changed", "user", userId, { moduleId, from: before?.level ?? "ROLE", to: choice });
+  redirect(`${href}?notice=${encodeURIComponent("App access saved.")}`);
+}
+
+export async function changeMemberRole(formData: FormData) {
+  const ctx = await orgMutation("settings.users.manage");
+  const userId = String(formData.get("userId") ?? "");
+  const roleId = String(formData.get("roleId") ?? "");
+  const href = memberHref(userId);
+  if (userId === ctx.effectiveUserId) redirect(`${href}?error=${encodeURIComponent("You cannot change your own role.")}`);
+  const db = tenantDb(ctx.resolved.id);
+  const [member, role] = await Promise.all([
+    db.membership.findFirst({ where: { userId, status: { in: ["ACTIVE", "INVITED"] } }, include: { role: true } }),
+    db.role.findFirst({ where: { id: roleId } }),
+  ]);
+  if (!member || !role) redirect(`${href}?error=Unknown member or role.`);
+  if (member.roleId === role.id) redirect(href);
+  const adminSlugs = ["owner", "admin"];
+  if (adminSlugs.includes(member.role.slug) && !adminSlugs.includes(role.slug)) {
+    const others = await db.membership.count({ where: { userId: { not: userId }, status: "ACTIVE", role: { slug: { in: adminSlugs } } } });
+    if (others === 0) redirect(`${href}?error=${encodeURIComponent("This is the last admin. Make someone else an admin first.")}`);
+  }
+  if (role.slug === "owner" && !can(ctx.subject, "settings.roles.manage", ctx.scope)) {
+    redirect(`${href}?error=${encodeURIComponent("Only someone who manages roles can make an owner.")}`);
+  }
+  await db.membership.updateMany({ where: { id: member.id }, data: { roleId: role.id } });
+  await audit(ctx, "member.role.changed", "user", userId, { from: member.role.slug, to: role.slug });
+  redirect(`${href}?notice=${encodeURIComponent(`Role changed to ${role.name}.`)}`);
 }

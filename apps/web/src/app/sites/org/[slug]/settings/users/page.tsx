@@ -1,4 +1,5 @@
-import { can } from "@pubcommand/core";
+import { can, defaultMemberRoleId } from "@pubcommand/core";
+import Link from "next/link";
 import { Button, Input } from "@pubcommand/ui";
 import { moduleRegistry } from "@pubcommand/modules";
 import { tenantDb } from "@pubcommand/db";
@@ -27,11 +28,11 @@ export default async function UsersPage({
   const permissions = moduleRegistry.all().flatMap((manifest) => manifest.permissions);
   return (
     <div>
-      <PageHeader title="Users" description="Invites send a magic link. There is no seeded password." />
+      <PageHeader title="Users" description="Invites send a magic link. New people start as User (read-only) unless you pick another role. Open someone to change their role or app access." />
       <Flash error={query.error} notice={query.notice} />
       <form action={inviteUser} className="pc-form-row mb-6">
         <Input name="email" type="email" required placeholder="person@example.com" className="md:max-w-xs" />
-        <select name="roleId" className="pc-control w-full md:w-auto">
+        <select name="roleId" aria-label="Role" defaultValue={defaultMemberRoleId(roles) ?? undefined} className="pc-control w-full md:w-auto">
           {roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
         </select>
         <Button type="submit" className="w-full md:w-auto">Invite</Button>
@@ -44,7 +45,11 @@ export default async function UsersPage({
         <tbody>
           {memberships.map((membership) => (
             <tr key={membership.id} className="border-t border-line">
-              <td className="pc-break px-3 py-2">{membership.user.email}</td>
+              <td className="pc-break px-3 py-2">
+                <Link href={`/settings/users/${membership.userId}`} className="inline-flex min-h-11 items-center font-semibold text-accent">
+                  {membership.user.email}
+                </Link>
+              </td>
               <td>{membership.role.name}</td>
               <td>{membership.status}</td>
               <td className="py-2 pr-3">

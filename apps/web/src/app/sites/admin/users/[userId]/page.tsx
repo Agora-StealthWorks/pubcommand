@@ -1,5 +1,6 @@
 import { PLATFORM_PERMISSIONS, PLATFORM_STAFF_MANAGER_EMAIL, canManagePlatformStaff, platformCan } from "@pubcommand/core";
-import { rawPrisma } from "@pubcommand/db";
+import { rawPrisma, userDeleteCheck } from "@pubcommand/db";
+import { UserDeleteSection } from "@/components/platform-admin";
 import { notFound } from "next/navigation";
 import { UserDetail, type UserMembership, type UserPlacement } from "@/components/users-console";
 import { Denied, Flash } from "@/components/ui";
@@ -7,6 +8,7 @@ import { readSession, readStaff } from "@/lib/auth";
 import {
   addUserOrganization,
   changeOrganizationMemberRole,
+  deleteUser,
   removeOrganizationMember,
   resetUserAuthenticator,
   saveUserPassword,
@@ -42,6 +44,7 @@ export default async function UserDetailPage({
   });
   if (!user) notFound();
   const organizations = await rawPrisma().organization.findMany({
+    where: { deletedAt: null },
     orderBy: { name: "asc" },
     include: { roles: { orderBy: { name: "asc" }, select: { id: true, name: true } } },
   });
@@ -68,8 +71,10 @@ export default async function UserDetailPage({
         roleName: role.name,
       })),
     );
+  const canDelete = platformCan(staff.role, PLATFORM_PERMISSIONS.deleteData);
+  const deleteBlocked = canDelete && !user.deletedAt ? await userDeleteCheck(viewer.id, user.id) : null;
   return (
-    <div>
+    <div className="space-y-4">
       <Flash error={query.error} notice={query.notice} />
       <UserDetail
         user={{
@@ -104,6 +109,13 @@ export default async function UserDetailPage({
           saveStaff: saveUserStaff,
         }}
       />
+      {canDelete ? (
+        <UserDeleteSection
+          user={{ id: user.id, email: user.email, deleted: Boolean(user.deletedAt) }}
+          blockedReason={deleteBlocked}
+          action={deleteUser}
+        />
+      ) : null}
     </div>
   );
 }

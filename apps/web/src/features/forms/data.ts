@@ -1,4 +1,4 @@
-import { tenantDb, type Prisma } from "@pubcommand/db";
+import { organizationHasModule, tenantDb, type Prisma } from "@pubcommand/db";
 import type { FormSummaryResult } from "../../../../../modules/forms/summary";
 import { resolveTheme, type ThemeInput } from "../../../../../modules/forms/theme";
 import type { AnswerMap, FieldDef, FormLayout, PublicForm, ResolvedTheme, ResponseRecord } from "../../../../../modules/forms/types";
@@ -187,14 +187,8 @@ export async function latestSummary(organizationId: string, formId: string) {
 
 /** Is the Forms app on for this organization (plan module + org toggle)? Used by public pages, which have no signed-in subject. */
 export async function formsEnabled(organizationId: string): Promise<boolean> {
-  const organization = await tenantDb(organizationId).organization.findUnique({
-    where: { id: organizationId },
-    include: { plan: { include: { modules: true } }, modules: true },
-  });
-  if (!organization || organization.suspendedAt) return false;
-  const inPlan = organization.plan.modules.some((row) => row.moduleId === "forms");
-  const toggle = organization.modules.find((row) => row.moduleId === "forms");
-  return inPlan && (!toggle || toggle.enabled);
+  // Plan, staff override, org switch, suspended/deleted: decided in one place.
+  return organizationHasModule(organizationId, "forms");
 }
 
 export function previewTheme(theme: ThemeRow | null, brandName: string): ResolvedTheme {

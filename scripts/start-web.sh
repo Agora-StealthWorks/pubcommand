@@ -3,4 +3,5 @@ set -eu
 pnpm --filter @pubcommand/db migrate:deploy
 pnpm --filter @pubcommand/db ensure-plans
 pnpm --filter @pubcommand/db ensure-superadmin
+pnpm --filter @pubcommand/db ensure-roles
 exec pnpm --filter @pubcommand/web start

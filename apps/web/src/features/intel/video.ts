@@ -47,6 +47,12 @@ function bypass<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T>
   });
 }
 
+/** Deleted or suspended organizations: their queued captures wait (and run again if restored). */
+async function offOrganizationIds(tx: Prisma.TransactionClient): Promise<string[]> {
+  const rows = await tx.organization.findMany({ where: { OR: [{ deletedAt: { not: null } }, { suspendedAt: { not: null } }] }, select: { id: true } });
+  return rows.map((row) => row.id);
+}
+
 export function isVideoStale(status: string, updatedAt: Date): boolean {
   return status === "RUNNING" && Date.now() - updatedAt.getTime() > VIDEO_STALE_MS;
 }
@@ -94,7 +100,7 @@ export async function drainVideoQueue(options: { budgetMs?: number } = {}): Prom
     while (Date.now() < deadline) {
       const { running, next } = await bypass(async (tx) => ({
         running: await tx.intelVideo.count({ where: { status: "RUNNING", deletedAt: null } }),
-        next: await tx.intelVideo.findFirst({ where: { status: "QUEUED", deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, organizationId: true, brandId: true } }),
+        next: await tx.intelVideo.findFirst({ where: { status: "QUEUED", deletedAt: null, organizationId: { notIn: await offOrganizationIds(tx) } }, orderBy: { createdAt: "asc" }, select: { id: true, organizationId: true, brandId: true } }),
       }));
       if (running > 0) return { processed, skipped: "another capture is running" };
       if (!next) break;

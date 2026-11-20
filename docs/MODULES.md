@@ -27,3 +27,11 @@ Each manifest also declares `routes`, `events`, `jobs`, and `settingsSchema`. Th
 ## TODO
 
 Do not implement knowledge, editorial, performance, promo-studio, intel, forms, charts, or billing in the foundation. Later PRs own the pages, jobs, and events. Billing checkout and invoices are out of scope here.
+
+## Entitlement, roles and app access
+
+- **Which apps an org has** is decided in one place: `packages/db/src/entitlements.ts` (rules in `packages/core/src/entitlements.ts`). Allowed = staff override (`organization_app_access`, Admin → Organization → Apps) ?? plan. Entitled = allowed AND the org's own switch (Settings → Apps). `settings` is always on. Pages use `ctx.subject.entitledModuleIds`; public pages, APIs and jobs use `organizationHasModule()` / `organizationsWithModule()`. Never re-derive it from `plan.modules`.
+- **Read vs write**: each manifest permission may set `access: "read" | "write" | "admin"`. Without it, `.read`/`.view` keys are read and everything else is write (`permissionAccess()` in `packages/core/src/member-access.ts`). Set it when a name would mislead.
+- **Built-in roles**: User (all read permissions, the default for new members) and Editor (User + `websites.write`). Created create-only per organization (`ensure-roles` on boot).
+- **Per-member app access** (Settings → Users → a member): Role default / No access / View / Edit, stored in `member_app_access` and turned into grants and exclusions in `loadAccessSubject`, so `can()` stays the only check.
+- **Deleted organizations** (`deleted_at`) do not resolve, do not serve custom domains, and are skipped by jobs; `platform.org-purge` erases them 30 days later.

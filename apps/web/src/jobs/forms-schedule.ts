@@ -11,7 +11,7 @@ export const formsSchedule = defineJob({
   description: "Open scheduled forms and close forms past their closing time or response limit.",
   schedule: "*/5 * * * *",
   async run() {
-    const orgs = await rawPrisma().organization.findMany({ select: { id: true } });
+    const orgs = await rawPrisma().organization.findMany({ where: { deletedAt: null }, select: { id: true } });
     const now = new Date();
     let published = 0;
     let closed = 0;

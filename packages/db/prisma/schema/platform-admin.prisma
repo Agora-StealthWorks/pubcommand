@@ -1,0 +1,42 @@
+// Platform admin console: per-organization app access set by PubCommand staff,
+// and per-member app access set by an organization's admins.
+
+enum AppAccessOverride {
+  ALLOWED
+  BLOCKED
+}
+
+enum MemberAppLevel {
+  NONE
+  VIEW
+  EDIT
+}
+
+/// Staff override of the plan for one organization and one app. Wins over the plan.
+/// The column is organization_id, but the field is deliberately NOT `organizationId`:
+/// that keeps the model off the tenant client, so organization code cannot write it.
+/// RLS lets an organization read its own rows; only bypass_rls (platform code) writes.
+model OrganizationAppAccess {
+  orgId       String            @map("organization_id") @db.Uuid
+  moduleId    String            @map("module_id")
+  access      AppAccessOverride
+  updatedById String?           @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime          @default(now()) @updatedAt @map("updated_at")
+
+  @@id([orgId, moduleId])
+  @@map("organization_app_access")
+}
+
+/// One member's access to one app, set in Settings → Users. Missing row = role default.
+model MemberAppAccess {
+  organizationId String         @map("organization_id") @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  moduleId       String         @map("module_id")
+  level          MemberAppLevel
+  updatedById    String?        @map("updated_by_id") @db.Uuid
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at")
+
+  @@id([organizationId, userId, moduleId])
+  @@index([organizationId])
+  @@map("member_app_access")
+}

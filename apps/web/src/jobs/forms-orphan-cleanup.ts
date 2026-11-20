@@ -8,7 +8,7 @@ export const formsOrphanCleanup = defineJob({
   description: "Delete form uploads and logos that no response or theme uses (older than a day).",
   schedule: "40 3 * * *",
   async run() {
-    const orgs = await rawPrisma().organization.findMany({ select: { id: true } });
+    const orgs = await rawPrisma().organization.findMany({ where: { deletedAt: null }, select: { id: true } });
     let deleted = 0;
     const now = new Date();
     for (const org of orgs) {

@@ -12,6 +12,7 @@
     "seed": "tsx prisma/seed.ts",
     "ensure-superadmin": "tsx prisma/ensure-superadmin.ts",
     "ensure-plans": "tsx prisma/ensure-plans.ts",
+    "ensure-roles": "tsx prisma/ensure-roles.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

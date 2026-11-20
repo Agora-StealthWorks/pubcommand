@@ -27,7 +27,7 @@ export async function lookupCustomHost(hostname: string): Promise<ResolvedHost |
       SELECT d.organization_id, o.slug, d.target_path, d.redirect_to_host, o.suspended_at
       FROM custom_domains d
       JOIN organizations o ON o.id = d.organization_id
-      WHERE d.hostname = ${hostname}
+      WHERE d.hostname = ${hostname} AND o.deleted_at IS NULL
       LIMIT 1`;
   });
   const row = rows[0];

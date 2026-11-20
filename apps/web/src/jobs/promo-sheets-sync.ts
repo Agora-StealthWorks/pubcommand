@@ -10,7 +10,7 @@ export const promoSheetsSync = defineJob({
   schedule: "7 * * * *",
   async run() {
     const now = new Date();
-    const orgs = await rawPrisma().organization.findMany({ select: { id: true } });
+    const orgs = await rawPrisma().organization.findMany({ where: { deletedAt: null }, select: { id: true } });
     let checked = 0;
     let imported = 0;
     let unchanged = 0;

@@ -12,7 +12,7 @@ export default async function OrgPickerPage() {
   }
   const staff = await readStaff(auth.user.id);
   const memberships = await rawPrisma().membership.findMany({
-    where: { userId: auth.user.id, status: "ACTIVE" },
+    where: { userId: auth.user.id, status: "ACTIVE", organization: { deletedAt: null } },
     include: { organization: true, role: true },
     orderBy: { organization: { name: "asc" } },
   });
@@ -63,7 +63,7 @@ export default async function OrgPickerPage() {
             </li>
           );
         })}
-        {memberships.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No organization memberships yet.</li> : null}
+        {memberships.length === 0 ? <li className="px-4 py-6 text-sm text-muted">You do not have access to any organization. Ask your admin for an invite.</li> : null}
       </ul>
     </main>
   );

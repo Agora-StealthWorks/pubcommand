@@ -87,7 +87,7 @@ export async function learnUp(input: LearnUpInput): Promise<LearnUpResult> {
  */
 export async function learnUpBackfill(options: { organizationIds?: string[]; limitPerOrg?: number } = {}): Promise<Record<string, number>> {
   const counts: Record<string, number> = { organizations: 0, checked: 0, created: 0, refreshed: 0, unchanged: 0, skipped: 0, failed: 0 };
-  const orgIds = options.organizationIds ?? (await rawPrisma().organization.findMany({ select: { id: true } })).map((org) => org.id);
+  const orgIds = options.organizationIds ?? (await rawPrisma().organization.findMany({ where: { deletedAt: null }, select: { id: true } })).map((org) => org.id);
   for (const organizationId of orgIds) {
     counts.organizations! += 1;
     const notes = await tenantDb(organizationId).knowledgePage.findMany({

@@ -9,7 +9,7 @@ export const formsNotifications = defineJob({
   description: "Email daily digests of new form responses and retry missed per-response emails.",
   schedule: "7 * * * *",
   async run() {
-    const orgs = await rawPrisma().organization.findMany({ select: { id: true } });
+    const orgs = await rawPrisma().organization.findMany({ where: { deletedAt: null }, select: { id: true } });
     const now = new Date();
     let forms = 0;
     let sent = 0;

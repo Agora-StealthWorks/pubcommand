@@ -26,3 +26,28 @@ export {
 export { createCatalogPlan, ensureDefaultPlans, insertPlanIfAbsent, setPlanArchived, updateCatalogPlan } from "./plans";
 export { ensureSuperadmin } from "./superadmin";
 export { TenantIsolationError, createTenantClient, tenantDb, tenantModelNames, withOrgContext } from "./tenant";
+export {
+  activeOrganizationIds,
+  entitledFromState,
+  loadEntitlementState,
+  loadEntitlementStates,
+  organizationHasModule,
+  organizationsWithModule,
+  platformTx,
+  type OrganizationEntitlementState,
+} from "./entitlements";
+export {
+  deleteUserAccount,
+  lastAdminOrganizations,
+  organizationsDueForPurge,
+  purgeOrganization,
+  restoreOrganization,
+  setOrganizationAppAccess,
+  softDeleteOrganization,
+  superAdminEmails,
+  tablesWithOrganizationId,
+  userDeleteCheck,
+  type DomainDetachResult,
+  type PurgeDomain,
+} from "./lifecycle";
+export { ensureBuiltInMemberRoles, ensureBuiltInMemberRolesForAll } from "./roles";

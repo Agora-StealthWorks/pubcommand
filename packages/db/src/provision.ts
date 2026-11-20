@@ -8,6 +8,7 @@ import {
 } from "@pubcommand/core";
 import { rawPrisma } from "./client";
 import { slugAvailability } from "./platform";
+import { ensureBuiltInMemberRoles } from "./roles";
 
 type AuditInput = {
   organizationId: string;
@@ -149,6 +150,7 @@ export async function provisionOrganization(input: {
           });
         }
       }
+      await ensureBuiltInMemberRoles(tx, organization.id);
       const ownerRoleId = roles.get("owner");
       if (!ownerRoleId) throw new Error("Could not save the organization.");
       const existingUser = await tx.user.findFirst({
@@ -395,6 +397,7 @@ export async function setOrganizationSuspended(input: {
     await rawPrisma().$transaction(async (tx) => {
       const organization = await tx.organization.findUnique({ where: { id: input.organizationId } });
       if (!organization) throw new Error("Unknown organization.");
+      if (organization.deletedAt) throw new Error("That organization is deleted. Restore it first.");
       await tx.organization.update({
         where: { id: organization.id },
         data: { suspendedAt: input.suspend ? new Date() : null },

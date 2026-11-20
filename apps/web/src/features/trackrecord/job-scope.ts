@@ -1,5 +1,5 @@
 import { brandProfile } from "@pubcommand/core";
-import { rawPrisma, tenantDb } from "@pubcommand/db";
+import { organizationsWithModule, rawPrisma, tenantDb } from "@pubcommand/db";
 
 export type JobBrand = { organizationId: string; orgSlug: string; brandId: string; brandName: string };
 
@@ -10,15 +10,13 @@ export type JobBrand = { organizationId: string; orgSlug: string; brandId: strin
  */
 export async function trackJobBrands(brandIdsByOrg: ReadonlyMap<string, readonly string[]>): Promise<JobBrand[]> {
   if (!brandIdsByOrg.size) return [];
+  const entitled = await organizationsWithModule([...brandIdsByOrg.keys()], "performance");
   const orgs = await rawPrisma().organization.findMany({
-    where: { id: { in: [...brandIdsByOrg.keys()] }, suspendedAt: null },
-    select: { id: true, slug: true, plan: { select: { modules: { select: { moduleId: true } } } }, modules: { select: { moduleId: true, enabled: true } } },
+    where: { id: { in: [...entitled] }, suspendedAt: null, deletedAt: null },
+    select: { id: true, slug: true },
   });
   const out: JobBrand[] = [];
   for (const org of orgs) {
-    const inPlan = org.plan.modules.some((m) => m.moduleId === "performance");
-    const toggle = org.modules.find((m) => m.moduleId === "performance");
-    if (!inPlan || (toggle && !toggle.enabled)) continue;
     const brands = await tenantDb(org.id).brand.findMany({ where: { id: { in: [...(brandIdsByOrg.get(org.id) ?? [])] } } });
     for (const brand of brands) {
       if (brandProfile(brand).niche !== "finance") continue;

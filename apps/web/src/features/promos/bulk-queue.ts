@@ -37,8 +37,10 @@ export async function claimNextBulk(now = new Date(), limit = BULK_CONCURRENCY):
   return rawPrisma().$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_KEY}::bigint)`;
+    // Deleted or suspended organizations: their queued runs wait (and resume if restored).
+    const off = (await tx.organization.findMany({ where: { OR: [{ deletedAt: { not: null } }, { suspendedAt: { not: null } }] }, select: { id: true } })).map((row) => row.id);
     const rows = await tx.promoBulkJob.findMany({
-      where: { status: { in: ["QUEUED", "RUNNING"] } },
+      where: { status: { in: ["QUEUED", "RUNNING"] }, organizationId: { notIn: off } },
       select: { id: true, status: true, attempts: true, lockedAt: true, createdAt: true, organizationId: true, promoId: true },
       orderBy: { createdAt: "asc" },
       take: 500,

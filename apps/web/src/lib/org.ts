@@ -36,7 +36,7 @@ export const getOrgContext = cache(async (slug: string) => {
   const brandCookie = (await cookies()).get("pc_brand")?.value;
   const brand = brands.find((item) => item.id === brandCookie) ?? brands[0] ?? null;
   const memberships = await rawPrisma().membership.findMany({
-    where: { userId: effectiveUserId, status: "ACTIVE" },
+    where: { userId: effectiveUserId, status: "ACTIVE", organization: { deletedAt: null } },
     include: { organization: true },
     orderBy: { organization: { name: "asc" } },
   });
