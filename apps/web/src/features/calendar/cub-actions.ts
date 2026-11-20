@@ -8,7 +8,8 @@ import { currentRequest } from "@/lib/request";
 import { calendarAction, field, UUID, withMessage } from "./context";
 import { MAX_CUB_FILE_BYTES, newToken, roundByToken } from "./cub";
 import { sendRoundStart, type SendStatus } from "./cub-emails";
-import { findPromo, setPromoStage } from "./promos";
+import { CUB_COLLECTOR_ENABLED } from "../../../../../modules/editorial/features";
+import { findPromo } from "./promos";
 
 const TEAM_TZ = "America/New_York";
 
@@ -21,8 +22,9 @@ function emailNotice(result: { request: SendStatus; confirm: SendStatus; reasons
 
 export async function createCubRoundAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/cub");
-  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, field(formData, "promoId", 40));
-  const promoName = field(formData, "promoName", 200) || promo?.title || "";
+  if (!CUB_COLLECTOR_ENABLED) redirect("/editorial");
+  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, field(formData, "calendarPromoId", 40));
+  const promoName = field(formData, "promoName", 200) || promo?.name || "";
   const file = formData.get("draft");
   if (!promoName) redirect(withMessage("/editorial/cub", "error", "Pick a promo or type its name."));
   if (!(file instanceof File) || file.size === 0) redirect(withMessage("/editorial/cub", "error", "Upload the draft."));
@@ -39,7 +41,7 @@ export async function createCubRoundAction(formData: FormData) {
     data: {
       organizationId: ctx.resolved.id,
       brandId: ctx.brand.id,
-      promoId: promo?.id ?? null,
+      calendarPromoId: promo?.id ?? null,
       promoName,
       instructions: field(formData, "instructions", 4000) || null,
       draftFilename,
@@ -57,7 +59,7 @@ export async function createCubRoundAction(formData: FormData) {
     },
     select: { id: true },
   });
-  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.cub.created", targetType: "calendar_cub_round", targetId: round.id, metadata: { reviewers: reviewers.valid.length, promoId: promo?.id ?? null } });
+  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.cub.created", targetType: "calendar_cub_round", targetId: round.id, metadata: { reviewers: reviewers.valid.length, calendarPromoId: promo?.id ?? null } });
 
   if (formData.get("saveGroup") === "1") {
     const existing = await db.calendarEmailTemplate.findFirst({ where: { brandId: ctx.brand.id, kind: "cub-request" } });
@@ -68,14 +70,8 @@ export async function createCubRoundAction(formData: FormData) {
     }
   }
 
-  if (promo) {
-    // The promo moves to the CUB stage and keeps the draft as its "Cub draft" file.
-    const from = await setPromoStage({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, promoId: promo.id, stage: "CUB", actorId: ctx.actorId });
-    await db.promoFile.create({
-      data: { organizationId: ctx.resolved.id, promoId: promo.id, kind: "cub-draft", category: "Cub draft", filename: draftFilename, mimeType: file.type || "application/octet-stream", size: file.size, data: draftData },
-    });
-    await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.promo.stage", targetType: "promo", targetId: promo.id, metadata: { from, to: "CUB", via: "cub-round", roundId: round.id } });
-  }
+  // While CUB Collector was on, a round moved the promo to the CUB stage and kept the draft on it.
+  // Calendar promos do not do that: people pick the CUB stage themselves.
 
   const result = await sendRoundStart({ organizationId: ctx.resolved.id, roundId: round.id, subject: field(formData, "emailSubject", 250), body: field(formData, "emailBody", 10000) });
   redirect(withMessage(`/editorial/cub/${round.id}`, result.request === "failed" ? "error" : "notice", emailNotice(result, reviewers.valid.length)));
@@ -84,6 +80,7 @@ export async function createCubRoundAction(formData: FormData) {
 /** Re-send the start emails for a round (for example after setting up email or fixing the reviewer list). */
 export async function resendCubRequestAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/cub");
+  if (!CUB_COLLECTOR_ENABLED) redirect("/editorial");
   const id = field(formData, "roundId", 40);
   if (!UUID.test(id)) redirect("/editorial/cub");
   const db = tenantDb(ctx.resolved.id);
@@ -99,6 +96,7 @@ export async function resendCubRequestAction(formData: FormData) {
 
 export async function closeCubRoundAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/cub");
+  if (!CUB_COLLECTOR_ENABLED) redirect("/editorial");
   const id = field(formData, "roundId", 40);
   if (!UUID.test(id)) redirect("/editorial/cub");
   const reopen = formData.get("reopen") === "1";
@@ -109,6 +107,7 @@ export async function closeCubRoundAction(formData: FormData) {
 
 export async function deleteCubRoundAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/cub");
+  if (!CUB_COLLECTOR_ENABLED) redirect("/editorial");
   const id = field(formData, "roundId", 40);
   if (!UUID.test(id)) redirect("/editorial/cub");
   await tenantDb(ctx.resolved.id).calendarCubRound.deleteMany({ where: { id, brandId: ctx.brand.id } });
@@ -121,6 +120,7 @@ export async function deleteCubRoundAction(formData: FormData) {
  * No sign-in. The token and the host's organization are the only credentials.
  */
 export async function submitCubReviewAction(formData: FormData) {
+  if (!CUB_COLLECTOR_ENABLED) redirect("/");
   const request = await currentRequest();
   const token = field(formData, "token", 40);
   if (request.site.kind !== "org") redirect("/");

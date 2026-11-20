@@ -3,8 +3,10 @@ import { AnalyticsView } from "@/features/calendar/analytics-view";
 import { calendarPage } from "@/features/calendar/context";
 import { listPublications, loadSendStats } from "@/features/calendar/data";
 import { toSendRow, type SendRow } from "../../../../../../../../../modules/editorial/analytics";
+import { EDITORIAL_ANALYTICS_ENABLED } from "../../../../../../../../../modules/editorial/features";
 
 export default async function AnalyticsPage({ params }: { params: Promise<{ slug: string }> }) {
+  if (!EDITORIAL_ANALYTICS_ENABLED) notFound();
   const { slug } = await params;
   const ctx = await calendarPage(slug);
   if (!ctx) notFound();

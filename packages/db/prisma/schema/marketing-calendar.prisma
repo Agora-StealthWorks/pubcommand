@@ -76,6 +76,8 @@ model CalendarEvent {
   series         CalendarSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   /// Promo Analyzer promo this event is built around (promos.id).
   promoId        String?         @map("promo_id") @db.Uuid
+  /// The calendar's own promo (calendar_promos.id). Replaces promoId, which is no longer read.
+  calendarPromoId String?        @map("calendar_promo_id") @db.Uuid
   airtableId     String?         @map("airtable_id")
   /// Last successful write-back or pull for this row.
   airtableSyncedAt DateTime?     @map("airtable_synced_at")
@@ -90,6 +92,7 @@ model CalendarEvent {
   @@index([seriesId])
   @@index([brandId, airtableId])
   @@index([promoId])
+  @@index([calendarPromoId])
   @@map("calendar_events")
 }
 
@@ -112,6 +115,8 @@ model CalendarIssue {
   offer           String?
   tickers         String[]           @default([])
   promoId         String?            @map("promo_id") @db.Uuid
+  /// The calendar's own promo (calendar_promos.id). Replaces promoId, which is no longer read.
+  calendarPromoId String?            @map("calendar_promo_id") @db.Uuid
   airtableId      String?            @map("airtable_id")
   airtableSyncedAt DateTime?         @map("airtable_synced_at")
   brainTaughtAt   DateTime?          @map("brain_taught_at")
@@ -126,6 +131,7 @@ model CalendarIssue {
   @@index([brandId, publicationCode])
   @@index([brandId, airtableId])
   @@index([promoId])
+  @@index([calendarPromoId])
   @@map("calendar_issues")
 }
 
@@ -212,6 +218,8 @@ model CalendarCubRound {
   ownerToken     String              @unique @map("owner_token")
   closedAt       DateTime?           @map("closed_at")
   promoId        String?             @map("promo_id") @db.Uuid
+  /// The calendar's own promo (calendar_promos.id). Replaces promoId, which is no longer read.
+  calendarPromoId String?            @map("calendar_promo_id") @db.Uuid
   initiatorEmail String?             @map("initiator_email")
   initiatorName  String?             @map("initiator_name")
   reviewerEmails String[]            @default([]) @map("reviewer_emails")
@@ -325,7 +333,69 @@ model CalendarFieldOption {
   @@map("calendar_field_options")
 }
 
-/// A Promo Analyzer promo on the calendar's promo pipeline: its workflow stage and launch date.
+/// The calendar's own promos (independent of Promo Analyzer): the pipeline board, the promo
+/// picker on events and issues, and launch events. Publication and editors come from Publication Setup.
+model CalendarPromo {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  brandId            String    @map("brand_id") @db.Uuid
+  name               String
+  /// Front-end | Mid-tier | Back-end | Renewal (free text).
+  promoType          String?   @map("promo_type")
+  stage              String    @default("Idea")
+  writers            String[]  @default([])
+  format             String?
+  /// Publication code from Publication Setup.
+  product            String?
+  /// Editor names from Publication Setup.
+  gurus              String[]  @default([])
+  notes              String?
+  targetedDate       DateTime? @map("targeted_date") @db.Date
+  launchDate         DateTime? @map("launch_date") @db.Date
+  launchEstimated    Boolean   @default(false) @map("launch_estimated")
+  copyPlatformUrl    String?   @map("copy_platform_url")
+  hotlistPageUrl     String?   @map("hotlist_page_url")
+  promoFileUrl       String?   @map("promo_file_url")
+  cubDraftUrl        String?   @map("cub_draft_url")
+  copyPlatform       Json?     @map("copy_platform")
+  /// The launch event made from this promo; set once so a deleted launch event is never re-created.
+  launchEventId      String?   @map("launch_event_id") @db.Uuid
+  launchEventCreated Boolean   @default(false) @map("launch_event_created")
+  airtableId         String?   @map("airtable_id")
+  /// The Promo Analyzer promo this row was copied from by the one-time backfill (never read by the app).
+  legacyPromoId      String?   @unique @map("legacy_promo_id") @db.Uuid
+  createdById        String?   @map("created_by_id") @db.Uuid
+  updatedById        String?   @map("updated_by_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+  activity           CalendarPromoActivity[]
+
+  @@index([organizationId, brandId, stage])
+  @@index([brandId, launchDate])
+  @@map("calendar_promos")
+}
+
+/// History of a calendar promo: created, stage changes, date changes and other tracked fields.
+model CalendarPromoActivity {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  promoId        String        @map("promo_id") @db.Uuid
+  promo          CalendarPromo @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  /// created | stage | launchDate | targetedDate | field | launchEvent
+  kind           String
+  field          String?
+  fromValue      String?       @map("from_value")
+  toValue        String?       @map("to_value")
+  note           String?
+  actorId        String?       @map("actor_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@index([organizationId, promoId, createdAt])
+  @@map("calendar_promo_activity")
+}
+
+/// UNUSED since calendar_own_promos: the old pipeline row per Promo Analyzer promo. Kept (additive policy).
 model CalendarPromoTrack {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @map("organization_id") @db.Uuid

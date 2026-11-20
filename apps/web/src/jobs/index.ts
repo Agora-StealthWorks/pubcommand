@@ -1,7 +1,5 @@
 import type { JobDefinition } from "@/lib/jobs/types";
-import { editorialAirtableSync } from "./editorial-airtable-sync";
 import { editorialBrainCatchup } from "./editorial-brain-catchup";
-import { editorialCubEmails } from "./editorial-cub-emails";
 import { editorialSeriesExtend } from "./editorial-series-extend";
 import { editorialTickerPrices } from "./editorial-ticker-prices";
 import { formsMirrorRetry } from "./forms-mirror-retry";
@@ -33,10 +31,10 @@ import { supportWebsiteSheet } from "./support-website-sheet";
  * Every scheduled job. Apps add theirs here (one import + one entry each).
  * Keep the list sorted by name.
  */
+// Off for now (modules/editorial/features.ts): editorialAirtableSync (./editorial-airtable-sync)
+// and editorialCubEmails (./editorial-cub-emails). Add them back here with their flags.
 export const JOBS: JobDefinition[] = [
-  editorialAirtableSync,
   editorialBrainCatchup,
-  editorialCubEmails,
   editorialSeriesExtend,
   editorialTickerPrices,
   formsMirrorRetry,

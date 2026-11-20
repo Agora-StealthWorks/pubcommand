@@ -13,19 +13,21 @@ import { TEMPLATES, isCubEmailKind } from "../../../../../../../../../../modules
 import { cubLinks, roundReviews } from "@/features/calendar/cub";
 import { CubRoundBody } from "@/features/calendar/cub-view";
 import { calendarPage, UUID } from "@/features/calendar/context";
+import { CUB_COLLECTOR_ENABLED } from "../../../../../../../../../../modules/editorial/features";
 
 export default async function CubRoundPage({ params, searchParams }: { params: Promise<{ slug: string; roundId: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
+  if (!CUB_COLLECTOR_ENABLED) notFound();
   const { slug, roundId } = await params;
   const query = await searchParams;
   const ctx = await calendarPage(slug);
   if (!ctx || !UUID.test(roundId)) notFound();
   const round = await tenantDb(ctx.resolved.id).calendarCubRound.findFirst({
     where: { id: roundId, brandId: ctx.brand.id },
-    select: { id: true, promoName: true, promoId: true, instructions: true, draftFilename: true, dueAt: true, closedAt: true, reviewToken: true, ownerToken: true, reviewerEmails: true, requestSentAt: true, reminderSentAt: true, deadlineNotifiedAt: true },
+    select: { id: true, promoName: true, calendarPromoId: true, instructions: true, draftFilename: true, dueAt: true, closedAt: true, reviewToken: true, ownerToken: true, reviewerEmails: true, requestSentAt: true, reminderSentAt: true, deadlineNotifiedAt: true },
   });
   if (!round) notFound();
   const [promo, emails] = await Promise.all([
-    findPromo(ctx.resolved.id, ctx.brand.id, round.promoId),
+    findPromo(ctx.resolved.id, ctx.brand.id, round.calendarPromoId),
     tenantDb(ctx.resolved.id).calendarEmailLog.findMany({ where: { roundId: round.id }, orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
   const mailReady = emailConfigured();

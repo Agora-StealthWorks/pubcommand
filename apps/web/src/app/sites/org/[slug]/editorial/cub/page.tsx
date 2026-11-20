@@ -13,8 +13,10 @@ import { loadTemplate } from "@/features/calendar/cub-emails";
 import { listPromos } from "@/features/calendar/promos";
 import { PromoSelect } from "@/features/calendar/ui";
 import { emailConfigured } from "@/lib/email";
+import { CUB_COLLECTOR_ENABLED } from "../../../../../../../../../modules/editorial/features";
 
 export default async function CubPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
+  if (!CUB_COLLECTOR_ENABLED) notFound();
   const { slug } = await params;
   const query = await searchParams;
   const ctx = await calendarPage(slug);
@@ -49,9 +51,9 @@ export default async function CubPage({ params, searchParams }: { params: Promis
           ) : null}
           <form action={createCubRoundAction} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <PromoSelect promos={openPromos} hint="Moves the promo to the CUB stage and saves the draft on it as its Cub draft." />
+              <PromoSelect promos={openPromos} />
               <Field label="Or type the promo name">
-                <Input name="promoName" maxLength={200} placeholder="Only if it is not in Promo Analyzer" />
+                <Input name="promoName" maxLength={200} placeholder="Only if it is not under Promos" />
               </Field>
             </div>
             <Field label="Draft" hint="Word or PDF, up to 50 MB. Attached to the email when 10 MB or smaller.">

@@ -12,6 +12,7 @@ import { missingRequired, parseCsv } from "../../../../../modules/editorial/stat
 import { acceptOption, type OptionLists } from "../../../../../modules/editorial/options";
 import { isHexColor, validateEventDates } from "../../../../../modules/editorial/stages";
 import { parseTickers } from "../../../../../modules/editorial/tickers";
+import { AIRTABLE_SYNC_ENABLED, SEND_STATS_ENABLED, WHATS_WORKING_ENABLED } from "../../../../../modules/editorial/features";
 import { pushRecord } from "./airtable-sync";
 import { loadOptions } from "./options";
 import { findPromo } from "./promos";
@@ -62,21 +63,21 @@ function eventInput(formData: FormData, options: OptionLists | null, current: st
 function teachEventsLater(ctx: CalendarCtx, ids: string[]) {
   after(async () => {
     for (const id of ids.slice(0, 30)) await teachEvent({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, eventId: id, actorId: ctx.actorId });
-    // Airtable write-back (soft-fail, logged); the sync job retries anything left over.
-    for (const id of ids.slice(0, 100)) await pushRecord({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, entity: "event", id });
+    // Airtable write-back (soft-fail, logged); the sync job retries anything left over. Off for now.
+    if (AIRTABLE_SYNC_ENABLED) for (const id of ids.slice(0, 100)) await pushRecord({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, entity: "event", id });
   });
 }
 
 function issueSavedLater(ctx: CalendarCtx, issueId: string) {
   after(async () => {
     await teachIssue({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, issueId, actorId: ctx.actorId });
-    await pushRecord({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, entity: "issue", id: issueId });
+    if (AIRTABLE_SYNC_ENABLED) await pushRecord({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, entity: "issue", id: issueId });
   });
 }
 
-/** The picked Promo Analyzer promo, if it belongs to this brand. "" clears the link. */
+/** The picked calendar promo, if it belongs to this brand. "" clears the link. */
 async function promoIdFrom(ctx: CalendarCtx, formData: FormData): Promise<string | null> {
-  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, field(formData, "promoId", 40));
+  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, field(formData, "calendarPromoId", 40));
   return promo?.id ?? null;
 }
 
@@ -89,8 +90,8 @@ export async function createEventAction(formData: FormData) {
   const repeat = parseRepeat(field(formData, "repeat", 20));
   if (repeat && !data.eventDate) redirect(withMessage("/editorial/events/new", "error", "A repeating event needs an event date."));
   const { id, generated } = await createEvent({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.actorId, data, repeat, until: day(formData, "repeatUntil") });
-  const promoId = await promoIdFrom(ctx, formData);
-  if (promoId) await tenantDb(ctx.resolved.id).calendarEvent.updateMany({ where: { id }, data: { promoId } });
+  const calendarPromoId = await promoIdFrom(ctx, formData);
+  if (calendarPromoId) await tenantDb(ctx.resolved.id).calendarEvent.updateMany({ where: { id }, data: { calendarPromoId } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.event.created", targetType: "calendar_event", targetId: id });
   teachEventsLater(ctx, [id]);
   redirect(withMessage(`/editorial/events/${id}`, "notice", generated ? `Event saved with ${generated} more occurrences.` : "Event saved."));
@@ -156,8 +157,8 @@ export async function updateEventAction(formData: FormData) {
     until: day(formData, "repeatUntil"),
   });
   // The promo link belongs to this occurrence only.
-  const promoId = await promoIdFrom(ctx, formData);
-  if (promoId !== before.promoId) await tenantDb(ctx.resolved.id).calendarEvent.updateMany({ where: { id: before.id }, data: { promoId } });
+  const calendarPromoId = await promoIdFrom(ctx, formData);
+  if (calendarPromoId !== before.calendarPromoId) await tenantDb(ctx.resolved.id).calendarEvent.updateMany({ where: { id: before.id }, data: { calendarPromoId } });
   await appendOrgAudit(ctx.resolved.id, {
     actorId: ctx.actorId,
     action: "calendar.event.updated",
@@ -209,7 +210,7 @@ async function checkPublication(ctx: CalendarCtx, code: string, back: string) {
 
 export async function createIssueAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/issues/new");
-  const data = { ...issueData(formData, await loadOptions(ctx.resolved.id, ctx.brand.id)), promoId: await promoIdFrom(ctx, formData) };
+  const data = { ...issueData(formData, await loadOptions(ctx.resolved.id, ctx.brand.id)), calendarPromoId: await promoIdFrom(ctx, formData) };
   if (!data.title) redirect(withMessage("/editorial/issues/new", "error", "Give the issue a title."));
   await checkPublication(ctx, data.publicationCode, "/editorial/issues/new");
   const issue = await tenantDb(ctx.resolved.id).calendarIssue.create({
@@ -238,7 +239,7 @@ export async function updateIssueAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write");
   const issue = await ownIssue(ctx, field(formData, "issueId", 40));
   const back = `/editorial/issues/${issue.id}/edit`;
-  const data = { ...issueData(formData, await loadOptions(ctx.resolved.id, ctx.brand.id), issue.status), promoId: await promoIdFrom(ctx, formData) };
+  const data = { ...issueData(formData, await loadOptions(ctx.resolved.id, ctx.brand.id), issue.status), calendarPromoId: await promoIdFrom(ctx, formData) };
   if (!data.title) redirect(withMessage(back, "error", "Give the issue a title."));
   await checkPublication(ctx, data.publicationCode, back);
   await tenantDb(ctx.resolved.id).calendarIssue.updateMany({
@@ -305,6 +306,7 @@ const MAX_CSV_BYTES = 20 * 1024 * 1024;
 
 export async function importStatsAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/stats");
+  if (!SEND_STATS_ENABLED) redirect("/editorial");
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) redirect(withMessage("/editorial/stats", "error", "Choose a CSV file."));
   if (file.size > MAX_CSV_BYTES) redirect(withMessage("/editorial/stats", "error", "That file is over 20 MB."));
@@ -324,6 +326,7 @@ export async function importStatsAction(formData: FormData) {
 
 export async function regenerateWhatsWorkingAction() {
   const ctx = await calendarAction("editorial.write", "/editorial/whats-working");
+  if (!WHATS_WORKING_ENABLED) redirect("/editorial");
   const db = tenantDb(ctx.resolved.id);
   const busy = await db.calendarInsight.findFirst({ where: { brandId: ctx.brand.id, status: { in: ["QUEUED", "RUNNING"] }, updatedAt: { gt: new Date(Date.now() - 10 * 60 * 1000) } } });
   if (busy) redirect("/editorial/whats-working");

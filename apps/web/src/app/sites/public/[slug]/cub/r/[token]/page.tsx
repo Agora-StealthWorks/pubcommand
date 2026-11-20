@@ -4,8 +4,10 @@ import { Flash } from "@/components/ui";
 import { submitCubReviewAction } from "@/features/calendar/cub-actions";
 import { roundByToken } from "@/features/calendar/cub";
 import { CUB_SCORES, formatDeadline } from "../../../../../../../../../../modules/editorial/cub";
+import { CUB_COLLECTOR_ENABLED } from "../../../../../../../../../../modules/editorial/features";
 
 export default async function CubReviewPage({ params, searchParams }: { params: Promise<{ slug: string; token: string }>; searchParams: Promise<{ error?: string; done?: string }> }) {
+  if (!CUB_COLLECTOR_ENABLED) notFound();
   const { slug, token } = await params;
   const query = await searchParams;
   const found = await roundByToken(slug, "review", token);

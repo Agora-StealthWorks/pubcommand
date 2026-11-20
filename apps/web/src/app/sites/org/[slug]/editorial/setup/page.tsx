@@ -9,16 +9,19 @@ import { canManagePublications } from "@/features/pubsetup/module";
 import { Field, PubChip, Section } from "@/features/calendar/ui";
 import { tenantDb } from "@pubcommand/db";
 import { loadOptions } from "@/features/calendar/options";
+import { AIRTABLE_SYNC_ENABLED, CUB_COLLECTOR_ENABLED } from "../../../../../../../../../modules/editorial/features";
 import { AirtablePanel, EmailsPanel, OptionsPanel, TrashPanel } from "@/features/calendar/setup-panels";
 
-const SETUP_TABS = [
+const ALL_SETUP_TABS = [
   ["general", "Publications and channels"],
   ["options", "Field options"],
   ["emails", "Emails"],
   ["trash", "Trash"],
   ["airtable", "Airtable"],
 ] as const;
-type SetupTab = (typeof SETUP_TABS)[number][0];
+type SetupTab = (typeof ALL_SETUP_TABS)[number][0];
+// Emails are CUB Collector emails only; both tabs come back with their feature flags.
+const SETUP_TABS = ALL_SETUP_TABS.filter(([key]) => (key !== "emails" || CUB_COLLECTOR_ENABLED) && (key !== "airtable" || AIRTABLE_SYNC_ENABLED));
 
 export default async function SetupPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string; tab?: string }> }) {
   const { slug } = await params;
@@ -62,7 +65,7 @@ export default async function SetupPage({ params, searchParams }: { params: Prom
       <Section title={`Publications · ${publications.length}`}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <p className="min-w-0 flex-1 basis-64 text-sm text-muted">
-            Each newsletter or list {ctx.brand.name} mails. The code is how send stats find the right issues. Publications, their editors and branding are managed in Publication Setup.
+            Each newsletter or list {ctx.brand.name} mails. Publications, their editors and branding are managed in Publication Setup.
           </p>
           {canManage ? (
             <Link href="/settings/publication-setup" className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">

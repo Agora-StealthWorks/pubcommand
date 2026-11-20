@@ -4,14 +4,13 @@ import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { guessFieldMap, isBaseId, maskToken, openToken, readFieldMap, sealToken, SYNC_FIELDS, type SyncEntity } from "../../../../../modules/editorial/airtable";
-import { fromDay, isDay } from "../../../../../modules/editorial/dates";
 import { isCubEmailKind, parseEmails, TEMPLATES } from "../../../../../modules/editorial/emails";
 import { cleanOption, isOptionField, moveOption } from "../../../../../modules/editorial/options";
 import { isTrashKind } from "../../../../../modules/editorial/trash";
+import { AIRTABLE_SYNC_ENABLED, CUB_COLLECTOR_ENABLED, SEND_STATS_ENABLED } from "../../../../../modules/editorial/features";
 import { AirtableError, authSecret, getConnection, loadSchema, syncConnection } from "./airtable-sync";
 import { calendarAction, field, UUID, withMessage } from "./context";
 import { loadOptions } from "./options";
-import { findPromo, setPromoStage } from "./promos";
 import { saveListMapping } from "./stats";
 import { teachEvent, teachIssue } from "./teach";
 import { marketConfigured, refreshTickerPrices, showsTickers } from "./tickers";
@@ -23,6 +22,7 @@ const SETUP = "/editorial/setup";
 
 export async function saveTemplateAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", `${SETUP}#emails`);
+  if (!CUB_COLLECTOR_ENABLED) redirect(SETUP);
   const kind = field(formData, "kind", 40);
   if (!isCubEmailKind(kind)) redirect(SETUP);
   const back = `${SETUP}?tab=emails#${kind}`;
@@ -43,6 +43,7 @@ export async function saveTemplateAction(formData: FormData) {
 
 export async function resetTemplateAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", SETUP);
+  if (!CUB_COLLECTOR_ENABLED) redirect(SETUP);
   const kind = field(formData, "kind", 40);
   if (!isCubEmailKind(kind)) redirect(SETUP);
   const db = tenantDb(ctx.resolved.id);
@@ -103,6 +104,7 @@ export async function optionAction(formData: FormData) {
 
 export async function saveListMappingAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/stats");
+  if (!SEND_STATS_ENABLED) redirect(SETUP);
   const back = field(formData, "back", 200).startsWith("/editorial/stats") ? field(formData, "back", 200) : "/editorial/stats";
   const label = field(formData, "label", 200);
   const pubCode = field(formData, "pubCode", 40);
@@ -117,6 +119,7 @@ export async function saveListMappingAction(formData: FormData) {
 
 export async function deleteListMappingAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", "/editorial/stats");
+  if (!SEND_STATS_ENABLED) redirect(SETUP);
   const id = field(formData, "mappingId", 40);
   if (UUID.test(id)) await tenantDb(ctx.resolved.id).calendarListMapping.deleteMany({ where: { id, brandId: ctx.brand.id } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.list_mapping.deleted", targetType: "calendar_list_mapping", targetId: id });
@@ -162,39 +165,13 @@ export async function purgeAction(formData: FormData) {
   redirect(withMessage(back, "notice", count ? "Deleted for good." : "Nothing to delete."));
 }
 
-// ── Promo pipeline ──────────────────────────────────────────────────────────
-
-export async function savePromoTrackAction(formData: FormData) {
-  const ctx = await calendarAction("editorial.write", "/editorial/promos");
-  const promo = await findPromo(ctx.resolved.id, ctx.brand.id, field(formData, "promoId", 40));
-  if (!promo) redirect(withMessage("/editorial/promos", "error", "That promo no longer exists."));
-  const options = await loadOptions(ctx.resolved.id, ctx.brand.id);
-  const stage = field(formData, "stage", 60);
-  const back = field(formData, "back", 100) === "board" ? "/editorial/promos" : `/editorial/promos?promo=${promo.id}`;
-  if (!options["promo.stage"].includes(stage) && stage !== promo.stage) redirect(withMessage(back, "error", "Pick a stage from the list."));
-  const launch = field(formData, "launchDate", 10);
-  const from = await setPromoStage({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, promoId: promo.id, stage, actorId: ctx.actorId });
-  if (formData.has("launchDate")) {
-    await tenantDb(ctx.resolved.id).calendarPromoTrack.updateMany({
-      where: { promoId: promo.id },
-      data: {
-        launchDate: isDay(launch) ? fromDay(launch) : null,
-        launchEstimated: formData.get("launchEstimated") === "1",
-        writers: field(formData, "writers", 600).split(",").map((w) => w.trim()).filter(Boolean).slice(0, 10),
-        notes: field(formData, "notes", 4000) || null,
-      },
-    });
-  }
-  await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.promo.stage", targetType: "promo", targetId: promo.id, metadata: { from, to: stage } });
-  redirect(withMessage(back, "notice", `${promo.title}: ${stage}.`));
-}
-
 // ── Airtable ────────────────────────────────────────────────────────────────
 
 const AT = `${SETUP}?tab=airtable`;
 
 export async function saveAirtableAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", AT);
+  if (!AIRTABLE_SYNC_ENABLED) redirect(SETUP);
   const baseId = field(formData, "baseId", 40);
   const token = field(formData, "token", 300);
   if (!isBaseId(baseId)) redirect(withMessage(AT, "error", "The base id starts with “app” (find it in the base's URL)."));
@@ -224,6 +201,7 @@ export async function saveAirtableAction(formData: FormData) {
 /** Read the base's tables and field types; guess a mapping for any table that has none. */
 export async function readAirtableSchemaAction() {
   const ctx = await calendarAction("editorial.write", AT);
+  if (!AIRTABLE_SYNC_ENABLED) redirect(SETUP);
   const conn = await getConnection(ctx.resolved.id, ctx.brand.id);
   if (!conn) redirect(withMessage(AT, "error", "Save the connection first."));
   let message = "";
@@ -250,6 +228,7 @@ export async function readAirtableSchemaAction() {
 
 export async function saveFieldMapAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", AT);
+  if (!AIRTABLE_SYNC_ENABLED) redirect(SETUP);
   const entity = field(formData, "entity", 10) === "issue" ? "issue" : "event";
   const conn = await getConnection(ctx.resolved.id, ctx.brand.id);
   if (!conn) redirect(withMessage(AT, "error", "Save the connection first."));
@@ -268,6 +247,7 @@ export async function saveFieldMapAction(formData: FormData) {
 
 export async function syncAirtableNowAction() {
   const ctx = await calendarAction("editorial.write", AT);
+  if (!AIRTABLE_SYNC_ENABLED) redirect(SETUP);
   const conn = await getConnection(ctx.resolved.id, ctx.brand.id);
   if (!conn) redirect(withMessage(AT, "error", "Save the connection first."));
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.airtable.sync", targetType: "calendar_airtable_connection", targetId: ctx.brand.id });
@@ -277,6 +257,7 @@ export async function syncAirtableNowAction() {
 
 export async function disconnectAirtableAction(formData: FormData) {
   const ctx = await calendarAction("editorial.write", AT);
+  if (!AIRTABLE_SYNC_ENABLED) redirect(SETUP);
   if (formData.get("confirm") !== "1") redirect(withMessage(AT, "error", "Tick the box to confirm."));
   await tenantDb(ctx.resolved.id).calendarAirtableConnection.deleteMany({ where: { brandId: ctx.brand.id } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action: "calendar.airtable.disconnected", targetType: "calendar_airtable_connection", targetId: ctx.brand.id });
