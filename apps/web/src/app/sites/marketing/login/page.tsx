@@ -1,7 +1,7 @@
 import { Button, Card, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand";
-import { exposeMagicLinkOnPage } from "@/lib/mail";
+import { emailLoginEnabled, exposeMagicLinkOnPage } from "@/lib/mail";
 import { currentRequest } from "@/lib/request";
 
 export default async function LoginPage({
@@ -14,6 +14,7 @@ export default async function LoginPage({
   const local = request.host.includes("localhost") || request.host.startsWith("127.");
   const origin = `${local ? "http" : "https"}://${request.host}`;
   const expose = exposeMagicLinkOnPage();
+  const emailLogin = emailLoginEnabled();
   const devLink = expose && query.devLink?.startsWith(`${origin}/`) ? query.devLink : null;
 
   return (
@@ -22,7 +23,6 @@ export default async function LoginPage({
         <BrandLogo className="h-9 w-auto" />
       </Link>
       <h1 className="mt-4 text-3xl font-semibold">Log in</h1>
-      <p className="mt-2 text-sm text-muted">First login is a magic link. Password is optional and is never seeded.</p>
       {query.sent ? <p className="mt-4 text-sm text-[#067647]">If that account exists, a sign-in link is ready.</p> : null}
       {query.error ? <p className="mt-4 text-sm text-[#912018]">{query.error}</p> : null}
       {devLink ? (
@@ -31,19 +31,21 @@ export default async function LoginPage({
         </p>
       ) : null}
       <Card className="mt-6 p-5">
-        <form action="/api/auth/magic-link" method="post" className="space-y-3">
-          <input type="hidden" name="next" value={query.next ?? ""} />
-          <Label htmlFor="magic-email">Email</Label>
-          <Input id="magic-email" name="email" type="email" autoComplete="email" required />
-          <Button type="submit" className="w-full">Email me a link</Button>
-        </form>
-        <form action="/api/auth/login" method="post" className="mt-6 space-y-3 border-t border-line pt-6">
+        {emailLogin ? (
+          <form action="/api/auth/magic-link" method="post" className="mb-6 space-y-3 border-b border-line pb-6">
+            <input type="hidden" name="next" value={query.next ?? ""} />
+            <Label htmlFor="magic-email">Email</Label>
+            <Input id="magic-email" name="email" type="email" autoComplete="email" required />
+            <Button type="submit" variant="secondary" className="w-full">Email me a link</Button>
+          </form>
+        ) : null}
+        <form action="/api/auth/login" method="post" className="space-y-3">
           <input type="hidden" name="next" value={query.next ?? ""} />
           <Label htmlFor="password-email">Email</Label>
           <Input id="password-email" name="email" type="email" autoComplete="username" required />
           <Label htmlFor="password">Password</Label>
           <Input id="password" name="password" type="password" autoComplete="current-password" required />
-          <Button type="submit" variant="secondary" className="w-full">Log in with password</Button>
+          <Button type="submit" className="w-full">Log in</Button>
         </form>
       </Card>
     </main>

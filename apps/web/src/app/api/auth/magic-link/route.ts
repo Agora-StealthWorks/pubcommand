@@ -2,7 +2,7 @@ import { normalizeEmail } from "@pubcommand/auth";
 import { safeNextUrl } from "@pubcommand/core";
 import { NextResponse } from "next/server";
 import { rootDomain, sendMagicLink } from "@/lib/auth";
-import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
+import { deliverMagicLink, emailLoginEnabled, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
 
 function originOf(request: Request) {
   const proto = request.headers.get("x-forwarded-proto") ?? "http";
@@ -11,6 +11,11 @@ function originOf(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!emailLoginEnabled()) {
+    const dest = new URL("/login", originOf(request).origin);
+    dest.searchParams.set("error", "Email sign-in is turned off. Log in with your password.");
+    return NextResponse.redirect(dest, 303);
+  }
   const form = await request.formData();
   const email = normalizeEmail(String(form.get("email") ?? ""));
   const next = safeNextUrl(String(form.get("next") ?? ""), rootDomain());

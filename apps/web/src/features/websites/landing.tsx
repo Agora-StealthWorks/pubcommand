@@ -20,7 +20,7 @@ export async function PublicationLanding({ loaded, member, pub, page, signup, ki
     <section className="mast dark">
       <div className="wrap grid">
         <div>
-          <PubBadge loaded={loaded} pub={pub} size="lg" sub={free ? "Free newsletter" : pub.tier ?? undefined} />
+          <PubBadge loaded={loaded} pub={pub} size="lg" sub={free ? "Free newsletter" : (pub.frequency ?? "")} />
           <h1>{pub.tagline || pub.name}</h1>
           <p>{pub.longDescription || pub.description || pub.positioning || ""}</p>
           {pub.editors.length ? (

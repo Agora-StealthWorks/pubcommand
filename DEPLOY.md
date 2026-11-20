@@ -28,6 +28,7 @@ Set these on the **pubcommand** web service. Reference syntax is copied into the
 | `SUPERADMIN_PASSWORD_HASH` | no | bcrypt hash (`$2a$` or `$2b$`). When set, every boot writes it onto that user. |
 | `RESEND_API_KEY` | no | Resend API key. When unset, magic links are written to server logs as `[magic-link]` and are not shown on the page. |
 | `EMAIL_FROM` | no | From address for those emails. Defaults to `login@pubcommand.com`. |
+| `EMAIL_LOGIN_ENABLED` | no | `true` shows "Email me a link" on the login page. Unset (the default) means password login only; invite links still work. |
 | `REDIS_URL` | no, read if set | `${{Redis.REDIS_URL}}` |
 | `S3_ENDPOINT` | no, read if the whole set is present | `${{pubcommand-files.ENDPOINT}}` |
 | `S3_BUCKET` | same | `${{pubcommand-files.BUCKET}}` |

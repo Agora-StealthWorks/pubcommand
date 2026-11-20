@@ -8,6 +8,7 @@ import { logoSlotsOf, parseImport, placeLogos, planImport, type ImportImage, typ
 import { classifyLogo } from "./logo-tone";
 import { pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
 import { refreshEditor, refreshPublication } from "./teach";
+import { notifyBrandSites } from "../websites/api";
 
 const BACK = "/settings/publication-setup/import";
 const MAX_FILE_BYTES = 40 * 1024 * 1024;
@@ -225,6 +226,7 @@ export async function commitImport(formData: FormData) {
   after(async () => {
     for (const publicationId of touchedPubs) await refreshPublication({ ...refresh, publicationId });
     for (const editorId of touchedEditors) await refreshEditor({ ...refresh, editorId });
+    await notifyBrandSites(base.organizationId, base.brandId);
   });
 
   const parts = [`${plan.counts.create} added`, `${plan.counts.fill} filled in`, `${linked} editor link${linked === 1 ? "" : "s"}`];

@@ -11,6 +11,7 @@ export function BrandLogo({ on = "light", className = "h-8 w-auto" }: { on?: "li
 
 /** Favicon, app icons, manifest and social card for PubCommand's own pages (never customers' public sites). */
 export const brandMetadata: Metadata = {
+  title: { default: "PubCommand", template: "%s · PubCommand" },
   icons: {
     icon: [
       { url: "/brand/favicon.ico", sizes: "any" },

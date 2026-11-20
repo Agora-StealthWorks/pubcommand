@@ -1,21 +1,15 @@
-import Link from "next/link";
-import { BrandLogo } from "@/components/brand";
+import { buildSiteUrl } from "@pubcommand/core";
+import { redirect } from "next/navigation";
+import { readSession, rootDomain } from "@/lib/auth";
+import { currentRequest } from "@/lib/request";
+import LoginPage from "./login/page";
 
-export default function MarketingPage() {
-  return (
-    <main data-surface="marketing" className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
-      <p className="text-sm font-semibold uppercase tracking-wide text-accent">One Nation Financial</p>
-      <h1 className="mt-3 max-w-full">
-        <BrandLogo className="h-12 w-auto sm:h-16" />
-      </h1>
-      <p className="mt-4 max-w-xl text-lg text-muted">
-        One login for every organization, brand, and workspace. Phase 1 is the foundation: tenancy, permissions, and the shell.
-      </p>
-      <div className="mt-8">
-        <Link href="/login" className="inline-flex min-h-11 items-center rounded-md border border-accent bg-accent px-3.5 text-sm font-semibold text-white">
-          Log in
-        </Link>
-      </div>
-    </main>
-  );
+/** The home page is the login. Signed-in people go straight to their workspaces. */
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string; devLink?: string; next?: string }> }) {
+  const { user } = await readSession();
+  if (user) {
+    const request = await currentRequest();
+    redirect(buildSiteUrl({ rootDomain: rootDomain(), requestHost: request.host, site: { kind: "app" }, pathname: "/" }));
+  }
+  return <LoginPage searchParams={searchParams} />;
 }

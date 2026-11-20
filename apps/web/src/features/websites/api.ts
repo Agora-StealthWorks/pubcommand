@@ -55,6 +55,19 @@ export function signWebhook(secret: string, body: string): string {
   return createHmac("sha256", secret).update(body).digest("hex");
 }
 
+/**
+ * Publication Setup changed (publications, editors, branding): every website of the brand
+ * that runs as its own app shows those, so tell each one to refresh. Best effort.
+ */
+export async function notifyBrandSites(organizationId: string, brandId: string): Promise<void> {
+  try {
+    const sites = await tenantDb(organizationId).webSite.findMany({ where: { brandId, deletedAt: null, publicUrl: { not: null } }, select: { id: true } });
+    await Promise.all(sites.map((site) => notifyExternalSite(organizationId, site.id)));
+  } catch (error) {
+    console.warn("[websites] brand refresh failed", error instanceof Error ? error.message : error);
+  }
+}
+
 /** Tell the separate site app to refresh its cached pages. Best effort, never throws. */
 export async function notifyExternalSite(organizationId: string, siteId: string): Promise<void> {
   try {

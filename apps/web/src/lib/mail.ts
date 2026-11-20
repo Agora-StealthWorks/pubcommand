@@ -20,6 +20,11 @@ export function emailFrom(env: MailEnv = process.env): string {
   return value.length > 0 ? value : DEFAULT_EMAIL_FROM;
 }
 
+/** "Email me a link" sign-in. Off unless EMAIL_LOGIN_ENABLED=true (invite links still work). */
+export function emailLoginEnabled(env: MailEnv = process.env): boolean {
+  return (env as Record<string, string | undefined>).EMAIL_LOGIN_ENABLED === "true";
+}
+
 export function exposeMagicLinkOnPage(env: MailEnv = process.env): boolean {
   return env.NODE_ENV !== "production" && env.AUTH_DEV_EXPOSE_LINKS === "true";
 }

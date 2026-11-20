@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { BRANDING_FIELDS, EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, firstError, parseFields, uniqueSlug, type FieldValues } from "../../../../../modules/pubsetup/fields";
 import { UUID, brandDefaultsAction, pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
 import { logoColumns, storedLogos } from "./logo-upload";
+import { notifyBrandSites } from "../websites/api";
 import { refreshAllPublications, refreshEditor, refreshPublication } from "./teach";
 
 const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp|svg\+xml)$/;
@@ -51,6 +52,8 @@ function scheduleRefresh(ctx: PubsetupCtx, publicationIds: string[], editorIds: 
   after(async () => {
     for (const publicationId of publicationIds) await refreshPublication({ ...base, publicationId });
     for (const editorId of editorIds) await refreshEditor({ ...base, editorId });
+    // Websites show publications and editors: refresh the brand's separately hosted sites.
+    await notifyBrandSites(base.organizationId, base.brandId);
   });
 }
 
@@ -200,7 +203,10 @@ export async function saveBrandDefaults(formData: FormData) {
   else await db.pubBrandBranding.create({ data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, ...data } });
   await audit(ctx, "pubsetup.brand.branding", "brand", ctx.brand.id);
   const base = { organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.actorId };
-  after(() => refreshAllPublications(base));
+  after(async () => {
+    await refreshAllPublications(base);
+    await notifyBrandSites(base.organizationId, base.brandId);
+  });
   redirect(withMessage(back, "notice", withNote("Brand defaults saved. Publications that leave a field blank use these.", logos.note)));
 }
 

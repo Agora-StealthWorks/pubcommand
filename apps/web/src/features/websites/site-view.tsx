@@ -52,14 +52,17 @@ export function Img({ loaded, assetId, className = "img", light = false, alt = "
   );
 }
 
-/** Short line under a publication name: "Free daily", "Monthly", or what the caller passes. */
+/**
+ * Short line under a publication name: "Free daily", "Monthly", or what the caller passes.
+ * Never the tier (front-end, back-end...): that is an internal funnel term, not for readers.
+ */
 function subtitle(pub: Publication, sub?: string): string {
   if (sub !== undefined) return sub.slice(0, 32);
   const type = (pub.pubType ?? "").toLowerCase();
   const free = type === "free newsletter" || (pub.tier ?? "").toLowerCase() === "free / lead gen";
   const freq = (pub.frequency ?? "").trim();
   if (free) return freq ? `Free ${freq.toLowerCase()}` : "Free";
-  return (freq || pub.tier || "").slice(0, 32);
+  return freq.slice(0, 32);
 }
 
 /** A publication's mark: its logo from Publication Setup (dark-background slot), or its initial. */
