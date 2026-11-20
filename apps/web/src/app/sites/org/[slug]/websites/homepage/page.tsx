@@ -11,7 +11,7 @@ import { websitesAccess } from "@/features/websites/guard";
 export default async function HomepagePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
   const { slug } = await params;
   const query = await searchParams;
-  const access = await websitesAccess(slug, "websites.publish");
+  const access = await websitesAccess(slug, "websites.settings");
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
   const { ctx, sites, site } = access;

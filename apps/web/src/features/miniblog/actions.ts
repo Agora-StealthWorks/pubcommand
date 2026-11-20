@@ -97,7 +97,7 @@ export async function saveSite(formData: FormData) {
 export async function setSiteStatus(formData: FormData) {
   const siteId = text(formData, "siteId", 40);
   const back = `/mini-blog/${siteId}?tab=settings`;
-  const ctx = await miniblogAction(back, "miniblog.publish");
+  const ctx = await miniblogAction(back, "miniblog.manage");
   const site = await ownSite(ctx, siteId);
   const live = text(formData, "intent", 20) === "live";
   if (live) {
@@ -111,7 +111,7 @@ export async function setSiteStatus(formData: FormData) {
 
 export async function deleteSite(formData: FormData) {
   const siteId = text(formData, "siteId", 40);
-  const ctx = await miniblogAction(`/mini-blog/${siteId}?tab=settings`, "miniblog.publish");
+  const ctx = await miniblogAction(`/mini-blog/${siteId}?tab=settings`, "miniblog.manage");
   const site = await ownSite(ctx, siteId);
   if (text(formData, "confirm", 200) !== site.name) redirect(withMessage(`/mini-blog/${site.id}?tab=settings`, "error", "Type the Mini-Blog name exactly to delete it."));
   await tenantDb(ctx.resolved.id).textSite.updateMany({ where: { id: site.id }, data: { deletedAt: new Date(), status: "draft", slug: `${site.slug.slice(0, 40)}-deleted-${Date.now().toString(36)}` } });

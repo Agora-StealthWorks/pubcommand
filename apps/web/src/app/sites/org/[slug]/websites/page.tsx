@@ -12,7 +12,7 @@ export default async function WebsitesPage({ params, searchParams }: { params: P
   const access = await websitesAccess(slug);
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
-  const { ctx, sites, site, canPublish } = access;
+  const { ctx, sites, site, canSettings } = access;
   const db = tenantDb(ctx.resolved.id);
   const now = new Date();
   const stats = await Promise.all(
@@ -70,7 +70,7 @@ export default async function WebsitesPage({ params, searchParams }: { params: P
                     <Link href="/websites/posts" className="inline-flex min-h-11 items-center rounded-md border border-line px-3.5 text-sm font-semibold">
                       Posts
                     </Link>
-                    {canPublish ? (
+                    {canSettings ? (
                       <Link href="/websites/settings" className="inline-flex min-h-11 items-center rounded-md border border-line px-3.5 text-sm font-semibold">
                         Site settings
                       </Link>
@@ -87,7 +87,7 @@ export default async function WebsitesPage({ params, searchParams }: { params: P
           );
         })}
       </div>
-      {canPublish ? (
+      {canSettings ? (
         <details className="mt-6 rounded-xl border border-line bg-white" open={sites.length === 0}>
           <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-accent">+ New website</summary>
           <form action={createSite} className="grid gap-3 border-t border-line p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">

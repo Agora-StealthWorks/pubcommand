@@ -27,7 +27,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
   const access = await miniblogAccess(slug);
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
-  const { ctx, canWrite, canPublish } = access;
+  const { ctx, canWrite, canManage } = access;
   const site = await loadSiteForBrand(ctx.resolved.id, ctx.brand.id, siteId);
   if (!site) notFound();
   const db = tenantDb(ctx.resolved.id);
@@ -227,7 +227,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                 ))}
               </ul>
             ) : null}
-            {canPublish ? (
+            {canManage ? (
               <form action={setSiteStatus}>
                 <input type="hidden" name="siteId" value={site.id} />
                 {site.status === "live" ? (
@@ -242,7 +242,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
               </form>
             ) : null}
           </Section>
-          {canPublish ? (
+          {canManage ? (
             <Section title="Delete">
               <form action={deleteSite} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="siteId" value={site.id} />
@@ -264,12 +264,12 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
             No SMS provider is connected, so nothing is sent from here. Export the opt-ins (each with its consent text, time and page) to load into your SMS platform.
           </p>
           <Section title={`${optinCount} opt-ins`} description="Numbers are masked here; the full list is in the export.">
-            {canPublish ? (
+            {canManage ? (
               <a href={`/mini-blog/${site.id}/optins`} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
                 Download opt-ins (CSV)
               </a>
             ) : (
-              <p className="text-sm text-muted">Exporting needs the miniblog.publish permission.</p>
+              <p className="text-sm text-muted">Exporting needs the miniblog.manage permission.</p>
             )}
             <ul className="divide-y divide-line text-sm">
               {recentOptins.map((optin) => (

@@ -101,7 +101,7 @@ const DEFAULT_MENU = [
 ];
 
 export async function createSite(formData: FormData) {
-  const ctx = await websitesAction("/websites", "websites.publish");
+  const ctx = await websitesAction("/websites", "websites.settings");
   const name = text(formData, "name", 120) || ctx.brand.name;
   const site = await tenantDb(ctx.resolved.id).webSite.create({
     data: {
@@ -130,7 +130,7 @@ export async function chooseSite(formData: FormData) {
 
 export async function saveSettings(formData: FormData) {
   const back = "/websites/settings";
-  const ctx = await websitesAction(back, "websites.publish");
+  const ctx = await websitesAction(back, "websites.settings");
   const site = await ownSite(ctx, text(formData, "siteId", 40), back);
   const wantedSlug = normalizeSlug(text(formData, "slug", 60), 60);
   if (!isValidSlug(wantedSlug)) redirect(withMessage(back, "error", "The site address must be lowercase letters, numbers and dashes."));
@@ -189,7 +189,7 @@ function menuKey(formData: FormData): "menu" | "topics" {
 export async function addMenuItems(formData: FormData) {
   const key = menuKey(formData);
   const back = `/websites/menus?menu=${key === "topics" ? "topics" : "header"}`;
-  const ctx = await websitesAction(back, "websites.publish");
+  const ctx = await websitesAction(back, "websites.settings");
   const site = await ownSite(ctx, text(formData, "siteId", 40), back);
   const picked = formData
     .getAll("item")
@@ -216,7 +216,7 @@ export async function addMenuItems(formData: FormData) {
 export async function saveMenu(formData: FormData) {
   const key = menuKey(formData);
   const back = `/websites/menus?menu=${key === "topics" ? "topics" : "header"}`;
-  const ctx = await websitesAction(back, "websites.publish");
+  const ctx = await websitesAction(back, "websites.settings");
   const site = await ownSite(ctx, text(formData, "siteId", 40), back);
   const items = navItemsFrom(site[key]);
   const rows = items.map((item) => ({
@@ -237,7 +237,7 @@ export async function saveMenu(formData: FormData) {
 /** Homepage builder: section order and on/off, and the hero banner. */
 export async function saveHomepage(formData: FormData) {
   const back = "/websites/homepage";
-  const ctx = await websitesAction(back, "websites.publish");
+  const ctx = await websitesAction(back, "websites.settings");
   const site = await ownSite(ctx, text(formData, "siteId", 40), back);
   const current = homepageFrom(site.homepage);
   const sections = orderSections(
@@ -284,7 +284,7 @@ function siteUrlFrom(value: string): string | null {
 /** Make (or replace) the key the separate site app uses to read from PubCommand. */
 export async function generateApiKey(formData: FormData) {
   const back = "/websites/settings";
-  const ctx = await websitesAction(back, "websites.publish");
+  const ctx = await websitesAction(back, "websites.settings");
   const site = await ownSite(ctx, text(formData, "siteId", 40), back);
   const { key, prefix } = await createApiKey(ctx.resolved.id, site.id);
   await audit(ctx, site.apiKeyHash ? "websites.api_key.replaced" : "websites.api_key.created", "web_site", site.id, { prefix });

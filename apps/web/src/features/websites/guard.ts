@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 
-export type WebsitesPermission = "websites.read" | "websites.write" | "websites.publish" | "websites.members";
+export type WebsitesPermission = "websites.read" | "websites.write" | "websites.publish" | "websites.settings" | "websites.members";
 
 /** Cookie remembering which of the brand's sites the sub-menu pages work on. */
 export const SITE_COOKIE = "pc_web_site";
@@ -41,6 +41,7 @@ export async function websitesAccess(slug: string, permission: WebsitesPermissio
     site,
     canWrite: can(ctx.subject, "websites.write", ctx.scope),
     canPublish: can(ctx.subject, "websites.publish", ctx.scope),
+    canSettings: can(ctx.subject, "websites.settings", ctx.scope),
     canMembers: can(ctx.subject, "websites.members", ctx.scope),
   };
 }

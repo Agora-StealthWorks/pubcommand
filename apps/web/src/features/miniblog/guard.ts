@@ -4,7 +4,7 @@ import { rootDomain } from "@/lib/auth";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 
-export type MiniBlogPermission = "miniblog.read" | "miniblog.write" | "miniblog.publish";
+export type MiniBlogPermission = "miniblog.read" | "miniblog.write" | "miniblog.publish" | "miniblog.manage";
 
 /** Page/route guard: org, entitlement, permission and brand. Called by every page and route handler. */
 export async function miniblogAccess(slug: string, permission: MiniBlogPermission = "miniblog.read") {
@@ -18,6 +18,7 @@ export async function miniblogAccess(slug: string, permission: MiniBlogPermissio
     ctx: { ...ctx, brand: ctx.brand },
     canWrite: can(ctx.subject, "miniblog.write", ctx.scope),
     canPublish: can(ctx.subject, "miniblog.publish", ctx.scope),
+    canManage: can(ctx.subject, "miniblog.manage", ctx.scope),
   };
 }
 

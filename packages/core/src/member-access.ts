@@ -33,7 +33,7 @@ export type BuiltInMemberRoleSlug = (typeof BUILT_IN_MEMBER_ROLES)[number]["slug
 export const DEFAULT_MEMBER_ROLE_SLUG: BuiltInMemberRoleSlug = "user";
 
 /** Extra permissions the Editor role adds on top of User. Not publishing, site settings, members or products. */
-export const EDITOR_EXTRA_PERMISSIONS: readonly string[] = ["websites.write"];
+export const EDITOR_EXTRA_PERMISSIONS: readonly string[] = ["websites.write", "websites.publish", "miniblog.write", "miniblog.publish"];
 
 export function builtInRolePermissions(slug: BuiltInMemberRoleSlug, manifests: readonly ModuleManifest[]): string[] {
   const all = classifyPermissions(manifests);

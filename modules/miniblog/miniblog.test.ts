@@ -10,7 +10,7 @@ describe("manifest", () => {
     expect(manifest.id).toBe("miniblog");
     expect(manifest.planEntitlement).toBe("miniblog");
     expect(manifest.nav[0]?.href).toBe("/mini-blog");
-    expect(manifest.permissions.map((permission) => permission.key)).toEqual(["miniblog.read", "miniblog.write", "miniblog.publish"]);
+    expect(manifest.permissions.map((permission) => permission.key)).toEqual(["miniblog.read", "miniblog.write", "miniblog.publish", "miniblog.manage"]);
   });
 });
 

@@ -3,10 +3,10 @@ import { loadSiteForBrand } from "@/features/miniblog/data";
 import { miniblogAccess } from "@/features/miniblog/guard";
 import { toCsv } from "../../../../../../../../../../modules/miniblog/site";
 
-/** SMS opt-ins with their consent records, as CSV. PII: miniblog.publish only, and every download is audited. */
+/** SMS opt-ins with their consent records, as CSV. PII: miniblog.manage only, and every download is audited. */
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string; siteId: string }> }) {
   const { slug, siteId } = await params;
-  const access = await miniblogAccess(slug, "miniblog.publish");
+  const access = await miniblogAccess(slug, "miniblog.manage");
   if (access.kind !== "ok") return new Response("Not found", { status: 404 });
   const { ctx } = access;
   const site = await loadSiteForBrand(ctx.resolved.id, ctx.brand.id, siteId);

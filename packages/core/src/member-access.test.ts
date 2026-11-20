@@ -23,6 +23,7 @@ const manifests = [
     { key: "websites.write", description: "" },
     { key: "websites.publish", description: "" },
     { key: "websites.members", description: "" },
+    { key: "websites.settings", description: "", access: "admin" as const },
   ]),
   manifest("charts", [
     { key: "charts.read", description: "", access: "write" },
@@ -62,8 +63,8 @@ describe("built-in roles", () => {
   it("User gets only read permissions", () => {
     expect(builtInRolePermissions("user", manifests)).toEqual(["websites.read", "wiki.read"]);
   });
-  it("Editor adds website writing, not publishing, members or settings", () => {
-    expect(builtInRolePermissions("editor", manifests)).toEqual(["websites.read", "websites.write", "wiki.read"]);
+  it("Editor adds website writing and publishing, not members or settings", () => {
+    expect(builtInRolePermissions("editor", manifests)).toEqual(["websites.publish", "websites.read", "websites.write", "wiki.read"]);
   });
   it("new members default to User", () => {
     expect(defaultMemberRoleId([{ id: "a", slug: "admin" }, { id: "u", slug: "user" }, { id: "e", slug: "editor" }])).toBe("u");

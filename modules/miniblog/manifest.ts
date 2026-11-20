@@ -10,7 +10,8 @@ export const manifest = defineModule({
   permissions: [
     { key: "miniblog.read", description: "See Mini-Blogs, their posts and subscriber counts" },
     { key: "miniblog.write", description: "Create and edit Mini-Blogs and write posts" },
-    { key: "miniblog.publish", description: "Publish posts, take Mini-Blogs live, delete them and export SMS opt-ins" },
+    { key: "miniblog.publish", description: "Publish and unpublish posts" },
+    { key: "miniblog.manage", description: "Take Mini-Blogs live, delete them and export SMS opt-ins", access: "admin" },
   ],
   events: [{ name: "miniblog.post.published", description: "A Mini-Blog post was published" }],
   jobs: [],
