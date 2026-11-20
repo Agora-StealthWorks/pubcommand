@@ -4,7 +4,7 @@ import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { BRANDING_FIELDS, EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, firstError, parseFields, uniqueSlug, type FieldValues } from "../../../../../modules/pubsetup/fields";
-import { UUID, pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
+import { UUID, brandDefaultsAction, pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
 import { logoColumns, storedLogos } from "./logo-upload";
 import { refreshAllPublications, refreshEditor, refreshPublication } from "./teach";
 
@@ -184,8 +184,7 @@ export async function savePublicationBranding(formData: FormData) {
 }
 
 export async function saveBrandDefaults(formData: FormData) {
-  const back = "/settings/publication-setup/brand";
-  const ctx = await pubsetupAction(back);
+  const { ctx, back } = await brandDefaultsAction(String(formData.get("brandId") ?? ""));
   const db = tenantDb(ctx.resolved.id);
   const parsed = parseFields(BRANDING_FIELDS, formData);
   if (!parsed.ok) redirect(withMessage(back, "error", firstError(BRANDING_FIELDS, parsed.errors)));

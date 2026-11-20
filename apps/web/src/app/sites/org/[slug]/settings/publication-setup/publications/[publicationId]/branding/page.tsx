@@ -30,7 +30,7 @@ export default async function PublicationBrandingPage({ params, searchParams }: 
       </Link>
       <h2 className="mb-1 text-lg font-semibold">Branding · {own.name}</h2>
       <p className="mb-4 text-sm text-muted">
-        Leave a field blank to use the <Link href="/settings/publication-setup/brand" className="text-accent hover:underline">brand defaults</Link>. The wiki and other apps use the result.
+        Leave a field blank to use the <Link href={`/settings/brands/${ctx.brand.id}/branding`} className="text-accent hover:underline">brand defaults</Link>. The wiki and other apps use the result.
       </p>
       <Flash error={query.error} notice={query.notice} />
       <BrandingForm

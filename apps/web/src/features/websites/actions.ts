@@ -11,6 +11,9 @@ import {
   ENTITLEMENT_SOURCES,
   ENTITLEMENT_STATUSES,
   excerptFrom,
+  HOME_SECTIONS,
+  homepageFrom,
+  orderSections,
   isAccessLevel,
   isContentType,
   isHexColor,
@@ -175,6 +178,42 @@ export async function saveSettings(formData: FormData) {
   refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
   if (slug !== site.slug) refreshPublic(slug);
   redirect(withMessage(back, "notice", status === "live" && site.status !== "live" ? "Saved. The website is live." : "Saved."));
+}
+
+/** Homepage builder: section order and on/off, and the hero banner. */
+export async function saveHomepage(formData: FormData) {
+  const back = "/websites/homepage";
+  const ctx = await websitesAction(back, "websites.publish");
+  const site = await ownSite(ctx, text(formData, "siteId", 40), back);
+  const current = homepageFrom(site.homepage);
+  const sections = orderSections(
+    HOME_SECTIONS.map((section) => ({ key: section.key, on: bool(formData, `on_${section.key}`), position: int(formData, `pos_${section.key}`, 99, 0, 99) })),
+  );
+  const upload = await storeAsset(ctx.resolved.id, site.id, formData.get("heroImage"), { actorId: ctx.actorId, alt: "Homepage hero", svgHeight: 1600 });
+  if (upload && "error" in upload) redirect(withMessage(back, "error", upload.error));
+  const pubs = await sitePublications(ctx.resolved.id, ctx.brand.id);
+  const signupId = uuidOrNull(formData, "heroSignupPublicationId");
+  const homepage = homepageFrom({
+    sections,
+    hero: {
+      kicker: text(formData, "heroKicker", 60),
+      headline: text(formData, "heroHeadline", 160),
+      text: text(formData, "heroText", 600),
+      imageAssetId: upload?.id ?? (bool(formData, "heroImageRemove") ? null : current.hero.imageAssetId),
+      buttonLabel: text(formData, "heroButtonLabel", 40),
+      buttonHref: text(formData, "heroButtonHref", 500),
+      button2Label: text(formData, "heroButton2Label", 40),
+      button2Href: text(formData, "heroButton2Href", 500),
+      signupPublicationId: signupId && pubs.free.some((pub) => pub.id === signupId) ? signupId : null,
+    },
+  });
+  if (homepage.sections.find((section) => section.key === "hero")?.on && !homepage.hero.headline) {
+    redirect(withMessage(back, "error", "Give the hero banner a headline, or turn it off."));
+  }
+  await tenantDb(ctx.resolved.id).webSite.updateMany({ where: { id: site.id }, data: { homepage } });
+  await audit(ctx, "websites.homepage.saved", "web_site", site.id, { order: homepage.sections.filter((section) => section.on).map((section) => section.key) });
+  refreshPublic(site.slug, { organizationId: ctx.resolved.id, siteId: site.id });
+  redirect(withMessage(back, "notice", "Homepage saved. The live site updates within seconds."));
 }
 
 /** "https://freemarketsociety.org" (no path); anything else is dropped. */

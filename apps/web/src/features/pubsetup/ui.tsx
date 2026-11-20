@@ -175,7 +175,6 @@ export function SubNav({ active }: { active: "publications" | "editors" | "brand
   const tabs = [
     ["publications", "/settings/publication-setup", "Publications"],
     ["editors", "/settings/publication-setup/editors", "Editors"],
-    ["brand", "/settings/publication-setup/brand", "Brand defaults"],
     ["import", "/settings/publication-setup/import", "Import"],
   ] as const;
   return (

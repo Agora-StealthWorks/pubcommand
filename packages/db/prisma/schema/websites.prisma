@@ -30,6 +30,8 @@ model WebSite {
   theme          Json      @default("{}")
   /// [{ label, href }] header menu.
   menu           Json      @default("[]")
+  /// Homepage layout: { top: "news" | "hero", hero: {...}, sections: {...} } (homepageFrom in modules/websites/content.ts).
+  homepage       Json      @default("{}")
   /// [{ label, href }] topic bar under the header.
   topics         Json      @default("[]")
   footerText     String    @default("") @map("footer_text")
@@ -200,6 +202,9 @@ model WebMember {
   name           String    @default("")
   /// active | disabled
   status         String    @default("active")
+  /// bcrypt hash; null until the member sets a password (they can always sign in by emailed link).
+  passwordHash   String?   @map("password_hash")
+  passwordSetAt  DateTime? @map("password_set_at")
   lastLoginAt    DateTime? @map("last_login_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
