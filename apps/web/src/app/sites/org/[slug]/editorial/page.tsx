@@ -68,7 +68,7 @@ export default async function RunningListPage({ params, searchParams }: { params
   return (
     <div className="min-w-0 space-y-5">
       <Flash error={query.error} notice={query.notice} />
-      <h2 className="text-xl font-semibold tracking-tight">{upcoming ? "Upcoming and active" : "All dates"}</h2>
+      <h2 className="text-xl font-semibold tracking-tight">{upcoming ? "Upcoming / Active Events" : "All dates"}</h2>
 
       <WeekStrip strip={strip} offset={offset} hrefFor={weekHref} canWrite={ctx.canWrite} />
 
