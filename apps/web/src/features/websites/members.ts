@@ -1,10 +1,10 @@
-import { tenantDb } from "@pubcommand/db";
+import { buildSiteUrl } from "@pubcommand/core";
+import { rawPrisma, tenantDb } from "@pubcommand/db";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { hashPassword, verifyPassword } from "@pubcommand/auth";
-import { sendEmail } from "@/lib/email";
-import { emailFrom } from "@/lib/mail";
-import { LINK_MINUTES, memberAccess, passwordProblem, senderWithName, setPasswordEmail, sitePath, themeFrom, type Access } from "../../../../../modules/websites/content";
+import { sendOrgEmail } from "@/features/email/org-email";
+import { LINK_MINUTES, memberAccess, passwordProblem, setPasswordEmail, sitePath, themeFrom, type Access } from "../../../../../modules/websites/content";
 import type { SiteRow } from "./data";
 
 /**
@@ -54,18 +54,72 @@ export async function createSetPasswordLink(organizationId: string, memberId: st
   return `${base}/sign-in/verify?token=${token}${next}`;
 }
 
-/** Email a member the "Set your password for <site>" link. From: the site's name at the configured address. */
+const EMAIL_IMAGE_MIME = /^image\/(png|jpe?g|gif)$/i;
+
+/**
+ * Logo and button colour for member emails, from the site and the brand defaults in Publication
+ * Setup (never PubCommand's). The logo is the site's own light-background logo, else the brand
+ * logo, served by the site's /logo route on the org host. No logo when there is none or it is an
+ * SVG/WebP (many email clients block those): the email then shows the site's name.
+ */
+async function siteEmailLook(organizationId: string, site: SiteRow, origin: string): Promise<{ logoUrl: string | null; accent: string }> {
+  const db = tenantDb(organizationId);
+  const ownId = site.logoLightAssetId ?? site.logoAssetId;
+  const [own, branding] = await Promise.all([
+    ownId ? db.webAsset.findFirst({ where: { id: ownId, siteId: site.id }, select: { mimeType: true } }) : null,
+    db.pubBrandBranding.findFirst({ where: { brandId: site.brandId }, select: { logoMime: true, logoOnDarkMime: true, primaryColor: true } }),
+  ]);
+  const accent = branding?.primaryColor && /^#[0-9a-f]{6}$/i.test(branding.primaryColor) ? branding.primaryColor : themeFrom(site.theme).primary;
+  const mime = own?.mimeType ?? branding?.logoMime ?? branding?.logoOnDarkMime ?? null;
+  if (!mime || !EMAIL_IMAGE_MIME.test(mime)) return { logoUrl: null, accent };
+  const organization = await rawPrisma().organization.findUnique({ where: { id: organizationId }, select: { slug: true } });
+  let requestHost: string | null = null;
+  try {
+    requestHost = new URL(origin).host;
+  } catch {
+    requestHost = null;
+  }
+  if (!organization || !requestHost) return { logoUrl: null, accent };
+  const logoUrl = buildSiteUrl({ rootDomain: process.env.ROOT_DOMAIN ?? "localhost", requestHost, site: { kind: "org", slug: organization.slug }, pathname: `${sitePath(site.slug)}/logo`, search: "?bg=light" });
+  return { logoUrl, accent };
+}
+
+/** The publication a member email is about, from the page they were on (…/research/<slug> or …/newsletters/<slug>). */
+export async function publicationFromPath(organizationId: string, brandId: string, path: string | null | undefined): Promise<string | null> {
+  const slug = /\/(?:research|newsletters)\/([a-z0-9-]{1,80})(?:[/?#]|$)/.exec(path ?? "")?.[1];
+  if (!slug) return null;
+  const pub = await tenantDb(organizationId).calendarPublication.findFirst({ where: { brandId, slug }, select: { id: true } });
+  return pub?.id ?? null;
+}
+
+/**
+ * Email a member the "Set your password for <site>" link, through the organization's email
+ * (Settings → Email): the publication's sender when the request came from a publication's page,
+ * else the brand's, else the organization default; the org's Resend key, else PubCommand's.
+ */
 export async function sendSetPasswordLink(input: {
   organizationId: string;
   site: SiteRow;
   member: { id: string; email: string; name: string };
   origin: string;
   returnTo?: string;
+  publicationId?: string | null;
 }): Promise<{ status: "sent" | "logged" | "failed"; link: string }> {
   const base = await siteBaseUrl(input.organizationId, input.site, input.origin);
   const link = await createSetPasswordLink(input.organizationId, input.member.id, base, input.returnTo);
-  const email = setPasswordEmail({ siteName: input.site.name, memberName: input.member.name, link, accent: themeFrom(input.site.theme).primary });
-  const result = await sendEmail({ to: input.member.email, from: senderWithName(input.site.name, emailFrom()), ...email });
+  const [look, publicationId] = await Promise.all([
+    siteEmailLook(input.organizationId, input.site, input.origin).catch(() => ({ logoUrl: null, accent: themeFrom(input.site.theme).primary })),
+    input.publicationId !== undefined ? input.publicationId : publicationFromPath(input.organizationId, input.site.brandId, input.returnTo),
+  ]);
+  const email = setPasswordEmail({ siteName: input.site.name, memberName: input.member.name, link, accent: look.accent, logoUrl: look.logoUrl });
+  const result = await sendOrgEmail({
+    organizationId: input.organizationId,
+    brandId: input.site.brandId,
+    publicationId,
+    displayName: input.site.name,
+    to: input.member.email,
+    ...email,
+  });
   if (result.status === "logged") console.info(`[websites] set-password link (email not configured) for site ${input.site.slug}: ${link}`);
   return { status: result.status === "failed" ? "failed" : result.status, link };
 }

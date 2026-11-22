@@ -6,6 +6,7 @@ import {
   consumeMagicLink,
   createLucia,
   hashMagicLinkToken,
+  inspectMagicLink,
   issueMagicLink,
   normalizeEmail,
   openImpersonation,
@@ -34,11 +35,16 @@ const magicLinks: MagicLinkStore = {
   async save(record) {
     await rawPrisma().magicLink.create({ data: record });
   },
-  async consume(tokenHash, now) {
-    const record = await rawPrisma().magicLink.findUnique({ where: { tokenHash } });
-    if (!record || record.consumedAt || record.expiresAt <= now) return null;
-    await rawPrisma().magicLink.update({ where: { id: record.id }, data: { consumedAt: now } });
-    return { userId: record.userId };
+  async find(tokenHash) {
+    return rawPrisma().magicLink.findUnique({
+      where: { tokenHash },
+      select: { id: true, userId: true, purpose: true, expiresAt: true, consumedAt: true },
+    });
+  },
+  async markConsumed(id, now) {
+    // Conditional update: only one request can use a token, even when two arrive together.
+    const result = await rawPrisma().magicLink.updateMany({ where: { id, consumedAt: null }, data: { consumedAt: now } });
+    return result.count === 1;
   },
 };
 
@@ -154,8 +160,45 @@ export async function sendMagicLink(email: string) {
   return issueMagicLink(magicLinks, user.id);
 }
 
+/** Sign-in and invite links only: a password reset token is refused here. */
 export async function verifyMagicLink(token: string) {
-  return consumeMagicLink(magicLinks, token);
+  return consumeMagicLink(magicLinks, token, new Date(), "login");
+}
+
+// Password reset ---------------------------------------------------------------
+
+/**
+ * Issues a 30-minute, single-use reset token for an active account, or null when there is
+ * no such account (callers show the same message either way). Earlier unused reset
+ * tokens of that person stop working, so only the newest email is good.
+ */
+export async function issuePasswordReset(email: string): Promise<{ token: string; expiresAt: Date; userId: string; email: string } | null> {
+  const user = await rawPrisma().user.findFirst({
+    where: { email: { equals: normalizeEmail(email), mode: "insensitive" }, disabledAt: null, deletedAt: null },
+    select: { id: true, email: true },
+  });
+  if (!user) return null;
+  const now = new Date();
+  await rawPrisma().magicLink.updateMany({
+    where: { userId: user.id, purpose: "password_reset", consumedAt: null },
+    data: { consumedAt: now },
+  });
+  const issued = await issueMagicLink(magicLinks, user.id, now, "password_reset");
+  return { ...issued, userId: user.id, email: user.email };
+}
+
+/** The account a reset token belongs to, without using the token up. Null when invalid, expired, used or disabled. */
+export async function checkPasswordReset(token: string): Promise<{ userId: string; email: string } | null> {
+  const found = await inspectMagicLink(magicLinks, token, new Date(), "password_reset");
+  if (!found) return null;
+  const user = await rawPrisma().user.findUnique({ where: { id: found.userId }, select: { email: true, disabledAt: true, deletedAt: true } });
+  if (!user || user.disabledAt || user.deletedAt) return null;
+  return { userId: found.userId, email: user.email };
+}
+
+/** Uses up a reset token. Null when invalid, expired, already used, or not a reset token. */
+export async function consumePasswordReset(token: string): Promise<{ userId: string } | null> {
+  return consumeMagicLink(magicLinks, token, new Date(), "password_reset");
 }
 
 export { hashMagicLinkToken, lucia, normalizeEmail, verifyPassword, sealImpersonation, secret, rootDomain };

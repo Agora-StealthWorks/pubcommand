@@ -26,6 +26,8 @@ export type FieldDef = {
   maxRows?: number;
   /** Left out of the Brain note and facts (layout-only values such as sort order). */
   internal?: boolean;
+  /** For "select": old option names that are accepted and saved as the new name. */
+  aliases?: Readonly<Record<string, string>>;
 };
 
 export type Pair = Record<string, string>;
@@ -51,7 +53,9 @@ export const PUBLICATION_TYPES = [
   "Live events",
   "Other",
 ] as const;
-export const PUBLICATION_TIERS = ["Free / lead gen", "Front-end", "Mid-tier", "Back-end", "High-ticket", "Lifetime", "Bonus / complimentary"] as const;
+export const PUBLICATION_TIERS = ["Free", "Front-end", "Mid-tier", "Back-end", "High-ticket", "Lifetime", "Bonus / complimentary"] as const;
+/** Old tier names still accepted (imports, old forms) and stored as the new name. */
+export const LEGACY_TIERS: Record<string, (typeof PUBLICATION_TIERS)[number]> = { "Free / lead gen": "Free" };
 export const FREQUENCIES = ["Daily", "Weekdays", "Several times a week", "Weekly", "Every two weeks", "Monthly", "Quarterly", "As needed"] as const;
 
 export const EDITOR_STATUSES = ["active", "inactive"] as const;
@@ -99,7 +103,7 @@ export const PUBLICATION_FIELDS: readonly FieldDef[] = [
   { key: "tagline", label: "Tagline", kind: "text", group: "Basics", max: 200 },
   // Type was replaced by the brand's own categories (pub_type is kept for the internal funnel rule).
   { key: "categoryId", label: "Category", kind: "category", group: "Basics", internal: true, hint: "Websites list publications by category. Manage the list under Categories." },
-  { key: "tier", label: "Tier", kind: "select", group: "Basics", options: PUBLICATION_TIERS },
+  { key: "tier", label: "Tier", kind: "select", group: "Basics", options: PUBLICATION_TIERS, aliases: LEGACY_TIERS },
   { key: "frequency", label: "Frequency", kind: "select", group: "Basics", options: FREQUENCIES },
   { key: "status", label: "Status", kind: "select", group: "Basics", required: true, options: PUBLICATION_STATUSES },
   { key: "launchDate", label: "Launch date", kind: "date", group: "Basics" },
@@ -338,6 +342,7 @@ export function parseFields(defs: readonly FieldDef[], form: FormLike): ParseRes
           } else if (def.kind === "date") {
             if (!validDay(value)) errors[def.key] = "Use a real date (YYYY-MM-DD).";
           } else if (def.kind === "select") {
+            value = def.aliases?.[value] ?? value;
             if (!def.options?.includes(value)) errors[def.key] = "Pick one of the options.";
           } else if (def.kind === "category") {
             if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) errors[def.key] = "Pick one of the categories.";

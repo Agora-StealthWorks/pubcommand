@@ -1,0 +1,38 @@
+// Organization email (Settings → Email): the org's own Resend connection and default sender,
+// plus optional per-brand and per-publication senders. Used for website member emails.
+// PubCommand's own email (RESEND_API_KEY + EMAIL_FROM) stays for PubCommand user emails.
+
+model OrgEmailSettings {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @unique @map("organization_id") @db.Uuid
+  /// Resend API key, AES-256-GCM encrypted (secretBox purpose "resend-api-key"). Never returned to a page.
+  resendKeyCipher String?  @map("resend_key_cipher")
+  /// "…1234": the only part of the key ever shown again.
+  resendKeyHint  String?   @map("resend_key_hint")
+  keyConnectedAt DateTime? @map("key_connected_at")
+  fromName       String?   @map("from_name")
+  fromAddress    String?   @map("from_address")
+  replyTo        String?   @map("reply_to")
+  updatedById    String?   @map("updated_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("org_email_settings")
+}
+
+model EmailSender {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  /// "brand" (brands.id) or "publication" (calendar_publications.id).
+  ownerType      String   @map("owner_type")
+  ownerId        String   @map("owner_id") @db.Uuid
+  fromName       String?  @map("from_name")
+  fromAddress    String?  @map("from_address")
+  replyTo        String?  @map("reply_to")
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, ownerType, ownerId])
+  @@map("email_senders")
+}

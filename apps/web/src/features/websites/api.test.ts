@@ -55,7 +55,7 @@ beforeAll(async () => {
       sortOrder: 0,
     },
   });
-  const pubFree = await t.calendarPublication.create({ data: { organizationId: org.id, brandId: brand.id, code: "DAILY", slug: "daily", name: "Daily Brief", tier: "Free / lead gen", categoryId: catFree.id, sortOrder: 5 } });
+  const pubFree = await t.calendarPublication.create({ data: { organizationId: org.id, brandId: brand.id, code: "DAILY", slug: "daily", name: "Daily Brief", tier: "Free", categoryId: catFree.id, sortOrder: 5 } });
   const site = await t.webSite.create({ data: { organizationId: org.id, brandId: brand.id, name: "Liberty Site", slug: `lib-${suffix}`, status: "live" } });
   const member = await t.webMember.create({ data: { organizationId: org.id, siteId: site.id, email: `reader-${suffix}@example.com`, name: "Ann" } });
   const product = await t.webProduct.create({ data: { organizationId: org.id, siteId: site.id, name: "Edge", publicationIds: [pubPaid.id], active: true } });

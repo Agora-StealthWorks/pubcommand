@@ -8,6 +8,8 @@ import { AppFrame } from "./app-frame";
 import { BrandLogo } from "./brand";
 import { BrandSwitcher } from "./brand-switcher";
 import { CommandPalette } from "./command-palette";
+import { SiteSwitcher } from "./site-switcher";
+import { switcherPaletteItems, type SwitcherModel } from "@/features/navigation/switcher";
 
 type Brand = { id: string; name: string; niche?: string | null };
 
@@ -23,6 +25,7 @@ export function OrgShell({
   pathname,
   email,
   impersonating,
+  switcher,
   children,
 }: {
   organization: { id: string; name: string; slug: string };
@@ -32,6 +35,7 @@ export function OrgShell({
   pathname: string;
   email: string;
   impersonating: { targetEmail: string } | null;
+  switcher: SwitcherModel;
   children: React.ReactNode;
 }) {
   const scope = { organizationId: organization.id, brandId: subject.membershipBrandId ?? brand?.id ?? null };
@@ -53,6 +57,7 @@ export function OrgShell({
         <Link href="/" className="flex items-center" aria-label="PubCommand dashboard">
           <BrandLogo className="h-8 w-auto" />
         </Link>
+        <SiteSwitcher model={switcher} />
         <div className="rounded-lg border border-line px-2 py-1.5">
           <p className="px-1 text-[11px] font-medium text-muted">Brand</p>
           <BrandSwitcher brands={brands} current={brand?.id ?? null} />
@@ -159,11 +164,11 @@ export function OrgShell({
       </AppFrame>
       <CommandPalette
         items={[
-          { label: "Dashboard", href: "/" },
-          ...apps.map((app) => ({ label: app.name, href: app.href })),
-          ...(showSettings ? [{ label: "Settings", href: settingsHref }] : []),
-          ...(canPublications ? [{ label: "Publication Setup", href: "/settings/publication-setup" }] : []),
-          { label: "Your account (password, name)", href: "/account" },
+          { label: "Dashboard", href: "/", group: "Apps" },
+          ...apps.map((app) => ({ label: app.name, href: app.href, group: "Apps" })),
+          ...(showSettings ? [{ label: "Settings", href: settingsHref, group: "Apps" }] : []),
+          ...(canPublications ? [{ label: "Publication Setup", href: "/settings/publication-setup", group: "Apps" }] : []),
+          ...switcherPaletteItems(switcher),
         ]}
       />
     </div>

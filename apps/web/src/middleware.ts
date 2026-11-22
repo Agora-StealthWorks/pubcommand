@@ -70,7 +70,9 @@ export async function middleware(request: NextRequest) {
 
   const url = request.nextUrl.clone();
   const suffix = pathname === "/" ? "" : pathname;
+  // Sign-in pages work on every host (org, app, admin): /login and the "Forgot your password?" reset page.
   if (pathname === "/login") url.pathname = "/sites/marketing/login";
+  else if (pathname === "/reset-password") url.pathname = "/sites/marketing/reset-password";
   else if (site.kind === "marketing") url.pathname = `/sites/marketing${suffix}`;
   else if (site.kind === "app") url.pathname = `/sites/app${suffix}`;
   else if (site.kind === "admin") url.pathname = `/sites/admin${suffix}`;

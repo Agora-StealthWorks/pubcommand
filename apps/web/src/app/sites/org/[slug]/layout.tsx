@@ -7,6 +7,7 @@ import { Denied } from "@/components/ui";
 import { rootDomain } from "@/lib/auth";
 import { getOrgContext } from "@/lib/org";
 import { rawPrisma } from "@pubcommand/db";
+import { loadSwitcher } from "@/features/navigation/load";
 
 export const dynamic = "force-dynamic";
 /** PubCommand's favicon and icons on its own pages (public customer sites set their own). */
@@ -63,9 +64,10 @@ export default async function OrgLayout({
   }
   if (ctx.kind === "forbidden") return <Denied title="You are not a member of this organization" />;
 
-  const target = ctx.impersonatingHere
-    ? await rawPrisma().user.findUnique({ where: { id: ctx.impersonatingHere.targetUserId } })
-    : null;
+  const [target, switcher] = await Promise.all([
+    ctx.impersonatingHere ? rawPrisma().user.findUnique({ where: { id: ctx.impersonatingHere.targetUserId } }) : null,
+    loadSwitcher({ userId: ctx.auth.user.id, session: ctx.auth.session, here: { kind: "org", slug: ctx.resolved.slug, name: ctx.resolved.name } }),
+  ]);
   return (
     <OrgShell
       organization={ctx.resolved}
@@ -75,6 +77,7 @@ export default async function OrgLayout({
       pathname={ctx.request.pathname}
       email={target?.email ?? ctx.auth.user.email}
       impersonating={target ? { targetEmail: target.email } : null}
+      switcher={switcher}
     >
       {children}
     </OrgShell>

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { readSession, readStaff, staffTwoFactorRequired } from "@/lib/auth";
 import { currentRequest } from "@/lib/request";
+import { loadSwitcher } from "@/features/navigation/load";
 
 export const dynamic = "force-dynamic";
 /** PubCommand's favicon and icons on its own pages (public customer sites set their own). */
@@ -36,8 +37,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return <div className="min-h-screen bg-canvas">{children}</div>;
   }
   if (request.pathname === "/2fa") redirect("/");
+  const switcher = await loadSwitcher({ userId: auth.user.id, session: auth.session, here: { kind: "admin" } });
   return (
-    <AdminShell role={staff.role} email={auth.user.email} pathname={request.pathname}>
+    <AdminShell role={staff.role} email={auth.user.email} pathname={request.pathname} switcher={switcher}>
       {children}
     </AdminShell>
   );

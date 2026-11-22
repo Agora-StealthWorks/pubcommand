@@ -101,6 +101,31 @@ export async function changeOwnPassword(input: {
   return { sessionsSignedOut: removed.count };
 }
 
+/**
+ * "Forgot your password?": the person proved they own the email with a one-time reset link
+ * (already used up by the caller). Sets the password, signs out every session and voids any
+ * other unused reset links. Audited without the password. The caller then opens a fresh session.
+ */
+export async function resetForgottenPassword(input: { userId: string; passwordHash: string }): Promise<{ sessionsSignedOut: number }> {
+  checkHash(input.passwordHash);
+  const now = new Date();
+  const removed = await rawPrisma().$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { id: input.userId }, select: { disabledAt: true, deletedAt: true } });
+    if (!user || user.disabledAt || user.deletedAt) throw new Error("This account is disabled.");
+    await tx.user.update({ where: { id: input.userId }, data: { passwordHash: input.passwordHash } });
+    await tx.magicLink.updateMany({ where: { userId: input.userId, purpose: "password_reset", consumedAt: null }, data: { consumedAt: now } });
+    return tx.session.deleteMany({ where: { userId: input.userId } });
+  });
+  await appendPlatformAudit({
+    actorId: input.userId,
+    action: "account.password.reset",
+    targetType: "user",
+    targetId: input.userId,
+    metadata: { sessionsSignedOut: removed.count, method: "email_link" },
+  });
+  return { sessionsSignedOut: removed.count };
+}
+
 /** Someone edits their own display name. */
 export async function updateOwnName(input: { userId: string; name: string; organizationId: string | null }): Promise<string | null> {
   const cleaned = cleanDisplayName(input.name);
