@@ -25,5 +25,6 @@ export async function POST(request: Request) {
     return NextResponse.redirect(dest, 303);
   }
   const { staff } = await establishSession(user.id);
-  return NextResponse.redirect(loginDestination({ staff: Boolean(staff), next, requestHost: host }));
+  // `next` may be a path on this host ("/settings"): resolve it here, since redirects need a full URL.
+  return NextResponse.redirect(new URL(loginDestination({ staff: Boolean(staff), next, requestHost: host }), origin), 303);
 }

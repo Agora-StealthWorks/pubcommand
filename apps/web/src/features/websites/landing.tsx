@@ -11,7 +11,7 @@ export async function PublicationArchive({ loaded, member, pub, page, kind }: { 
   const header = (
     <section className="mast dark" style={{ padding: "28px 0" }}>
       <div className="wrap">
-        <PubBadge loaded={loaded} pub={pub} size="lg" sub={pub.frequency ?? ""} />
+        <PubBadge loaded={loaded} pub={pub} size="lg" />
         <p style={{ marginTop: 14 }}>
           <a href={path} className="lnk" style={{ color: "var(--gold)" }}>
             ← About {pub.name}

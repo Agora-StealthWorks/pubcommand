@@ -51,7 +51,7 @@ Emailed links are no longer a way to log in. They only set or reset a password.
 | `POST auth/verify` `{ token }` | Redeems that link once: `{ session, maxAge, mustSetPassword, purpose: "set-password" }`. The session is short (60 min) and **reads as signed out** (members-only posts stay locked) until a password is set. |
 | `POST auth/set-password` `{ password, currentPassword? }` + `x-member-session` | Sets or changes the password. `currentPassword` is required unless the session came from a link in the last 30 minutes (once). Returns `{ ok: true, maxAge }`: extend the session cookie to `maxAge`. Other sessions of the member are signed out. 400 `{ error }` is a readable message. |
 | `GET me` | Adds `mustSetPassword` (true while the member has no password). |
-| `GET site` | Publications are in category order and each has `category: { id, name, order } \| null`, `pricing: { retail, lifetime, offers }` and `faq: [{ question, answer }]`. Adds `categories: [{ id, name, order }]`. `pubType` and `tier` are still sent but **deprecated and internal: never display them** (they will be removed). |
+| `GET site` | Publications are in category order and each has `category: { id, name, order } \| null`, `pricing: { retail, lifetime, offers }` and `faq: [{ question, answer }]`. Adds `categories: [{ id, name, order }]`. `pubType` and `tier` are internal-only classifications and are **not sent** (removed 2026-11-22); use `free` for free vs paid and `description` for the line under a publication's name. |
 | `GET testimonials?publication=<id>` | New: approved testimonials (name, location, quote, result, date, rating, disclosure). |
 
 **What the separate FreeMarketSociety.org app must change:**
@@ -61,7 +61,7 @@ Emailed links are no longer a way to log in. They only set or reset a password.
 3. `/sign-in/verify?token=` route: call `auth/verify`, store the session (for `maxAge`), then **always go to a set-password screen** (new password + confirm → `auth/set-password`, then extend the cookie to the returned `maxAge` and go to `next`).
 4. Members area: if `me.member.mustSetPassword`, redirect every members page to the set-password screen.
 5. Account page: "Change password" (current + new + confirm → `auth/set-password` with `currentPassword`).
-6. Publications list: group by `category` in the order sent (uncategorized last); never show `tier` or `pubType`. Build publication pages from `pricing`, `faq`, `deliverables`, editors and `testimonials?publication=`.
+6. Publications list: group by `category` in the order sent (uncategorized last); use `free` for free vs paid (`tier`/`pubType` are no longer sent). Build publication pages from `pricing`, `faq`, `deliverables`, editors and `testimonials?publication=`.
 
 ## Public URLs
 

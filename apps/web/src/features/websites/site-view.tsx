@@ -54,11 +54,13 @@ export function Img({ loaded, assetId, className = "img", light = false, alt = "
 }
 
 /**
- * Short line under a publication name: "Free daily", "Monthly", or what the caller passes.
- * Never the tier (front-end, back-end...): that is an internal funnel term, not for readers.
+ * Short line under a publication name: its short description if it has one, else "Free daily" /
+ * "Monthly", or what the caller passes. Never the tier (front-end, back-end...): internal only.
  */
 function subtitle(pub: Publication, sub?: string): string {
   if (sub !== undefined) return sub.slice(0, 32);
+  const short = (pub.description ?? "").trim();
+  if (short) return short.length > 90 ? `${short.slice(0, 89).trimEnd()}…` : short;
   const free = isFreePublication(pub);
   const freq = (pub.frequency ?? "").trim();
   if (free) return freq ? `Free ${freq.toLowerCase()}` : "Free";
