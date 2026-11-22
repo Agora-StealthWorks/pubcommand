@@ -64,13 +64,14 @@ const EMAIL_IMAGE_MIME = /^image\/(png|jpe?g|gif)$/i;
  */
 async function siteEmailLook(organizationId: string, site: SiteRow, origin: string): Promise<{ logoUrl: string | null; accent: string }> {
   const db = tenantDb(organizationId);
-  const ownId = site.logoLightAssetId ?? site.logoAssetId;
+  // The email's header band is the site's dark primary colour, so use the logo made for dark backgrounds.
+  const ownId = site.logoAssetId ?? site.logoLightAssetId;
   const [own, branding] = await Promise.all([
     ownId ? db.webAsset.findFirst({ where: { id: ownId, siteId: site.id }, select: { mimeType: true } }) : null,
     db.pubBrandBranding.findFirst({ where: { brandId: site.brandId }, select: { logoMime: true, logoOnDarkMime: true, primaryColor: true } }),
   ]);
   const accent = branding?.primaryColor && /^#[0-9a-f]{6}$/i.test(branding.primaryColor) ? branding.primaryColor : themeFrom(site.theme).primary;
-  const mime = own?.mimeType ?? branding?.logoMime ?? branding?.logoOnDarkMime ?? null;
+  const mime = own?.mimeType ?? branding?.logoOnDarkMime ?? branding?.logoMime ?? null;
   if (!mime || !EMAIL_IMAGE_MIME.test(mime)) return { logoUrl: null, accent };
   const organization = await rawPrisma().organization.findUnique({ where: { id: organizationId }, select: { slug: true } });
   let requestHost: string | null = null;
@@ -80,7 +81,7 @@ async function siteEmailLook(organizationId: string, site: SiteRow, origin: stri
     requestHost = null;
   }
   if (!organization || !requestHost) return { logoUrl: null, accent };
-  const logoUrl = buildSiteUrl({ rootDomain: process.env.ROOT_DOMAIN ?? "localhost", requestHost, site: { kind: "org", slug: organization.slug }, pathname: `${sitePath(site.slug)}/logo`, search: "?bg=light" });
+  const logoUrl = buildSiteUrl({ rootDomain: process.env.ROOT_DOMAIN ?? "localhost", requestHost, site: { kind: "org", slug: organization.slug }, pathname: `${sitePath(site.slug)}/logo`, search: "?bg=dark" });
   return { logoUrl, accent };
 }
 
@@ -111,7 +112,7 @@ export async function sendSetPasswordLink(input: {
     siteEmailLook(input.organizationId, input.site, input.origin).catch(() => ({ logoUrl: null, accent: themeFrom(input.site.theme).primary })),
     input.publicationId !== undefined ? input.publicationId : publicationFromPath(input.organizationId, input.site.brandId, input.returnTo),
   ]);
-  const email = setPasswordEmail({ siteName: input.site.name, memberName: input.member.name, link, accent: look.accent, logoUrl: look.logoUrl });
+  const email = setPasswordEmail({ siteName: input.site.name, memberName: input.member.name, link, accent: look.accent, logoUrl: look.logoUrl, theme: themeFrom(input.site.theme), supportEmail: input.site.supportEmail });
   const result = await sendOrgEmail({
     organizationId: input.organizationId,
     brandId: input.site.brandId,

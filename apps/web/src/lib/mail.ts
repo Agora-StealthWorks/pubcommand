@@ -1,3 +1,4 @@
+import { renderEmailLayout } from "@pubcommand/core";
 export const DEFAULT_EMAIL_FROM = "login@pubcommand.com";
 
 export type MagicLinkDelivery = "sent" | "logged" | "failed";
@@ -52,9 +53,25 @@ export async function deliverMagicLink(input: {
   }
 
   const subject = input.kind === "invite" ? "You're invited to PubCommand" : "Your PubCommand sign-in link";
-  const intro = input.kind === "invite"
-    ? "You have been invited to PubCommand. Open this link to sign in:"
-    : "Sign in to PubCommand:";
+  let origin = "";
+  try {
+    origin = new URL(input.url).origin;
+  } catch {
+    origin = "";
+  }
+  const body = renderEmailLayout({
+    senderName: "PubCommand",
+    logoUrl: origin ? `${origin}/brand/logo-light.png` : null,
+    heading: input.kind === "invite" ? "You're invited to PubCommand" : "Sign in to PubCommand",
+    paragraphs: [
+      input.kind === "invite"
+        ? "You have been invited to PubCommand. Use the button below to sign in, then set a password under Your account."
+        : "Use the button below to sign in to PubCommand.",
+      "The link works once and expires soon.",
+    ],
+    button: { label: input.kind === "invite" ? "Accept invite" : "Sign in" , url: input.url },
+    footnote: "If you did not expect this email, you can ignore it.",
+  });
   const response = await (input.fetchImpl ?? fetch)("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -65,7 +82,8 @@ export async function deliverMagicLink(input: {
       from: emailFrom(env),
       to: [input.to],
       subject,
-      text: `${intro}\n\n${input.url}\n\nThis link expires soon and can be used once.`,
+      html: body.html,
+      text: body.text,
     }),
   });
   if (!response.ok) {

@@ -33,10 +33,13 @@ describe("magic link delivery", () => {
     });
     assert.equal(result, "sent");
     assert.deepEqual(lines, []);
-    const payload = JSON.parse(body) as { from: string; to: string[]; text: string };
+    const payload = JSON.parse(body) as { from: string; to: string[]; text: string; html: string };
     assert.equal(payload.from, "login@pubcommand.com");
     assert.deepEqual(payload.to, ["stephen@onenationfinancial.com"]);
     assert.match(payload.text, /token=abc/);
+    // Invites use the PubCommand email template (logo + button), not bare text.
+    assert.match(payload.html, /brand\/logo-light\.png/);
+    assert.match(payload.html, /Accept invite/);
   });
 
   it("never treats the dev expose flag as on in production", () => {

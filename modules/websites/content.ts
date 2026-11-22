@@ -495,12 +495,28 @@ export function senderWithName(name: string, from: string): string {
  * The set-password email (subject, HTML, text). Reader-facing: only the site's own name and logo
  * (the site's logo, else the brand logo from Publication Setup), never PubCommand.
  */
-export function setPasswordEmail(input: { siteName: string; memberName: string; link: string; minutes?: number; accent?: string; logoUrl?: string | null }): { subject: string; html: string; text: string } {
+export function setPasswordEmail(input: {
+  siteName: string;
+  memberName: string;
+  link: string;
+  minutes?: number;
+  accent?: string;
+  logoUrl?: string | null;
+  /** The website's theme: navy header band, gold button, cream background — like the site. */
+  theme?: SiteTheme | null;
+  supportEmail?: string | null;
+}): { subject: string; html: string; text: string } {
   const minutes = input.minutes ?? LINK_MINUTES;
-  const color = /^#[0-9a-f]{6}$/i.test(input.accent ?? "") ? input.accent! : "#10213a";
+  const theme = input.theme ?? null;
+  const color = theme ? theme.accent : /^#[0-9a-f]{6}$/i.test(input.accent ?? "") ? input.accent! : "#10213a";
   const body = renderEmailLayout({
     senderName: input.siteName,
     logoUrl: input.logoUrl ?? null,
+    look: theme ? { headerBackground: theme.primary, headerText: theme.cream, pageBackground: theme.cream, buttonText: theme.primary } : null,
+    footer: [
+      `© ${new Date().getFullYear()} ${input.siteName}`,
+      ...(input.supportEmail ? [`Questions? ${input.supportEmail}`] : []),
+    ],
     heading: `Set your password for ${input.siteName}`,
     paragraphs: [
       `Hello${input.memberName ? ` ${input.memberName}` : ""},`,
