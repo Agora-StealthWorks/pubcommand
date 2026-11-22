@@ -5,6 +5,7 @@ import { appForPath, CATEGORY_ORDER, visibleApps } from "@/lib/apps";
 import { canManagePublications } from "@/features/pubsetup/module";
 import { stopImpersonation } from "@/server/platform-actions";
 import { AppFrame } from "./app-frame";
+import { SidebarApp } from "./sidebar-app";
 import { BrandLogo } from "./brand";
 import { BrandSwitcher } from "./brand-switcher";
 import { CommandPalette } from "./command-palette";
@@ -78,34 +79,16 @@ export function OrgShell({
               const open = current?.moduleId === app.moduleId;
               const activeSub = open ? activeSubHref(app.subnav, pathname) : null;
               return (
-                <div key={app.moduleId}>
-                  <Link className={navClass(open)} href={app.href} aria-expanded={app.subnav.length ? open : undefined}>
-                    <span aria-hidden className="w-5 text-center">
-                      {app.icon}
-                    </span>
-                    {app.name}
-                    {app.subnav.length ? (
-                      <span aria-hidden className="ml-auto text-[10px]">
-                        {open ? "▾" : "▸"}
-                      </span>
-                    ) : null}
-                  </Link>
-                  {open && app.subnav.length ? (
-                    <div className="mb-1 ml-5 mt-1 border-l-2 border-[#e0e7ff] pl-2" aria-label={`${app.name} pages`}>
-                      {app.subnav.map((item) => (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          className={`flex min-h-9 items-center rounded-md px-2.5 text-[13px] ${
-                            activeSub === item.href ? "bg-[#f1f4fb] font-semibold text-[#1e3a8a]" : "text-muted hover:bg-canvas hover:text-ink"
-                          }`}
-                        >
-                          {item.label}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+                <SidebarApp
+                  key={app.moduleId}
+                  name={app.name}
+                  icon={app.icon}
+                  href={app.href}
+                  open={open}
+                  subnav={app.subnav}
+                  activeSub={activeSub}
+                  linkClass={navClass(open)}
+                />
               );
             })}
           </div>
