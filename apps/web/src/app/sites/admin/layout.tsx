@@ -21,7 +21,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return (
       <main className="mx-auto max-w-lg px-6 py-20">
         <h1 className="text-2xl font-semibold">Platform staff only</h1>
-        <p className="mt-2 text-sm text-muted">An organization role does not grant access to admin.{process.env.ROOT_DOMAIN}.</p>
+        <p className="mt-2 text-sm text-muted">
+          You are signed in as <b className="text-ink">{auth.user.email}</b>, which is not PubCommand staff. An organization role does not grant access to admin.{process.env.ROOT_DOMAIN}.
+        </p>
+        <form action="/api/auth/logout" method="post" className="mt-4">
+          <button className="inline-flex min-h-11 items-center rounded-md bg-accent px-3.5 text-sm font-semibold text-white">Sign out and use another account</button>
+        </form>
       </main>
     );
   }
