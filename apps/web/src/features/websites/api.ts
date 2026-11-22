@@ -103,7 +103,7 @@ export function publicationJson(pub: Publication) {
     longDescription: pub.longDescription,
     positioning: pub.positioning,
     frequency: pub.frequency,
-    // Type and tier are internal-only classifications and are never sent to a website.
+    // Tier (front-end, back-end...) and type are internal-only classifications: never sent.
     // Use `category` to group and `free` for free vs paid.
     free: isFreePublication(pub),
     /** The brand's category (Publication Setup → Categories); null = uncategorized (list it last). */

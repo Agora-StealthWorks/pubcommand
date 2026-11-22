@@ -85,6 +85,10 @@ describe("Website API v1: publications and categories", () => {
     const edge = body.publications[1]!;
     expect(edge.category).toEqual({ id: ids.catPaid, name: "Research services", order: 20 });
     expect(edge.free).toBe(false);
+    // Internal-only classifications never reach a website.
+    expect(edge).not.toHaveProperty("tier");
+    expect(edge).not.toHaveProperty("pubType");
+    expect(JSON.stringify(body)).not.toContain("Back-end");
     expect(edge.pricing).toEqual({ retail: "$1,995/yr", lifetime: null, offers: [{ label: "Annual", price: "$1,995", term: "per year" }] });
     expect(edge.faq).toEqual([{ question: "How often?", answer: "Weekly." }]);
     // Internal pricing never leaves PubCommand.
