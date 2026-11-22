@@ -81,6 +81,7 @@ export function OrgShell({
               return (
                 <SidebarApp
                   key={app.moduleId}
+                  id={app.moduleId}
                   name={app.name}
                   icon={app.icon}
                   href={app.href}
