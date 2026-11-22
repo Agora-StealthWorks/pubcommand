@@ -48,6 +48,9 @@ export default async function BrainChatHome({ searchParams }: { searchParams: Pr
             </li>
           ))}
         </ul>
+        <p className="mt-4 text-xs text-muted">
+          <a href="/brain/ask?history=1" className="underline">Earlier one-off questions</a> (from “Ask the main Brain”) are still saved.
+        </p>
       </section>
     </div>
   );

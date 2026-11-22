@@ -57,7 +57,7 @@ export default async function BrainChatPage({ params, searchParams }: { params: 
         <Flash error={query.error} notice={query.notice} />
         <ol className="space-y-3">
           {chat.messages.map((message, index) => (
-            <ChatMessage key={message.id} message={message} latest={index === chat.messages.length - 1} />
+            <ChatMessage key={message.id} chatId={chat.id} message={message} latest={index === chat.messages.length - 1} />
           ))}
         </ol>
         {stale ? (

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { renderNote } from "../brain/markdown";
-import { AutoRefresh } from "../promos/auto-refresh";
+import { LiveAnswer } from "./live-answer";
 import { mainBrain } from "../main-brain/db";
 import type { StoredUpload } from "./server";
 
@@ -63,7 +63,7 @@ function activityLabel(entry: Activity): React.ReactNode {
   return entry.tool;
 }
 
-export function ChatMessage({ message, latest }: { message: { id: string; role: string; content: string; status: string; error: string | null; uploads: unknown; activity: unknown; updatedAt: Date }; latest: boolean }) {
+export function ChatMessage({ chatId, message, latest }: { chatId: string; message: { id: string; role: string; content: string; status: string; error: string | null; uploads: unknown; activity: unknown; updatedAt: Date }; latest: boolean }) {
   const uploads = Array.isArray(message.uploads) ? (message.uploads as StoredUpload[]) : [];
   const activity = Array.isArray(message.activity) ? (message.activity as Activity[]) : [];
   if (message.role === "user") {
@@ -90,6 +90,13 @@ export function ChatMessage({ message, latest }: { message: { id: string; role: 
   }
   const html = message.content ? renderNote(message.content, () => null).html : "";
   const running = message.status === "RUNNING";
+  if (running) {
+    return (
+      <li id={latest ? "latest" : undefined} className="min-w-0">
+        <LiveAnswer chatId={chatId} initial={{ status: message.status, html, error: message.error, activity: activity }} />
+      </li>
+    );
+  }
   return (
     <li id={latest ? "latest" : undefined} className="min-w-0">
       <div className="min-w-0 rounded-xl border border-line bg-white px-4 py-3">
@@ -102,12 +109,7 @@ export function ChatMessage({ message, latest }: { message: { id: string; role: 
             ))}
           </ul>
         ) : null}
-        {html ? <div className="brain-prose" dangerouslySetInnerHTML={{ __html: html }} /> : running ? <p className="text-sm text-muted">Thinking…</p> : null}
-        {running ? (
-          <p className="mt-2 text-xs text-muted">
-            Answering · <AutoRefresh everyMs={1500} />
-          </p>
-        ) : null}
+        {html ? <div className="brain-prose" dangerouslySetInnerHTML={{ __html: html }} /> : null}
         {message.status === "FAILED" && message.error ? <p className="mt-2 rounded-md border border-[#fecdca] bg-[#fef3f2] px-3 py-2 text-sm text-[#912018]">{message.error}</p> : null}
       </div>
     </li>
