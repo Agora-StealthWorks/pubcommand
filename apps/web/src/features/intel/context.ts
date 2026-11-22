@@ -1,5 +1,5 @@
 import { can } from "@pubcommand/core";
-import { getOrgContext } from "@/lib/org";
+import { getOrgContext, requestOrgSlug } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 
 export type IntelBrand = { id: string; name: string; niche?: string | null; audience?: string | null; complianceNotes?: string | null };
@@ -20,8 +20,9 @@ export type IntelAccess = { ok: true; scope: IntelScope } | { ok: false; error: 
  */
 export async function intelAccess(need: "read" | "write", slug?: string): Promise<IntelAccess> {
   const request = await currentRequest();
-  if (request.site.kind !== "org") return { ok: false, error: "Open Intel from your organization." };
-  const ctx = await getOrgContext(slug ?? request.site.slug);
+  const orgSlug = slug ?? requestOrgSlug(request);
+  if (!orgSlug) return { ok: false, error: "Open Intel from your organization." };
+  const ctx = await getOrgContext(orgSlug);
   if (ctx.kind !== "ok") return { ok: false, error: "You are not signed in to this organization." };
   if (!ctx.subject.entitledModuleIds.includes("intel")) return { ok: false, error: "Intel is turned off for this organization." };
   const canRead = can(ctx.subject, "intel.read", ctx.scope);
@@ -44,7 +45,8 @@ export async function intelAccess(need: "read" | "write", slug?: string): Promis
 /** Sending an email to Promo Analyzer creates a promo, so it also needs that app and promo.write. */
 export async function canUsePromoAnalyzer(slug?: string): Promise<boolean> {
   const request = await currentRequest();
-  if (request.site.kind !== "org") return false;
-  const ctx = await getOrgContext(slug ?? request.site.slug);
+  const orgSlug = slug ?? requestOrgSlug(request);
+  if (!orgSlug) return false;
+  const ctx = await getOrgContext(orgSlug);
   return ctx.kind === "ok" && ctx.subject.entitledModuleIds.includes("promo-studio") && can(ctx.subject, "promo.write", ctx.scope);
 }

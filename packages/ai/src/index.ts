@@ -267,3 +267,4 @@ export async function runText(request: { system: string; prompt: string; effort?
 }
 
 export { streamText, type AiStreamRequest, type AiStreamResult } from "./stream";
+export { runChat, historyMessages, type ChatTool, type ChatTurn, type ChatActivity, type ChatRequest, type ChatResult } from "./chat";

@@ -14,6 +14,7 @@ import { intelVideoCapture } from "./intel-video-capture";
 import { jobRunsCleanup } from "./job-runs-cleanup";
 import { knowledgeConflictCheck } from "./knowledge-conflict-check";
 import { knowledgeLearnUp } from "./knowledge-learn-up";
+import { knowledgePromoSync } from "./knowledge-promo-sync";
 import { knowledgePushDown } from "./knowledge-push-down";
 import { miniblogCalendarStatus } from "./miniblog-calendar-status";
 import { performanceImportSync } from "./performance-import-sync";
@@ -49,6 +50,7 @@ export const JOBS: JobDefinition[] = [
   jobRunsCleanup,
   knowledgeConflictCheck,
   knowledgeLearnUp,
+  knowledgePromoSync,
   knowledgePushDown,
   miniblogCalendarStatus,
   performanceImportSync,

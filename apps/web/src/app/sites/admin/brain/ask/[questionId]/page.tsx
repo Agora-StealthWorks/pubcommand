@@ -39,7 +39,7 @@ export default async function MainQuestionPage({ params }: { params: Promise<{ q
 
   return (
     <div className="max-w-3xl">
-      <Link href="/brain/ask" className="text-sm text-muted hover:text-ink">
+      <Link href="/brain/ask?history=1" className="text-sm text-muted hover:text-ink">
         ← Ask the main Brain
       </Link>
       <h1 className="mt-2 break-words text-xl font-semibold tracking-tight">{row.question}</h1>

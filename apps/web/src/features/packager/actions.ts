@@ -4,7 +4,7 @@ import { brandProfile, can } from "@pubcommand/core";
 import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
-import { getOrgContext } from "@/lib/org";
+import { getOrgContext, requestOrgSlug } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { PACKAGE_COMPONENTS, checkClaims, clampQuantity, componentSpec, parseDirection } from "../../../../../modules/promo-studio/packager";
 import { isUuid, loadPackage } from "./data";
@@ -22,8 +22,9 @@ const enc = encodeURIComponent;
 
 async function packagerContext(permission: Permission, back: string) {
   const request = await currentRequest();
-  if (request.site.kind !== "org") redirect("/");
-  const ctx = await getOrgContext(request.site.slug);
+  const orgSlug = requestOrgSlug(request);
+  if (!orgSlug) redirect("/");
+  const ctx = await getOrgContext(orgSlug);
   if (ctx.kind !== "ok") redirect("/");
   if (!ctx.subject.entitledModuleIds.includes("promo-studio") || !can(ctx.subject, permission, ctx.scope)) {
     redirect(`${back}${back.includes("?") ? "&" : "?"}error=${enc("You do not have permission.")}`);

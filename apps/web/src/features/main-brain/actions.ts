@@ -159,7 +159,7 @@ export async function toggleSavedMainQuestion(formData: FormData) {
   const staff = await requireBrainStaff();
   const row = await ownQuestion(formData, staff.userId);
   await mainBrain((tx) => tx.mainBrainQuestion.update({ where: { id: row.id }, data: { savedAt: row.savedAt ? null : new Date() } }));
-  redirect(field(formData, "back", 10) === "list" ? "/brain/ask" : `/brain/ask/${row.id}`);
+  redirect(field(formData, "back", 10) === "list" ? "/brain/ask?history=1" : `/brain/ask/${row.id}`);
 }
 
 export async function hideMainQuestion(formData: FormData) {

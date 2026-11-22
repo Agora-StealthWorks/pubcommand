@@ -1,6 +1,6 @@
 import { can } from "@pubcommand/core";
 import { redirect } from "next/navigation";
-import { getOrgContext } from "@/lib/org";
+import { getOrgContext, requestOrgSlug } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 
 type Permission = "promo.read" | "promo.write";
@@ -18,8 +18,9 @@ export async function promoPage(slug: string, permission: Permission = "promo.re
 /** For server actions: redirects away unless the user may act on the current brand. */
 export async function promoAction(permission: Permission, back = "/promo-studio") {
   const request = await currentRequest();
-  if (request.site.kind !== "org") redirect("/");
-  const ctx = await getOrgContext(request.site.slug);
+  const orgSlug = requestOrgSlug(request);
+  if (!orgSlug) redirect("/");
+  const ctx = await getOrgContext(orgSlug);
   if (ctx.kind !== "ok") redirect("/");
   if (!ctx.subject.entitledModuleIds.includes("promo-studio") || !can(ctx.subject, permission, ctx.scope)) {
     redirect(`${back}?error=You do not have permission.`);
