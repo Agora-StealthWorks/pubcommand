@@ -1,0 +1,283 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { tenantDb, type Prisma } from "@pubcommand/db";
+import { componentSpec } from "../../../../../modules/promo-studio/packager";
+import { promoCodeKeys } from "../../../../../modules/promo-studio/performance";
+import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, performanceFromOld, rawFromOldSections } from "../../../../../modules/promo-studio/oxfordhub";
+import { buildStored, effectiveScorecard } from "../../../../../modules/promo-studio/stored";
+import { ensureConsoleOrganization } from "@/lib/console-workspace";
+import { retier } from "../promos/insights";
+
+/**
+ * Bring the old OxfordHub Promo Analyzer and Packager into the admin console's
+ * Promo Analyzer (the console workspace), from an export folder:
+ *
+ *   reviews.json                       the analyzer's saved reviews (sections, scores, training, metadata)
+ *   performance.json                   its performance sheet records and promo list
+ *   learning.json                      its lessons
+ *   packager/package-<id>.json         the Packager's packages
+ *   sourcecopy/<reviewId>.txt          each promo's full text (from the brain vault's Source Copy notes)
+ *   files/<reviewId>/source__<name>    the original upload (kept when small)
+ *   files/<reviewId>/supplemental.json + sup__<fileId>__<name>[.txt]
+ *                                      supporting files (the Packager's training files) and their text
+ *
+ * Reviews keep their original analysis (no AI re-run). Supporting files become
+ * promo files and Packager training examples; packages attach to their promo.
+ * Idempotent: promos by `oxfordhub:<reviewId>`, examples by sourceRef, packages
+ * by direction.oxfordhubId, performance by code, lessons by title.
+ */
+export async function importOxfordHub(input: { dir: string; apply: boolean; onLine?: (line: string) => void }): Promise<{ applied: boolean; lines: string[] }> {
+  const lines: string[] = [];
+  const log = (...parts: unknown[]) => {
+    const line = parts.map((part) => (typeof part === "string" ? part : JSON.stringify(part))).join(" ");
+    lines.push(line);
+    input.onLine?.(line);
+  };
+  const dir = input.dir;
+  const readJson = <T>(path: string, fallback: T): T => (existsSync(join(dir, path)) ? (JSON.parse(readFileSync(join(dir, path), "utf8")) as T) : fallback);
+
+  type OldReview = {
+    id: string;
+    filename: string;
+    date?: string;
+    sections?: Record<string, unknown>;
+    subScores?: { dimension?: string; score?: number; rationale?: string }[];
+    effectivenessScore?: number | null;
+    scoringModel?: string | null;
+    fkReadingEase?: number | null;
+    fkGradeLevel?: number | null;
+    publisher?: string | null;
+    gurus?: string[];
+    product?: string | null;
+    promoType?: string | null;
+    promoStatus?: string | null;
+    promoCode?: string | null;
+    promoRunStartDate?: string | null;
+    pricePoint?: number | null;
+    inputType?: string | null;
+    training?: { performanceScore?: number | null; myScore?: number | null; reasoning?: string | null; notes?: string | null; isBestPerformer?: boolean } | null;
+  };
+  const reviews = readJson<OldReview[]>("reviews.json", []);
+  const performance = readJson<{ views?: { record?: Parameters<typeof performanceFromOld>[0] }[]; promos?: { reviewId: string; name?: string }[] }>("performance.json", {});
+  const lessons = readJson<Parameters<typeof lessonFromOld>[0][]>("learning.json", []);
+  const packageFiles = existsSync(join(dir, "packager")) ? readdirSync(join(dir, "packager")).filter((name) => /^package-.+\.json$/.test(name)) : [];
+  const names = new Map((performance.promos ?? []).map((p) => [p.reviewId, p.name ?? null]));
+  log(`Export: ${reviews.length} reviews, ${performance.views?.length ?? 0} performance records, ${lessons.length} lessons, ${packageFiles.length} packages.`);
+
+  const organizationId = await ensureConsoleOrganization();
+  const db = tenantDb(organizationId);
+  const brand = await db.brand.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true, niche: true } });
+  if (!brand) throw new Error("The console workspace has no brand.");
+
+  const existing = new Map((await db.promo.findMany({ where: { source: { startsWith: "oxfordhub:" } }, select: { id: true, source: true } })).map((p) => [p.source!.slice("oxfordhub:".length), p.id]));
+  const fresh = reviews.filter((r) => !existing.has(r.id));
+  log(`Promos: ${fresh.length} new, ${reviews.length - fresh.length} already imported.`);
+  if (!input.apply) {
+    log("Dry run. Nothing was written.");
+    return { applied: false, lines };
+  }
+
+  const mime = (name: string) =>
+    /\.docx$/i.test(name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : /\.pdf$/i.test(name) ? "application/pdf" : /\.png$/i.test(name) ? "image/png" : /\.jpe?g$/i.test(name) ? "image/jpeg" : /\.txt|\.md$/i.test(name) ? "text/plain" : "application/octet-stream";
+  const titleOf = (r: OldReview) => (names.get(r.id) ?? r.filename.replace(/\.[a-z0-9]+$/i, "")).slice(0, 200);
+  const day = (value: string | null | undefined) => (value && /^\d{4}-\d{2}-\d{2}/.test(value) ? new Date(`${value.slice(0, 10)}T00:00:00Z`) : null);
+
+  // ---------- promos with their analysis, files and training examples ----------
+  let created = 0;
+  let files = 0;
+  let examples = 0;
+  for (const r of fresh) {
+    const folder = join(dir, "files", r.id);
+    const sourceText = existsSync(join(dir, "sourcecopy", `${r.id}.txt`)) ? readFileSync(join(dir, "sourcecopy", `${r.id}.txt`), "utf8").trim() : "";
+    const stored = buildStored({ raw: rawFromOldSections(r.sections, r.subScores), finished: true, visual: r.inputType === "pdf" || r.inputType === "scanned-pdf", matches: [] });
+    const card = effectiveScorecard(stored);
+    const title = titleOf(r);
+    const createdAt = r.date ? new Date(r.date) : new Date();
+    const promo = await db.promo.create({
+      data: {
+        organizationId,
+        brandId: brand.id,
+        title,
+        filename: r.filename,
+        inputType: r.inputType ?? "text",
+        sourceText,
+        publisher: r.publisher ?? null,
+        gurus: r.gurus ?? [],
+        product: r.product ?? null,
+        promoType: r.promoType ?? null,
+        promoStatus: r.promoStatus ?? null,
+        promoCode: r.promoCode ?? null,
+        runStartDate: day(r.promoRunStartDate),
+        pricePoint: typeof r.pricePoint === "number" ? r.pricePoint : null,
+        analysisStatus: "DONE",
+        effectivenessScore: r.effectivenessScore ?? card.final,
+        fkReadingEase: r.fkReadingEase ?? null,
+        fkGradeLevel: r.fkGradeLevel ?? null,
+        myScore: r.training?.myScore ?? null,
+        performanceScore: r.training?.performanceScore ?? null,
+        trainingNotes: [r.training?.notes, r.training?.reasoning].filter(Boolean).join("\n\n") || null,
+        isBestPerformer: Boolean(r.training?.isBestPerformer),
+        source: `oxfordhub:${r.id}`,
+        createdAt,
+      },
+      select: { id: true },
+    });
+    await db.promoAnalysis.create({
+      data: { organizationId, promoId: promo.id, version: 1, model: r.scoringModel ?? "claude (OxfordHub analyzer)", result: stored as unknown as Prisma.InputJsonValue, score: r.effectivenessScore ?? card.final, createdAt },
+    });
+    existing.set(r.id, promo.id);
+    created += 1;
+    if (!existsSync(folder)) continue;
+    const entries = readdirSync(folder);
+    const source = entries.find((name) => name.startsWith("source__"));
+    if (source) {
+      const data = readFileSync(join(folder, source));
+      const filename = source.slice("source__".length);
+      await db.promoFile.create({ data: { organizationId, promoId: promo.id, kind: "source", filename, mimeType: mime(filename), size: data.length, data, createdAt } });
+      files += 1;
+    }
+    const supplemental = existsSync(join(folder, "supplemental.json")) ? (JSON.parse(readFileSync(join(folder, "supplemental.json"), "utf8")) as { id: string; filename: string; category?: string }[]) : [];
+    for (const file of supplemental) {
+      const stem = entries.find((name) => name.startsWith(`sup__${file.id}__`) && !name.endsWith(".txt"));
+      if (stem) {
+        const data = readFileSync(join(folder, stem));
+        await db.promoFile.create({ data: { organizationId, promoId: promo.id, kind: "supplemental", category: file.category ?? null, filename: file.filename, mimeType: mime(file.filename), size: data.length, data, createdAt } });
+        files += 1;
+      }
+      const kind = kindForOldCategory(file.category);
+      const textFile = entries.find((name) => name.startsWith(`sup__${file.id}__`) && name.endsWith(".txt"));
+      const text = textFile ? readFileSync(join(folder, textFile), "utf8").trim() : "";
+      if (!kind || text.length < 100) continue;
+      const sourceRef = `oxfordhub-file:${file.id}`;
+      if (await db.promoTrainingExample.findFirst({ where: { brandId: brand.id, sourceRef }, select: { id: true } })) continue;
+      await db.promoTrainingExample.create({
+        data: {
+          organizationId,
+          brandId: brand.id,
+          kind,
+          publication: r.publisher ?? null,
+          niche: brand.niche ?? "general",
+          title: `${componentSpec(kind)?.label ?? kind}: ${title}`.slice(0, 200),
+          content: text.slice(0, 60_000),
+          source: "oxfordhub",
+          sourceRef,
+          promoId: promo.id,
+          tags: ["oxfordhub", ...(r.training?.isBestPerformer ? ["best-performer"] : [])],
+          // Best-performer sync must never retire these.
+          edited: true,
+        },
+      });
+      examples += 1;
+    }
+  }
+  log(`Promo Analyzer: ${created} promos with their analyses, ${files} files, ${examples} Packager training examples.`);
+
+  // ---------- performance records ----------
+  {
+    const promoByCode = new Map<string, string>();
+    for (const p of await db.promo.findMany({ where: { deletedAt: null, promoCode: { not: null } }, select: { id: true, promoCode: true } })) for (const key of promoCodeKeys(p.promoCode)) promoByCode.set(key, p.id);
+    const have = new Set((await db.promoPerformance.findMany({ where: { brandId: brand.id }, select: { codeKey: true } })).map((row) => row.codeKey));
+    let added = 0;
+    for (const view of performance.views ?? []) {
+      const row = view.record ? performanceFromOld(view.record) : null;
+      if (!row || have.has(row.codeKey)) continue;
+      await db.promoPerformance.create({
+        data: { organizationId, brandId: brand.id, codeKey: row.codeKey, promoCode: row.promoCode, label: row.label, promoId: promoByCode.get(row.codeKey) ?? null, views: row.views, clicks: row.clicks, orders: row.orders, revenue: row.revenue, extra: row.extra as Prisma.InputJsonValue },
+      });
+      have.add(row.codeKey);
+      added += 1;
+    }
+    const tiers = await retier(organizationId, brand.id).catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }));
+    log(`Performance: ${added} records added; tiers:`, tiers);
+  }
+
+  // ---------- lessons ----------
+  {
+    const promoByName = new Map<string, string>();
+    for (const r of reviews) {
+      const id = existing.get(r.id);
+      if (!id) continue;
+      promoByName.set(r.filename.replace(/\.[a-z0-9]+$/i, "").toLowerCase(), id);
+      promoByName.set(titleOf(r).toLowerCase(), id);
+    }
+    const titles = new Set((await db.promoLesson.findMany({ where: { brandId: brand.id }, select: { title: true } })).map((l) => l.title));
+    let added = 0;
+    for (const old of lessons) {
+      const lesson = lessonFromOld(old);
+      if (!lesson || titles.has(lesson.title)) continue;
+      const promoIds = ((old as { supportingPromos?: string[] }).supportingPromos ?? []).flatMap((name) => {
+        const id = promoByName.get(name.replace(/\.[a-z0-9]+$/i, "").toLowerCase());
+        return id ? [id] : [];
+      });
+      await db.promoLesson.create({ data: { organizationId, brandId: brand.id, title: lesson.title, body: lesson.body, category: lesson.category, origin: "ai", evidenceCount: Math.max(lesson.evidenceCount, promoIds.length), promoIds, fromResults: lesson.fromResults } });
+      titles.add(lesson.title);
+      added += 1;
+    }
+    log(`Lessons: ${added} added.`);
+  }
+
+  // ---------- packages ----------
+  {
+    const promos = await db.promo.findMany({ where: { deletedAt: null }, select: { id: true, title: true, filename: true } });
+    const norm = (value: string) => value.toLowerCase().replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9]+/g, " ").trim();
+    let added = 0;
+    let stubs = 0;
+    for (const name of packageFiles) {
+      const pkg = (JSON.parse(readFileSync(join(dir, "packager", name), "utf8")) as { package: { id: string; createdAt?: string; brief: Record<string, unknown> & { title?: string; reviewId?: string; analyzerReviewId?: string }; components: { slug: string; items?: { text?: string }[] }[] } }).package;
+      if (await db.promoPackage.findFirst({ where: { direction: { path: ["oxfordhubId"], equals: pkg.id } }, select: { id: true } })) continue;
+      const brief = pkg.brief ?? {};
+      const title = String(brief.title ?? "Package").slice(0, 200);
+      const reviewId = (brief.reviewId ?? brief.analyzerReviewId) as string | undefined;
+      let promoId = reviewId ? existing.get(reviewId) : undefined;
+      if (!promoId) {
+        const key = norm(title);
+        promoId = promos.find((p) => norm(p.title) === key || (p.filename && norm(p.filename) === key))?.id;
+      }
+      if (!promoId) {
+        // The package was built from a promo the analyzer never kept: the brief carries its text; keep it as a promo and analyze it.
+        const text = String(brief.promoFullText ?? brief.promoExcerpt ?? "").trim();
+        const stub = await db.promo.create({
+          data: {
+            organizationId,
+            brandId: brand.id,
+            title,
+            inputType: "text",
+            sourceText: text.slice(0, 400_000),
+            publisher: typeof brief.publisher === "string" ? brief.publisher : null,
+            gurus: Array.isArray(brief.gurus) ? (brief.gurus as string[]) : [],
+            product: typeof brief.product === "string" ? brief.product.slice(0, 300) : null,
+            promoStatus: "Draft (Untested)",
+            source: `oxfordhub-package:${pkg.id}`,
+            analysisStatus: text.length >= 200 ? "QUEUED" : "NONE",
+          },
+          select: { id: true },
+        });
+        if (text.length >= 200) await db.promoBulkJob.create({ data: { organizationId, brandId: brand.id, promoId: stub.id, actorId: null } });
+        promoId = stub.id;
+        stubs += 1;
+      }
+      const createdAt = pkg.createdAt ? new Date(pkg.createdAt) : new Date();
+      const created = await db.promoPackage.create({
+        data: { organizationId, brandId: brand.id, promoId, title, direction: { oxfordhubId: pkg.id, brief: Object.fromEntries(Object.entries(brief).filter(([key]) => key !== "promoFullText" && key !== "promoExcerpt")) } as Prisma.InputJsonValue, createdAt },
+        select: { id: true },
+      });
+      let position = 0;
+      for (const component of pkg.components ?? []) {
+        const kind = kindForOldSlug(component.slug);
+        const items = component.items ?? [];
+        if (!kind || !items.length) continue;
+        const content = componentContent(kind, items);
+        const row = await db.promoPackageComponent.create({
+          data: { organizationId, packageId: created.id, kind, position: position++, quantity: items.length, content, genStatus: "DONE", currentVersion: 1, createdAt },
+          select: { id: true },
+        });
+        await db.promoPackageComponentVersion.create({ data: { organizationId, componentId: row.id, version: 1, source: "imported", content, createdAt } });
+      }
+      added += 1;
+    }
+    log(`Packages: ${added} added (${stubs} with a promo of their own, queued for analysis).`);
+  }
+
+  log("Done.");
+  return { applied: true, lines };
+}

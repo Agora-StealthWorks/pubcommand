@@ -39,7 +39,8 @@ export async function syncPromosToMasterBrain(options: { limitPerOrg?: number } 
     counts.organizations! += 1;
     const db = tenantDb(organizationId);
     const promos = await db.promo.findMany({
-      where: { deletedAt: null, copiedFromId: null },
+      // Promos brought over from the OxfordHub analyzer already have their notes in the Master Brain (vault import).
+      where: { deletedAt: null, copiedFromId: null, NOT: { source: { startsWith: "oxfordhub" } } },
       select: { id: true, brandId: true, title: true, sourceText: true, publisher: true, gurus: true, product: true, promoCode: true, effectivenessScore: true },
       orderBy: { createdAt: "asc" },
       take: options.limitPerOrg ?? 5000,
