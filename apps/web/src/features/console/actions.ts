@@ -3,6 +3,7 @@
 import { appendPlatformAudit } from "@pubcommand/db";
 import { redirect } from "next/navigation";
 import { requireBrainStaff } from "../main-brain/staff";
+import { reframeMainBrainNotes } from "../main-brain/lens";
 import { copyPromosIntoConsole, copyVideosIntoConsole, learnUpEverywhere, syncPromosToMasterBrain } from "./past-data";
 
 const BACK = "/brain/past";
@@ -24,6 +25,7 @@ export async function bringPastDataOver() {
     const promoNotes = await syncPromosToMasterBrain();
     const promos = await copyPromosIntoConsole({ limit: 40 });
     const videos = await copyVideosIntoConsole({ limit: 60 });
+    await reframeMainBrainNotes();
     await appendPlatformAudit({
       actorId: staff.userId,
       action: "console.past_data.brought_over",

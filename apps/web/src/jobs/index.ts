@@ -13,6 +13,7 @@ import { intelRadar } from "./intel-radar";
 import { intelVideoCapture } from "./intel-video-capture";
 import { jobRunsCleanup } from "./job-runs-cleanup";
 import { knowledgeConflictCheck } from "./knowledge-conflict-check";
+import { knowledgeIndustryLens } from "./knowledge-industry-lens";
 import { knowledgeLearnUp } from "./knowledge-learn-up";
 import { knowledgePromoSync } from "./knowledge-promo-sync";
 import { knowledgePushDown } from "./knowledge-push-down";
@@ -49,6 +50,7 @@ export const JOBS: JobDefinition[] = [
   intelVideoCapture,
   jobRunsCleanup,
   knowledgeConflictCheck,
+  knowledgeIndustryLens,
   knowledgeLearnUp,
   knowledgePromoSync,
   knowledgePushDown,

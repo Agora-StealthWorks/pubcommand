@@ -1,4 +1,5 @@
 import { appendPlatformAudit, type Prisma } from "@pubcommand/db";
+import { frameNote } from "../../../../../modules/knowledge/industry-lens";
 import { importDecision, planVaultImport, type ExistingNote } from "../../../../../modules/knowledge/vault";
 import { readVaultZip } from "../../../../../modules/knowledge/zip";
 import type { StoredReport } from "../brain/vault-import";
@@ -13,7 +14,11 @@ import { uniqueMainSlug } from "./learn";
 export async function planMainFromZip(bytes: Uint8Array) {
   const read = readVaultZip(bytes);
   if (!read.ok) return { ok: false as const, error: read.error };
-  const decisions = read.files.map((file) => importDecision(file.path, file.text));
+  // The Master Brain's industry lens (no "competitors"); keys stay the original vault paths.
+  const decisions = read.files.map((file) => {
+    const decision = importDecision(file.path, file.text);
+    return decision.ok ? { ...decision, note: frameNote(decision.note) } : decision;
+  });
   const keys = decisions.flatMap((decision) => (decision.ok ? [decision.note.sourceRef] : []));
   const existing = new Map<string, ExistingNote>();
   for (let i = 0; i < keys.length; i += 500) {
