@@ -4,7 +4,7 @@ import { appendPlatformAudit } from "@pubcommand/db";
 import { redirect } from "next/navigation";
 import { requireBrainStaff } from "../main-brain/staff";
 import { reframeMainBrainNotes } from "../main-brain/lens";
-import { copyPromosIntoConsole, copyVideosIntoConsole, learnUpEverywhere, syncPromosToMasterBrain } from "./past-data";
+import { copyPackagerIntoConsole, copyPromosIntoConsole, copyVideosIntoConsole, learnUpEverywhere, syncPromosToMasterBrain } from "./past-data";
 
 const BACK = "/brain/past";
 
@@ -25,6 +25,7 @@ export async function bringPastDataOver() {
     const promoNotes = await syncPromosToMasterBrain();
     const promos = await copyPromosIntoConsole({ limit: 40 });
     const videos = await copyVideosIntoConsole({ limit: 60 });
+    const packager = await copyPackagerIntoConsole();
     await reframeMainBrainNotes();
     await appendPlatformAudit({
       actorId: staff.userId,
@@ -36,7 +37,7 @@ export async function bringPastDataOver() {
     const left = (promos.remaining ?? 0) + (videos.remaining ?? 0);
     go(
       "notice",
-      `Master Brain: ${(learned.created ?? 0) + (promoNotes.created ?? 0)} notes added. Console: ${promos.copied} promos and ${videos.copied} videos copied.` +
+      `Master Brain: ${(learned.created ?? 0) + (promoNotes.created ?? 0)} notes added. Console: ${promos.copied} promos, ${packager.packages} packages, ${packager.examples} training examples and ${videos.copied} videos copied.` +
         (left ? ` ${left} more to copy — press the button again.` : " Everything is over."),
     );
   } catch (error) {

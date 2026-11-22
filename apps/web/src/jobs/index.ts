@@ -1,4 +1,5 @@
 import type { JobDefinition } from "@/lib/jobs/types";
+import { consolePastData } from "./console-past-data";
 import { editorialBrainCatchup } from "./editorial-brain-catchup";
 import { editorialSeriesExtend } from "./editorial-series-extend";
 import { editorialTickerPrices } from "./editorial-ticker-prices";
@@ -36,6 +37,7 @@ import { supportWebsiteSheet } from "./support-website-sheet";
 // Off for now (modules/editorial/features.ts): editorialAirtableSync (./editorial-airtable-sync)
 // and editorialCubEmails (./editorial-cub-emails). Add them back here with their flags.
 export const JOBS: JobDefinition[] = [
+  consolePastData,
   editorialBrainCatchup,
   editorialSeriesExtend,
   editorialTickerPrices,
