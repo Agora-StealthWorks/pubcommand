@@ -28,7 +28,7 @@ export default async function UsersPage({
   const permissions = moduleRegistry.all().flatMap((manifest) => manifest.permissions);
   return (
     <div>
-      <PageHeader title="Users" description="Invites send a magic link. New people start as User (read-only) unless you pick another role. Open someone to change their role or app access." />
+      <PageHeader title="Users" description="Invites send a sign-in link; the first time they use it, they set their own password. New people start as User (read-only) unless you pick another role. Open someone to change their role, app access or password." />
       <Flash error={query.error} notice={query.notice} />
       <form action={inviteUser} className="pc-form-row mb-6">
         <Input name="email" type="email" required placeholder="person@example.com" className="md:max-w-xs" />

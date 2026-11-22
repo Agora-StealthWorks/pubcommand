@@ -9,17 +9,31 @@ import {
   isNiche,
   memberAccessChangeBlocked,
   moduleAllowed,
+  LOCKED_ROLE_SLUGS,
+  newPasswordProblem,
   parseMemberAppChoice,
+  roleGrantChangeBlocked,
+  roleGrantChanges,
   slugifyName,
 } from "@pubcommand/core";
+import { hashPassword } from "@pubcommand/auth";
 import { moduleRegistry } from "@pubcommand/modules";
-import { appendOrgAudit, appendPlatformAudit, changeOrganizationSlug, loadEntitlementState, rawPrisma, tenantDb } from "@pubcommand/db";
+import {
+  appendOrgAudit,
+  appendPlatformAudit,
+  changeOrganizationSlug,
+  loadEntitlementState,
+  rawPrisma,
+  setMemberPassword,
+  tenantDb,
+} from "@pubcommand/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createLoginLink, normalizeEmail } from "@/lib/auth";
 import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
+import { roleAccessSections } from "@/lib/role-access";
 
 async function orgMutation(permission: string) {
   const request = await currentRequest();
@@ -157,40 +171,21 @@ export async function createRole(formData: FormData) {
   if (!name || slug.length < 2) redirect("/settings/roles?error=Enter a role name.");
   const brandId = String(formData.get("brandId") ?? "") || null;
   if (brandId && !ctx.brands.some((brand) => brand.id === brandId)) redirect("/settings/roles?error=Unknown brand.");
+  const roleSlug = brandId ? `${slug}-${brandId.slice(0, 8)}` : slug;
+  if (await tenantDb(ctx.resolved.id).role.findFirst({ where: { slug: roleSlug } })) {
+    redirect(`/settings/roles?error=${encodeURIComponent("A role with that name already exists.")}`);
+  }
   await tenantDb(ctx.resolved.id).role.create({
     data: {
       organizationId: ctx.resolved.id,
       name,
-      slug: brandId ? `${slug}-${brandId.slice(0, 8)}` : slug,
+      slug: roleSlug,
       brandId,
       isSystem: false,
     },
   });
   await audit(ctx, "role.created", "role", undefined, { name });
-  redirect("/settings/roles?notice=Role created.");
-}
-
-export async function toggleGrant(formData: FormData) {
-  const ctx = await orgMutation("settings.roles.manage");
-  const roleId = String(formData.get("roleId") ?? "");
-  const permission = String(formData.get("permission") ?? "");
-  const enabled = String(formData.get("enabled") ?? "") === "1";
-  const role = await tenantDb(ctx.resolved.id).role.findFirst({ where: { id: roleId } });
-  if (!role || !ctx.subject.permissionModules[permission]) redirect("/settings/roles?error=Unknown role or permission.");
-  if (enabled) {
-    await tenantDb(ctx.resolved.id).rolePermission.create({
-      data: { organizationId: ctx.resolved.id, roleId, permission, effect: "ALLOW" },
-    }).catch(async () => {
-      await tenantDb(ctx.resolved.id).rolePermission.updateMany({
-        where: { roleId, permission },
-        data: { effect: "ALLOW" },
-      });
-    });
-  } else {
-    await tenantDb(ctx.resolved.id).rolePermission.deleteMany({ where: { roleId, permission } });
-  }
-  await audit(ctx, enabled ? "permission.granted" : "permission.revoked", "role", roleId, { permission });
-  redirect("/settings/roles?notice=Permissions updated.");
+  redirect(`/settings/roles?notice=${encodeURIComponent(`${name} added. It has no access yet: set it in the tables below.`)}`);
 }
 
 export async function toggleModule(formData: FormData) {
@@ -304,4 +299,112 @@ export async function changeMemberRole(formData: FormData) {
   await db.membership.updateMany({ where: { id: member.id }, data: { roleId: role.id } });
   await audit(ctx, "member.role.changed", "user", userId, { from: member.role.slug, to: role.slug });
   redirect(`${href}?notice=${encodeURIComponent(`Role changed to ${role.name}.`)}`);
+}
+
+export async function setMemberPasswordAction(formData: FormData) {
+  const ctx = await orgMutation("settings.users.manage");
+  const userId = String(formData.get("userId") ?? "");
+  const href = memberHref(userId);
+  const password = String(formData.get("newPassword") ?? "");
+  const problem = newPasswordProblem(password, String(formData.get("confirmPassword") ?? ""));
+  if (problem) redirect(`${href}?error=${encodeURIComponent(problem)}`);
+  let notice = "";
+  try {
+    const result = await setMemberPassword({
+      organizationId: ctx.resolved.id,
+      actorId: ctx.auth.user.id,
+      actorCanManageUsers: can(ctx.subject, "settings.users.manage", ctx.scope),
+      impersonating: Boolean(ctx.impersonatingHere),
+      targetUserId: userId,
+      passwordHash: await hashPassword(password),
+    });
+    notice = `Password set. They were signed out everywhere${result.sessionsSignedOut ? ` (${result.sessionsSignedOut} session${result.sessionsSignedOut === 1 ? "" : "s"})` : ""}. Tell them the new password privately.`;
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not set the password.")}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent(notice)}`);
+}
+
+// ── Roles & access: one table per app ────────────────────────────────────────
+
+function rolesHref(kind: "error" | "notice", message: string, section?: string): string {
+  const anchor = section && /^[a-z0-9-]+$/.test(section) ? `&saved=${section}#access-${section}` : "";
+  return `/settings/roles?${kind}=${encodeURIComponent(message)}${anchor}`;
+}
+
+/**
+ * Saves one app's table: for every editable role in the form, the checked
+ * permissions of that app become exactly its grants. Other apps are untouched.
+ */
+export async function saveRoleAccess(formData: FormData) {
+  const ctx = await orgMutation("settings.roles.manage");
+  const sectionId = String(formData.get("section") ?? "");
+  const section = roleAccessSections(ctx.subject.entitledModuleIds).included.find((item) => item.id === sectionId);
+  if (!section) redirect(rolesHref("error", "That app is not part of this organization."));
+  const sectionKeys = section.permissions.map((permission) => permission.key);
+  const db = tenantDb(ctx.resolved.id);
+  const roleIds = [...new Set(formData.getAll("roleId").map(String))];
+  const roles = await db.role.findMany({ where: { id: { in: roleIds } }, include: { grants: true } });
+  const checked = new Set(formData.getAll("grant").map(String));
+  const plans = [];
+  for (const role of roles) {
+    if (LOCKED_ROLE_SLUGS.includes(role.slug)) continue;
+    const current = role.grants.filter((grant) => grant.effect === "ALLOW").map((grant) => grant.permission);
+    const desired = sectionKeys.filter((key) => checked.has(`${role.id}|${key}`));
+    const change = roleGrantChanges({ current, desired, sectionKeys });
+    if (change.add.length === 0 && change.remove.length === 0) continue;
+    const blocked = roleGrantChangeBlocked({ roleSlug: role.slug, isActorsRole: role.id === ctx.subject.roleId, remove: change.remove });
+    if (blocked) redirect(rolesHref("error", blocked, section.id));
+    plans.push({ role, ...change });
+  }
+  for (const plan of plans) {
+    if (plan.remove.length > 0) await db.rolePermission.deleteMany({ where: { roleId: plan.role.id, permission: { in: plan.remove } } });
+    for (const permission of plan.add) {
+      await db.rolePermission
+        .create({ data: { organizationId: ctx.resolved.id, roleId: plan.role.id, permission, effect: "ALLOW" } })
+        .catch(async () => {
+          await db.rolePermission.updateMany({ where: { roleId: plan.role.id, permission }, data: { effect: "ALLOW" } });
+        });
+    }
+    await audit(ctx, "role.permissions.updated", "role", plan.role.id, {
+      role: plan.role.name,
+      app: section.name,
+      added: plan.add.join(","),
+      removed: plan.remove.join(","),
+    });
+  }
+  const message = plans.length === 0 ? `${section.name}: nothing changed.` : `${section.name} access saved for ${plans.map((plan) => plan.role.name).join(", ")}.`;
+  redirect(rolesHref("notice", message, section.id));
+}
+
+export async function renameRole(formData: FormData) {
+  const ctx = await orgMutation("settings.roles.manage");
+  const roleId = String(formData.get("roleId") ?? "");
+  const name = String(formData.get("name") ?? "").trim().replace(/\s+/g, " ");
+  if (!name || name.length > 60) redirect(rolesHref("error", "Enter a role name (up to 60 characters)."));
+  const db = tenantDb(ctx.resolved.id);
+  const role = await db.role.findFirst({ where: { id: roleId } });
+  if (!role) redirect(rolesHref("error", "Unknown role."));
+  if (role.isSystem) redirect(rolesHref("error", "Built-in roles keep their names."));
+  await db.role.updateMany({ where: { id: role.id }, data: { name } });
+  await audit(ctx, "role.renamed", "role", role.id, { from: role.name, to: name });
+  redirect(rolesHref("notice", `Role renamed to ${name}.`));
+}
+
+export async function deleteRole(formData: FormData) {
+  const ctx = await orgMutation("settings.roles.manage");
+  const roleId = String(formData.get("roleId") ?? "");
+  const db = tenantDb(ctx.resolved.id);
+  const role = await db.role.findFirst({ where: { id: roleId } });
+  if (!role) redirect(rolesHref("error", "Unknown role."));
+  if (role.isSystem) redirect(rolesHref("error", "Built-in roles cannot be deleted."));
+  const people = await db.membership.count({ where: { roleId: role.id } });
+  if (people > 0) {
+    redirect(rolesHref("error", `${people} ${people === 1 ? "person has" : "people have"} the ${role.name} role. Give them another role first (Settings → Users).`));
+  }
+  await db.exclusion.deleteMany({ where: { roleId: role.id } });
+  await db.rolePermission.deleteMany({ where: { roleId: role.id } });
+  await db.role.deleteMany({ where: { id: role.id } });
+  await audit(ctx, "role.deleted", "role", role.id, { name: role.name });
+  redirect(rolesHref("notice", `${role.name} role deleted.`));
 }

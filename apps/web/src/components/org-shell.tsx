@@ -116,6 +116,12 @@ export function OrgShell({
             Settings
           </Link>
         ) : null}
+        <Link className={navClass(pathname === "/account")} href="/account">
+          <span aria-hidden className="w-5 text-center">
+            👤
+          </span>
+          Your account
+        </Link>
         <div className="mt-2 flex items-center justify-between gap-2 px-3">
           <span className="truncate text-xs text-muted">{email}</span>
           <form action="/api/auth/logout" method="post">
@@ -143,7 +149,7 @@ export function OrgShell({
         header={
           <div className="flex min-w-0 items-center gap-2">
             <p className="truncate text-sm font-semibold">
-              {current ? current.name : inSettings ? "Settings" : "Dashboard"}
+              {current ? current.name : inSettings ? "Settings" : pathname === "/account" ? "Your account" : "Dashboard"}
             </p>
             <span className="ml-auto hidden text-xs text-muted sm:inline">⌘K to jump</span>
           </div>
@@ -157,6 +163,7 @@ export function OrgShell({
           ...apps.map((app) => ({ label: app.name, href: app.href })),
           ...(showSettings ? [{ label: "Settings", href: settingsHref }] : []),
           ...(canPublications ? [{ label: "Publication Setup", href: "/settings/publication-setup" }] : []),
+          { label: "Your account (password, name)", href: "/account" },
         ]}
       />
     </div>

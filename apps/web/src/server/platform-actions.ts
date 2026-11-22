@@ -9,6 +9,7 @@ import {
   canManagePlatformStaff,
   hostnameConfirmationMatches,
   parseAppAccessChoice,
+  passwordProblem,
 } from "@pubcommand/core";
 import {
   addOrganizationMember as addOrganizationMemberRecord,
@@ -445,7 +446,8 @@ export async function saveUserPassword(formData: FormData) {
       notice = "Password cleared. Existing sessions were signed out.";
     } else {
       const password = String(formData.get("password") ?? "");
-      if (password.length < 8 || password.length > 200) throw new Error("Use 8 to 200 characters.");
+      const problem = passwordProblem(password);
+      if (problem) throw new Error(problem);
       await setUserPasswordHash({ actorId: auth.user.id, userId, passwordHash: await hashPassword(password) });
       notice = "Password updated. Existing sessions were signed out.";
     }

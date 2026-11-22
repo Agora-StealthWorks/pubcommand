@@ -3,18 +3,21 @@ import {
   can,
   classifyPermissions,
   effectiveAppLevel,
+  memberPasswordBlocked,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
   type MemberAppChoice,
   type MemberAppLevel,
 } from "@pubcommand/core";
-import { loadAccessSubject, tenantDb } from "@pubcommand/db";
+import { loadAccessSubject, memberPasswordFacts, tenantDb } from "@pubcommand/db";
 import { moduleRegistry } from "@pubcommand/modules";
-import { Button } from "@pubcommand/ui";
+import { Button, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { appCatalog } from "@/lib/apps";
 import { getOrgContext } from "@/lib/org";
-import { changeMemberRole, setMemberAppAccess } from "@/server/org-actions";
+import { changeMemberRole, setMemberAppAccess, setMemberPasswordAction } from "@/server/org-actions";
 
 const LEVEL_LABEL: Record<MemberAppLevel, string> = { NONE: "No access", VIEW: "View", EDIT: "Edit" };
 const LEVEL_TONE: Record<MemberAppLevel, string> = {
@@ -50,6 +53,13 @@ export default async function MemberPage({
   const roleDenies = new Set(member.role.grants.filter((grant) => grant.effect === "DENY").map((grant) => grant.permission));
   const self = userId === ctx.effectiveUserId;
   const apps = appCatalog().filter((app) => ctx.subject.entitledModuleIds.includes(app.moduleId) && adjustableModule(app.moduleId, classified));
+  const passwordBlocked = memberPasswordBlocked({
+    actorUserId: ctx.auth.user.id,
+    targetUserId: userId,
+    actorCanManageUsers: true,
+    impersonating: Boolean(ctx.impersonatingHere),
+    ...(await memberPasswordFacts(ctx.resolved.id, userId)),
+  });
   const choiceFor = (moduleId: string): MemberAppChoice => overrides.find((row) => row.moduleId === moduleId)?.level ?? "ROLE";
   return (
     <div className="max-w-3xl space-y-4">
@@ -78,6 +88,44 @@ export default async function MemberPage({
             </select>
             <Button type="submit" variant="secondary" className="w-full sm:w-auto">
               Change role
+            </Button>
+          </form>
+        )}
+      </section>
+      <section className="rounded-xl border border-line bg-white p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Password</h2>
+        <p className="mt-2 text-sm">{member.user.passwordHash ? "They have a password." : "They have no password yet, so they cannot log in with one."}</p>
+        {passwordBlocked ? (
+          <p className="mt-2 text-sm text-muted">
+            {passwordBlocked}
+            {userId === ctx.auth.user.id ? (
+              <>
+                {" "}
+                <Link href="/account" className="font-semibold text-accent">
+                  Open Your account
+                </Link>
+              </>
+            ) : null}
+          </p>
+        ) : (
+          <form action={setMemberPasswordAction} className="mt-3 space-y-3">
+            <input type="hidden" name="userId" value={userId} />
+            <input type="email" name="username" autoComplete="off" defaultValue={member.user.email} hidden readOnly />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="member-new-password">New password</Label>
+                <Input id="member-new-password" name="newPassword" type="password" autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} required className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="member-confirm-password">Confirm new password</Label>
+                <Input id="member-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} required className="mt-1" />
+              </div>
+            </div>
+            <p className="rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">
+              Setting a password signs {member.user.name || "them"} out everywhere. Tell them the new password privately, and ask them to change it in Your account.
+            </p>
+            <Button type="submit" variant="secondary" className="w-full sm:w-auto">
+              Set password
             </Button>
           </form>
         )}

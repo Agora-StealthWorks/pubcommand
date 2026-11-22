@@ -22,11 +22,11 @@ export const manifest = defineModule({
     { path: "/settings/domains", title: "Custom domains" },
   ],
   permissions: [
-    { key: "settings.manage", description: "Update organization settings and the public slug", access: "admin" },
-    { key: "settings.users.manage", description: "Invite and review organization users", access: "admin" },
-    { key: "settings.roles.manage", description: "Build roles and grant permissions", access: "admin" },
-    { key: "settings.modules.manage", description: "Enable modules the plan includes", access: "admin" },
-    { key: "settings.audit.read", description: "Read the organization audit log", access: "admin" },
+    { key: "settings.manage", description: "Change organization settings, brands and the web address", access: "admin" },
+    { key: "settings.users.manage", description: "Invite people, change their role and app access, and set their passwords", access: "admin" },
+    { key: "settings.roles.manage", description: "Change what each role can do (Roles & access)", access: "admin" },
+    { key: "settings.modules.manage", description: "Turn the organization's apps on and off", access: "admin" },
+    { key: "settings.audit.read", description: "See the activity log", access: "admin" },
     {
       key: "domains.manage",
       description: "Buy domains (non-refundable charges), connect custom domains to public pages, and remove them",

@@ -13,8 +13,8 @@ export const manifest = defineModule({
   nav: [{ label: "Billing", href: "/billing", permission: "billing.read" }],
   routes: [{ path: "/billing", title: "Billing" }],
   permissions: [
-    { key: "billing.read", description: "Read the organization plan and seats" },
-    { key: "billing.manage", description: "Change the organization plan" },
+    { key: "billing.read", description: "See the plan and seats" },
+    { key: "billing.manage", description: "Change the plan" },
   ],
   events: [{ name: "billing.plan.changed", description: "Payload from assignOrgPlan. Nothing publishes it yet." }],
   jobs: [{ name: "billing.invoice", description: "TODO: not scheduled in this phase" }],
