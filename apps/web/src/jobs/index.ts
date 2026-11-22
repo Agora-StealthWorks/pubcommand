@@ -1,4 +1,5 @@
 import type { JobDefinition } from "@/lib/jobs/types";
+import { consolePastData } from "./console-past-data";
 import { editorialBrainCatchup } from "./editorial-brain-catchup";
 import { editorialSeriesExtend } from "./editorial-series-extend";
 import { editorialTickerPrices } from "./editorial-ticker-prices";
@@ -13,6 +14,7 @@ import { intelRadar } from "./intel-radar";
 import { intelVideoCapture } from "./intel-video-capture";
 import { jobRunsCleanup } from "./job-runs-cleanup";
 import { knowledgeConflictCheck } from "./knowledge-conflict-check";
+import { knowledgeIndustryLens } from "./knowledge-industry-lens";
 import { knowledgeLearnUp } from "./knowledge-learn-up";
 import { knowledgePromoSync } from "./knowledge-promo-sync";
 import { knowledgePushDown } from "./knowledge-push-down";
@@ -35,6 +37,7 @@ import { supportWebsiteSheet } from "./support-website-sheet";
 // Off for now (modules/editorial/features.ts): editorialAirtableSync (./editorial-airtable-sync)
 // and editorialCubEmails (./editorial-cub-emails). Add them back here with their flags.
 export const JOBS: JobDefinition[] = [
+  consolePastData,
   editorialBrainCatchup,
   editorialSeriesExtend,
   editorialTickerPrices,
@@ -49,6 +52,7 @@ export const JOBS: JobDefinition[] = [
   intelVideoCapture,
   jobRunsCleanup,
   knowledgeConflictCheck,
+  knowledgeIndustryLens,
   knowledgeLearnUp,
   knowledgePromoSync,
   knowledgePushDown,

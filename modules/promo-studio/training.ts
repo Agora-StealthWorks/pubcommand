@@ -21,7 +21,7 @@ export type TrainingExample = {
 };
 
 export const EXAMPLE_SOURCES = ["component", "best-performer", "manual"] as const;
-export const EXAMPLE_SOURCE_LABEL: Record<string, string> = { component: "Approved component", "best-performer": "Best performer", manual: "Added by hand" };
+export const EXAMPLE_SOURCE_LABEL: Record<string, string> = { component: "Approved component", "best-performer": "Best performer", manual: "Added by hand", vault: "From the brain vault" };
 
 /** Examples a generation sees per component, and how much of each. */
 export const EXAMPLES_PER_COMPONENT = 3;
@@ -50,7 +50,7 @@ export function rankExamples<T extends TrainingExample>(
       let score = 0;
       if (publication && norm(example.publication) === publication) score += 4;
       if (example.source === "best-performer") score += 2;
-      if (example.source === "manual") score += 1;
+      if (example.source === "manual" || example.source === "vault") score += 1;
       if (norm(example.niche) === norm(want.niche)) score += 1;
       return { example, score };
     })

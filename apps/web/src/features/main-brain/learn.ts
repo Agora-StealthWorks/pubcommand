@@ -1,5 +1,6 @@
 import { slugifyName } from "@pubcommand/core";
 import { rawPrisma, tenantDb, type Prisma } from "@pubcommand/db";
+import { frameNote } from "../../../../../modules/knowledge/industry-lens";
 import { learnAction, learnedKey, shouldLearnUp } from "../../../../../modules/knowledge/main-brain";
 import { mainBrain } from "./db";
 
@@ -31,7 +32,9 @@ export async function uniqueMainSlug(tx: Prisma.TransactionClient, title: string
   return slug;
 }
 
-export async function learnUp(input: LearnUpInput): Promise<LearnUpResult> {
+export async function learnUp(raw: LearnUpInput): Promise<LearnUpResult> {
+  // The Master Brain speaks for the industry, not for one organization: no "competitors".
+  const input = frameNote(raw);
   try {
     const key = learnedKey(input.organizationId, input.sourceRef);
     return await mainBrain(async (tx) => {

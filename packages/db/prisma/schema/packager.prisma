@@ -35,9 +35,12 @@ model PromoPackage {
   researchStatus String             @default("NONE") @map("research_status")
   researchError  String?            @map("research_error")
   researchedAt   DateTime?          @map("researched_at")
+  /// Set on the admin console's copy of a package brought over with its promo: the original package's id.
+  copiedFromId   String?            @map("copied_from_id") @db.Uuid
   components     PromoPackageComponent[]
 
   @@index([organizationId, brandId, promoId])
+  @@index([copiedFromId])
   @@map("promo_packages")
 }
 

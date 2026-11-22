@@ -1,7 +1,9 @@
 import { brandScope, scopeWhere } from "../../../../../modules/knowledge/visibility";
 import { runStructured, type AiInput } from "@pubcommand/ai";
 import { brandProfile, brandPromptContext } from "@pubcommand/core";
-import { tenantDb, type Prisma } from "@pubcommand/db";
+import { rawPrisma, tenantDb, type Prisma } from "@pubcommand/db";
+import { CONSOLE_ORG_SLUG } from "@/lib/console-workspace";
+import { mainBrain } from "../main-brain/db";
 import { logAiUsage } from "../ai/usage";
 import { teachBrain } from "../brain/teach";
 import { publicationPromptBlock } from "../pubsetup/read";
@@ -70,7 +72,38 @@ async function bestPerformers(db: Db, brandId: string, promoId: string): Promise
   );
 }
 
-async function brainNotes(db: Db, brandId: string, promoId: string, packageId: string): Promise<BrainNote[]> {
+/**
+ * Master Brain folders the console's Packager reads for craft: copywriting
+ * principles and mastery, sales-letter frameworks, lift-note guides, component
+ * guides, expert voice profiles and copy tactics (as the old Packager read them
+ * from the brain vault).
+ */
+const CRAFT_FOLDERS = ["Areas/Copy", "Areas/Copywriting Mastery", "Resources/Experts", "Resources/Copy Tactics", "Resources/Promo Analysis/Copywriting Principles", "Resources/Promo Analysis/Knowledge"];
+const CRAFT_TITLES = ["Copywriting Principles", "01 - The Master Synthesis", "16-Word Sales Letter", "Copy-Boarding System", "Slideshow Promo Playbook"];
+
+async function isConsoleOrganization(organizationId: string): Promise<boolean> {
+  const org = await rawPrisma().organization.findUnique({ where: { id: organizationId }, select: { slug: true } });
+  return org?.slug === CONSOLE_ORG_SLUG;
+}
+
+/** The console workspace has no brand knowledge of its own: its Packager learns the craft from the Master Brain. */
+async function masterBrainCraftNotes(): Promise<BrainNote[]> {
+  const rows = await mainBrain((tx) =>
+    tx.mainBrainNote.findMany({
+      where: {
+        deletedAt: null,
+        OR: [...CRAFT_FOLDERS.flatMap((folder) => [{ folder }, { folder: { startsWith: `${folder}/` } }]), { title: { in: CRAFT_TITLES } }],
+      },
+      select: { title: true, body: true },
+      orderBy: { updatedAt: "desc" },
+      take: 80,
+    }),
+  );
+  return rows.map((row) => ({ title: row.title, body: row.body }));
+}
+
+async function brainNotes(db: Db, brandId: string, promoId: string, packageId: string, organizationId?: string): Promise<BrainNote[]> {
+  if (organizationId && (await isConsoleOrganization(organizationId))) return masterBrainCraftNotes();
   const rows = await db.knowledgePage.findMany({
     where: {
       AND: [scopeWhere(brandScope(brandId)), { NOT: { sourceRef: { in: [`promo:${promoId}`, `package:${packageId}`] } } }],
@@ -164,7 +197,7 @@ export async function runPackageGeneration(input: {
     const brandContext = [brandPromptContext(profile), publicationBlock].filter(Boolean).join("\n\n");
     const direction = parseDirection(pkg.direction);
     const analysis = await latestAnalysis(db, promo.id);
-    const [performers, notes] = await Promise.all([bestPerformers(db, promo.brandId, promo.id), brainNotes(db, promo.brandId, promo.id, pkg.id)]);
+    const [performers, notes] = await Promise.all([bestPerformers(db, promo.brandId, promo.id), brainNotes(db, promo.brandId, promo.id, pkg.id, input.organizationId)]);
     const pdf: AiInput[] = [];
     if (promo.inputType === "scanned-pdf") {
       const source = await db.promoFile.findFirst({ where: { promoId: promo.id, kind: "source" } });

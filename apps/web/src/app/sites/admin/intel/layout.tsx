@@ -18,7 +18,7 @@ export default async function ConsoleIntelLayout({ children }: { children: React
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">VidRipper</h1>
-          <p className="text-sm text-muted">Capture competitor videos: transcript, keyframes and the AI read. Every capture feeds the Master Brain.</p>
+          <p className="text-sm text-muted">Capture videos from publishers across the industry: transcript, keyframes and the AI read. Every capture feeds the Master Brain.</p>
         </div>
         <nav className="flex gap-1" aria-label="VidRipper">
           {tab("/intel/videos", "Videos", pathname.startsWith("/intel/videos"))}

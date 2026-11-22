@@ -90,15 +90,18 @@ export async function copyPromosIntoConsole(options: { limit?: number } = {}): P
   if (!brand) throw new Error("The console workspace has no brand.");
   const counts: SyncCounts = { copied: 0, already: 0, files: 0, analyses: 0, remaining: 0 };
   const limit = options.limit ?? 40;
-  const copied = new Set((await target.promo.findMany({ where: { copiedFromId: { not: null } }, select: { copiedFromId: true } })).map((row) => row.copiedFromId!));
+  const copies = await target.promo.findMany({ where: { copiedFromId: { not: null } }, select: { id: true, copiedFromId: true } });
+  const copied = new Map(copies.map((row) => [row.copiedFromId!, row.id]));
   for (const organizationId of await allOrganizationIds()) {
     if (organizationId === consoleId) continue;
     const source = tenantDb(organizationId);
     const brandNames = new Map((await source.brand.findMany({ select: { id: true, name: true } })).map((row) => [row.id, row.name]));
     const ids = await source.promo.findMany({ where: { deletedAt: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
     for (const { id } of ids) {
-      if (copied.has(id)) {
+      const copyId = copied.get(id);
+      if (copyId) {
         counts.already! += 1;
+        counts.analyses! += await syncNewAnalyses(source, target, consoleId, id, copyId);
         continue;
       }
       if (counts.copied! >= limit) {
@@ -163,8 +166,152 @@ export async function copyPromosIntoConsole(options: { limit?: number } = {}): P
         });
         counts.files! += 1;
       }
-      copied.add(id);
+      copied.set(id, created.id);
       counts.copied! += 1;
+    }
+  }
+  return counts;
+}
+
+type TenantDb = ReturnType<typeof tenantDb>;
+
+/** Analyses the original got after it was copied (e.g. queued analysis of imported promos) follow to the console's copy. */
+async function syncNewAnalyses(source: TenantDb, target: TenantDb, consoleId: string, originalId: string, copyId: string): Promise<number> {
+  const have = await target.promoAnalysis.findMany({ where: { promoId: copyId }, select: { version: true } });
+  const latest = have.reduce((max, row) => Math.max(max, row.version), 0);
+  const newer = await source.promoAnalysis.findMany({ where: { promoId: originalId, version: { gt: latest } }, orderBy: { version: "asc" } });
+  if (newer.length === 0) return 0;
+  for (const analysis of newer) {
+    await target.promoAnalysis.create({
+      data: { organizationId: consoleId, promoId: copyId, version: analysis.version, model: analysis.model, result: analysis.result as Prisma.InputJsonValue, score: analysis.score, inputTokens: analysis.inputTokens, outputTokens: analysis.outputTokens, createdById: analysis.createdById, createdAt: analysis.createdAt },
+    });
+  }
+  const original = await source.promo.findFirst({ where: { id: originalId }, select: { analysisStatus: true, analysisError: true, effectivenessScore: true, fkReadingEase: true, fkGradeLevel: true, publisher: true, gurus: true, product: true, promoType: true, pricePoint: true } });
+  if (original) {
+    await target.promo.updateMany({
+      where: { id: copyId },
+      data: { ...original, analysisStatus: original.analysisStatus === "RUNNING" || original.analysisStatus === "QUEUED" ? "NONE" : original.analysisStatus },
+    });
+  }
+  return newer.length;
+}
+
+/**
+ * The Packager's work follows its promos into the console: every copy package
+ * (components and their version history) of a copied promo, and every training
+ * example (the Packager's library), with promo links pointed at the console's
+ * copies. Idempotent: packages by copied_from_id, examples by sourceRef
+ * "copied:<original id>". Best-performer copies are marked edited so the
+ * console's own best-performer sync never retires them.
+ */
+export async function copyPackagerIntoConsole(): Promise<SyncCounts> {
+  const consoleId = await ensureConsoleOrganization();
+  const target = tenantDb(consoleId);
+  const brand = await target.brand.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } });
+  if (!brand) throw new Error("The console workspace has no brand.");
+  const counts: SyncCounts = { packages: 0, components: 0, versions: 0, examples: 0 };
+  // Original promo id → the console's copy.
+  const promoMap = new Map((await target.promo.findMany({ where: { copiedFromId: { not: null } }, select: { id: true, copiedFromId: true } })).map((row) => [row.copiedFromId!, row.id]));
+  const copiedPackages = new Set((await target.promoPackage.findMany({ where: { copiedFromId: { not: null } }, select: { copiedFromId: true } })).map((row) => row.copiedFromId!));
+  const copiedExamples = new Set((await target.promoTrainingExample.findMany({ where: { sourceRef: { startsWith: "copied:" } }, select: { sourceRef: true } })).map((row) => row.sourceRef!));
+  for (const organizationId of await allOrganizationIds()) {
+    if (organizationId === consoleId) continue;
+    const source = tenantDb(organizationId);
+    const packages = await source.promoPackage.findMany({ where: { deletedAt: null }, include: { components: { include: { versions: { orderBy: { version: "asc" } } } } } });
+    for (const pkg of packages) {
+      const promoId = promoMap.get(pkg.promoId);
+      if (!promoId || copiedPackages.has(pkg.id)) continue;
+      const created = await target.promoPackage.create({
+        data: {
+          organizationId: consoleId,
+          brandId: brand.id,
+          promoId,
+          title: pkg.title,
+          status: pkg.status,
+          direction: pkg.direction as Prisma.InputJsonValue,
+          research: pkg.research as Prisma.InputJsonValue,
+          researchStatus: pkg.researchStatus === "RUNNING" ? "NONE" : pkg.researchStatus,
+          researchError: pkg.researchError,
+          researchedAt: pkg.researchedAt,
+          createdById: pkg.createdById,
+          approvedById: pkg.approvedById,
+          approvedAt: pkg.approvedAt,
+          copiedFromId: pkg.id,
+          createdAt: pkg.createdAt,
+        },
+        select: { id: true },
+      });
+      for (const component of pkg.components) {
+        const createdComponent = await target.promoPackageComponent.create({
+          data: {
+            organizationId: consoleId,
+            packageId: created.id,
+            kind: component.kind,
+            position: component.position,
+            quantity: component.quantity,
+            content: component.content,
+            status: component.status,
+            genStatus: component.genStatus === "RUNNING" || component.genStatus === "QUEUED" ? "NONE" : component.genStatus,
+            genError: component.genError,
+            flags: component.flags as Prisma.InputJsonValue,
+            currentVersion: component.currentVersion,
+            examplesUsed: component.examplesUsed as Prisma.InputJsonValue,
+            createdAt: component.createdAt,
+          },
+          select: { id: true },
+        });
+        counts.components! += 1;
+        for (const version of component.versions) {
+          await target.promoPackageComponentVersion.create({
+            data: {
+              organizationId: consoleId,
+              componentId: createdComponent.id,
+              version: version.version,
+              source: version.source,
+              content: version.content,
+              feedback: version.feedback,
+              model: version.model,
+              inputTokens: version.inputTokens,
+              outputTokens: version.outputTokens,
+              createdById: version.createdById,
+              createdAt: version.createdAt,
+            },
+          });
+          counts.versions! += 1;
+        }
+      }
+      copiedPackages.add(pkg.id);
+      counts.packages! += 1;
+    }
+    const examples = await source.promoTrainingExample.findMany({ orderBy: { createdAt: "asc" } });
+    for (const example of examples) {
+      const ref = `copied:${example.id}`;
+      if (copiedExamples.has(ref)) continue;
+      // A promo-linked example points at the console's copy; when that promo is not over yet, it waits for the next run.
+      if (example.promoId && !promoMap.has(example.promoId)) continue;
+      await target.promoTrainingExample.create({
+        data: {
+          organizationId: consoleId,
+          brandId: brand.id,
+          kind: example.kind,
+          publication: example.publication,
+          niche: example.niche,
+          title: example.title,
+          content: example.content,
+          source: example.source,
+          sourceRef: ref,
+          promoId: example.promoId ? promoMap.get(example.promoId)! : null,
+          tags: example.tags,
+          note: example.note,
+          enabled: example.enabled,
+          // The console's best-performer sync retires unedited best-performer examples it did not make itself; keep the copies.
+          edited: example.edited || example.source === "best-performer",
+          createdById: example.createdById,
+          createdAt: example.createdAt,
+        },
+      });
+      copiedExamples.add(ref);
+      counts.examples! += 1;
     }
   }
   return counts;
