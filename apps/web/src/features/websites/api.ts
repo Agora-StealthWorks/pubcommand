@@ -1,10 +1,12 @@
 import { tenantDb } from "@pubcommand/db";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { getEditors, getPublications, type Editor, type Publication } from "@/features/pubsetup/read";
+import { getCategories, getEditors, getPublications, type Editor, type Publication } from "@/features/pubsetup/read";
+import { sortByCategory } from "../../../../../modules/pubsetup/categories";
 import { sanitizeRichText } from "@/components/rich-text-editor/sanitize";
 import { homepageFrom, menuFrom, readingMinutes, themeFrom, type Access } from "../../../../../modules/websites/content";
 import { isFreePublication, orgTimezone, type SiteRow } from "./data";
 import type { SignedInMember } from "./members";
+import type { PublicTestimonial } from "@/features/testimonials/read";
 
 /**
  * API for a website that runs as its own app (separate repo and Railway project).
@@ -101,10 +103,17 @@ export function publicationJson(pub: Publication) {
     longDescription: pub.longDescription,
     positioning: pub.positioning,
     frequency: pub.frequency,
+    /** Deprecated, internal: do not show. Use `category` to group and `free` for free vs paid. */
     pubType: pub.pubType,
+    /** Deprecated, internal funnel term: never show it to readers. */
     tier: pub.tier,
     free: isFreePublication(pub),
+    /** The brand's category (Publication Setup → Categories); null = uncategorized (list it last). */
+    category: pub.category ? { id: pub.category.id, name: pub.category.name, order: pub.category.sortOrder } : null,
     deliverables: pub.deliverables,
+    /** Public prices as people typed them. The typical sale price and pricing notes are internal and never sent. */
+    pricing: { retail: pub.retailPrice, lifetime: pub.lifetimePrice, offers: pub.offers.filter((offer) => offer.label || offer.price) },
+    faq: pub.faq,
     signupUrl: pub.signupUrl,
     logo: pub.hasLogo ? `/pub-logo/${pub.id}?v=${version(pub.updatedAt)}` : null,
     editors: pub.editors.map((editor) => ({ id: editor.id, name: editor.name, slug: editor.slug })),
@@ -128,12 +137,13 @@ export function editorJson(editor: Editor) {
 
 export async function siteJson({ organizationId, site }: ApiSite) {
   const db = tenantDb(organizationId);
-  const [publications, editors, products, branding, timeZone] = await Promise.all([
+  const [publications, editors, products, branding, timeZone, categories] = await Promise.all([
     getPublications(organizationId, site.brandId, { activeOnly: true }),
     getEditors(organizationId, site.brandId, { activeOnly: true }),
     db.webProduct.findMany({ where: { siteId: site.id }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     db.pubBrandBranding.findFirst({ where: { brandId: site.brandId }, select: { logoMime: true, logoOnDarkMime: true } }),
     orgTimezone(organizationId),
+    getCategories(organizationId, site.brandId),
   ]);
   const hasLogo = Boolean(site.logoAssetId || site.logoLightAssetId || branding?.logoMime || branding?.logoOnDarkMime);
   return {
@@ -160,7 +170,10 @@ export async function siteJson({ organizationId, site }: ApiSite) {
       })(),
       timeZone,
     },
-    publications: publications.map(publicationJson),
+    /** In website order: category order, then the publication's order, then name. */
+    publications: sortByCategory(publications, categories).map(publicationJson),
+    /** Category list in order (only categories in use are listed by the site; empty ones are included here). */
+    categories: categories.map((category) => ({ id: category.id, name: category.name, order: category.sortOrder })),
     editors: editors.map(editorJson),
     products: products.map((product) => ({ id: product.id, name: product.name, publicationIds: product.publicationIds, allPublications: product.allPublications, offerUrl: product.offerUrl, active: product.active })),
   };
@@ -227,5 +240,19 @@ export function memberJson(member: SignedInMember, productName: Map<string, stri
       startsAt: entitlement.startsAt.toISOString(),
       endsAt: entitlement.endsAt?.toISOString() ?? null,
     })),
+  };
+}
+
+/** A testimonial as the website shows it: what may be published, never contact or consent details. */
+export function testimonialJson(item: PublicTestimonial) {
+  return {
+    id: item.id,
+    displayName: item.displayName,
+    location: item.location,
+    quote: item.quote,
+    resultClaimed: item.resultClaimed,
+    givenOn: item.givenOn,
+    rating: item.rating,
+    disclosure: item.disclosure,
   };
 }

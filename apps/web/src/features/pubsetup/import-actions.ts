@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { EDITOR_FIELDS, PUBLICATION_FIELDS, uniqueSlug, type FieldValues } from "../../../../../modules/pubsetup/fields";
 import { logoSlotsOf, parseImport, placeLogos, planImport, type ImportImage, type ImportLogos, type ImportPlan, type ParsedImport } from "../../../../../modules/pubsetup/import";
+import { findCategory } from "../../../../../modules/pubsetup/categories";
 import { classifyLogo } from "./logo-tone";
 import { pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
 import { refreshEditor, refreshPublication } from "./teach";
@@ -18,7 +19,7 @@ export type ImportSummaryRow = { kind: "publication" | "editor"; name: string; c
 export type ImportPreview =
   | null
   | { ok: false; error: string }
-  | { ok: true; text: string; rows: ImportSummaryRow[]; links: { code: string; editor: string; role: string; action: "create" | "same" }[]; brandLogo: boolean; counts: ImportPlan["counts"]; warnings: string[] };
+  | { ok: true; text: string; rows: ImportSummaryRow[]; links: { code: string; editor: string; role: string; action: "create" | "same" }[]; brandLogo: boolean; categories: string[]; counts: ImportPlan["counts"]; warnings: string[] };
 
 async function readText(formData: FormData): Promise<string | { error: string }> {
   const file = formData.get("file");
@@ -54,20 +55,22 @@ function logoCols(logos: ImportLogos, slots: { light: boolean; dark: boolean } |
 
 async function currentPlan(ctx: PubsetupCtx, file: ParsedImport): Promise<ImportPlan> {
   const db = tenantDb(ctx.resolved.id);
-  const pubSelect = Object.fromEntries([...PUBLICATION_FIELDS.map((d) => [d.key, true]), ["id", true], ["logoMime", true], ["logoOnDarkMime", true]]) as Prisma.CalendarPublicationSelect;
+  const pubSelect = Object.fromEntries([...PUBLICATION_FIELDS.map((d) => [d.key, true]), ["id", true], ["logoMime", true], ["logoOnDarkMime", true], ["pubType", true]]) as Prisma.CalendarPublicationSelect;
   const editorSelect = Object.fromEntries([...EDITOR_FIELDS.map((d) => [d.key, true]), ["id", true], ["photoFilename", true]]) as Prisma.PubEditorSelect;
-  const [pubs, editors, links, branding] = await Promise.all([
+  const [pubs, editors, links, branding, categories] = await Promise.all([
     db.calendarPublication.findMany({ where: { brandId: ctx.brand.id }, select: pubSelect }),
     db.pubEditor.findMany({ where: { brandId: ctx.brand.id }, select: editorSelect }),
     db.pubPublicationEditor.findMany({ where: { publication: { brandId: ctx.brand.id } }, select: { publication: { select: { code: true } }, editor: { select: { slug: true } } } }),
     db.pubBrandBranding.findFirst({ where: { brandId: ctx.brand.id }, select: { logoMime: true, logoOnDarkMime: true } }),
+    db.pubCategory.findMany({ where: { brandId: ctx.brand.id }, select: { id: true, name: true } }),
   ]);
   type Row = Record<string, unknown>;
   return planImport(file, {
-    publications: (pubs as Row[]).map((p) => ({ ...p, id: String(p.id), code: String(p.code), slug: (p.slug as string | null) ?? null, hasLogoLight: Boolean(p.logoMime), hasLogoDark: Boolean(p.logoOnDarkMime) })),
+    publications: (pubs as Row[]).map((p) => ({ ...p, id: String(p.id), code: String(p.code), slug: (p.slug as string | null) ?? null, hasLogoLight: Boolean(p.logoMime), hasLogoDark: Boolean(p.logoOnDarkMime), categoryId: (p.categoryId as string | null) ?? null, pubType: (p.pubType as string | null) ?? null })),
     editors: (editors as Row[]).map((e) => ({ ...e, id: String(e.id), slug: String(e.slug), name: String(e.name), hasPhoto: Boolean(e.photoFilename) })),
     links: (links as unknown as { publication: { code: string }; editor: { slug: string } }[]).map((l) => ({ code: l.publication.code, editorSlug: l.editor.slug })),
     brandLogos: { light: Boolean(branding?.logoMime), dark: Boolean(branding?.logoOnDarkMime) },
+    categories,
   });
 }
 
@@ -89,6 +92,7 @@ export async function previewImport(_prev: ImportPreview, formData: FormData): P
     rows,
     links: plan.links.map((l) => ({ code: l.code, editor: editorNames.get(l.editorSlug) ?? l.editorSlug, role: l.role, action: l.action })),
     brandLogo: plan.brandLogo,
+    categories: plan.categories,
     counts: plan.counts,
     warnings: parsed.file.warnings,
   };
@@ -153,6 +157,20 @@ export async function commitImport(formData: FormData) {
     }
   }
 
+  // Categories the file names that the brand does not have yet, added at the end of the list.
+  const categoryRows = await db.pubCategory.findMany({ where: { brandId: ctx.brand.id }, select: { id: true, name: true, sortOrder: true } });
+  let nextOrder = categoryRows.reduce((max, row) => Math.max(max, row.sortOrder), 0);
+  for (const name of plan.categories) {
+    if (findCategory(categoryRows, name)) continue;
+    nextOrder += 10;
+    const created = await db.pubCategory.create({ data: { ...base, name, sortOrder: nextOrder }, select: { id: true, name: true, sortOrder: true } });
+    categoryRows.push(created);
+  }
+  const categoryCols = (step: { category?: string | null; pubType?: string | null }) => ({
+    ...(step.category ? { categoryId: findCategory(categoryRows, step.category)?.id ?? null } : {}),
+    ...(step.pubType ? { pubType: step.pubType } : {}),
+  });
+
   const pubIdByCode = new Map<string, string>();
   const takenPubSlugs = new Set((await db.calendarPublication.findMany({ where: { brandId: ctx.brand.id }, select: { slug: true } })).map((p) => p.slug).filter((s): s is string => Boolean(s)));
   for (const step of plan.publications) {
@@ -174,6 +192,7 @@ export async function commitImport(formData: FormData) {
           slug,
           status,
           active: status !== "retired",
+          ...categoryCols(step),
           ...logoColumns,
           createdById: ctx.actorId,
           updatedById: ctx.actorId,
@@ -185,7 +204,7 @@ export async function commitImport(formData: FormData) {
     } else {
       pubIdByCode.set(code, step.existingId!);
       if (step.action === "fill") {
-        await db.calendarPublication.updateMany({ where: { id: step.existingId! }, data: { ...columns(step.fill), ...logoColumns, updatedById: ctx.actorId } });
+        await db.calendarPublication.updateMany({ where: { id: step.existingId! }, data: { ...columns(step.fill), ...categoryCols(step), ...logoColumns, updatedById: ctx.actorId } });
         touchedPubs.add(step.existingId!);
       }
     }
@@ -218,7 +237,7 @@ export async function commitImport(formData: FormData) {
     action: "pubsetup.imported",
     targetType: "brand",
     targetId: ctx.brand.id,
-    metadata: { created: plan.counts.create, filled: plan.counts.fill, links: linked, brandLogo: plan.brandLogo },
+    metadata: { created: plan.counts.create, filled: plan.counts.fill, links: linked, brandLogo: plan.brandLogo, categories: plan.categories.length },
   });
 
   // Each saved publication and editor teaches the Brain, exactly as a form save does.

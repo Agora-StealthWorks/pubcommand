@@ -74,7 +74,7 @@ export default async function WikiPublicationsPage({ params, searchParams }: { p
                             {pub.status !== "active" ? <StatusBadge status={pub.status} /> : null}
                           </span>
                           {pub.tagline || pub.description ? <span className="line-clamp-2 block text-sm text-muted">{pub.tagline || pub.description}</span> : null}
-                          <span className="block text-xs text-muted [overflow-wrap:anywhere]">{[pub.pubType, pub.tier, pub.frequency].filter(Boolean).join(" · ")}</span>
+                          <span className="block text-xs text-muted [overflow-wrap:anywhere]">{[pub.category?.name, pub.tier, pub.frequency].filter(Boolean).join(" · ")}</span>
                           {pub.editors.length ? (
                             <span className="block text-xs [overflow-wrap:anywhere]">
                               {pub.editors.map((e) => `${e.name}${e.role !== "lead" ? ` (${EDITOR_ROLE_LABELS[e.role] ?? e.role})` : ""}`).join(", ")}

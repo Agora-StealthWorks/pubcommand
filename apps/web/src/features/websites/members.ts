@@ -2,16 +2,18 @@ import { tenantDb } from "@pubcommand/db";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { hashPassword, verifyPassword } from "@pubcommand/auth";
-import { escapeHtml, sendEmail } from "@/lib/email";
-import { memberAccess, passwordProblem, sitePath, type Access } from "../../../../../modules/websites/content";
+import { sendEmail } from "@/lib/email";
+import { emailFrom } from "@/lib/mail";
+import { LINK_MINUTES, memberAccess, passwordProblem, senderWithName, setPasswordEmail, sitePath, themeFrom, type Access } from "../../../../../modules/websites/content";
 import type { SiteRow } from "./data";
 
 /**
- * Website members are readers, not PubCommand users. They sign in with a one-time
- * emailed link; the session lives in a per-site cookie. Only token hashes are stored.
+ * Website members are readers, not staff users. They log in with email + password; an
+ * emailed one-time link only lets them set (or reset) the password. The session lives in a
+ * per-site cookie (or, for a site that runs as its own app, in the x-member-session header).
+ * Only token hashes are stored.
  */
 
-const LINK_MINUTES = 30;
 const SESSION_DAYS = 60;
 
 export function memberCookieName(siteId: string): string {
@@ -42,7 +44,8 @@ export async function siteBaseUrl(organizationId: string, site: Pick<SiteRow, "s
   return domain ? `https://${domain.hostname}` : `${fallbackOrigin}${own}`;
 }
 
-export async function createSignInLink(organizationId: string, memberId: string, base: string, returnTo = "/my"): Promise<string> {
+/** A one-time link that signs the member in on a "link" session and leads to the set-password page. */
+export async function createSetPasswordLink(organizationId: string, memberId: string, base: string, returnTo = "/my"): Promise<string> {
   const token = newToken();
   await tenantDb(organizationId).webMemberToken.create({
     data: { organizationId, memberId, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + LINK_MINUTES * 60_000) },
@@ -51,29 +54,24 @@ export async function createSignInLink(organizationId: string, memberId: string,
   return `${base}/sign-in/verify?token=${token}${next}`;
 }
 
-export async function sendMemberSignInLink(input: {
+/** Email a member the "Set your password for <site>" link. From: the site's name at the configured address. */
+export async function sendSetPasswordLink(input: {
   organizationId: string;
-  orgSlug: string;
   site: SiteRow;
   member: { id: string; email: string; name: string };
   origin: string;
   returnTo?: string;
 }): Promise<{ status: "sent" | "logged" | "failed"; link: string }> {
   const base = await siteBaseUrl(input.organizationId, input.site, input.origin);
-  const link = await createSignInLink(input.organizationId, input.member.id, base, input.returnTo);
-  const name = escapeHtml(input.site.name);
-  const result = await sendEmail({
-    to: input.member.email,
-    subject: `Your sign-in link for ${input.site.name}`,
-    html: `<p>Hello${input.member.name ? ` ${escapeHtml(input.member.name)}` : ""},</p><p>Click below to sign in to ${name}. The link works once and expires in ${LINK_MINUTES} minutes.</p><p><a href="${escapeHtml(link)}" style="display:inline-block;padding:12px 20px;background:#10213a;color:#f3ede1;text-decoration:none;font-weight:600">Sign in to ${name}</a></p><p style="color:#666;font-size:13px">If you did not ask for this, you can ignore this email.</p>`,
-    text: `Sign in to ${input.site.name}: ${link}\n\nThe link works once and expires in ${LINK_MINUTES} minutes.`,
-  });
-  if (result.status === "logged") console.info(`[websites] member sign-in link (email not configured) for site ${input.site.slug}: ${link}`);
+  const link = await createSetPasswordLink(input.organizationId, input.member.id, base, input.returnTo);
+  const email = setPasswordEmail({ siteName: input.site.name, memberName: input.member.name, link, accent: themeFrom(input.site.theme).primary });
+  const result = await sendEmail({ to: input.member.email, from: senderWithName(input.site.name, emailFrom()), ...email });
+  if (result.status === "logged") console.info(`[websites] set-password link (email not configured) for site ${input.site.slug}: ${link}`);
   return { status: result.status === "failed" ? "failed" : result.status, link };
 }
 
-/** Consume a link token and open a session. Returns the cookie to set, or null. */
-export async function redeemSignInToken(organizationId: string, siteId: string, token: string): Promise<{ cookie: string; value: string; maxAge: number; memberId: string } | null> {
+/** Consume a set-password link and open a "link" session. Returns the cookie to set, or null. */
+export async function redeemSignInToken(organizationId: string, siteId: string, token: string): Promise<{ cookie: string; value: string; maxAge: number; memberId: string; hasPassword: boolean } | null> {
   if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return null;
   const db = tenantDb(organizationId);
   const row = await db.webMemberToken.findFirst({ where: { tokenHash: hashToken(token) } });
@@ -82,15 +80,16 @@ export async function redeemSignInToken(organizationId: string, siteId: string, 
   if (!member) return null;
   const used = await db.webMemberToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: new Date() } });
   if (!used.count) return null;
-  return openSession(organizationId, siteId, member.id);
+  return { ...(await openSession(organizationId, siteId, member.id, "link")), hasPassword: Boolean(member.passwordHash) };
 }
 
-/** Open a session for a member (after a link or a password). */
-async function openSession(organizationId: string, siteId: string, memberId: string) {
+/** Open a session for a member (after a password login, or a set-password link). */
+async function openSession(organizationId: string, siteId: string, memberId: string, method: "password" | "link") {
   const db = tenantDb(organizationId);
   const value = newToken();
-  const maxAge = SESSION_DAYS * 24 * 60 * 60;
-  await db.webMemberSession.create({ data: { organizationId, memberId, tokenHash: hashToken(value), expiresAt: new Date(Date.now() + maxAge * 1000) } });
+  // A link session only needs to live long enough to set a password; it is extended once one is set.
+  const maxAge = method === "link" ? LINK_MINUTES * 2 * 60 : SESSION_DAYS * 24 * 60 * 60;
+  await db.webMemberSession.create({ data: { organizationId, memberId, tokenHash: hashToken(value), method, expiresAt: new Date(Date.now() + maxAge * 1000) } });
   await db.webMember.updateMany({ where: { id: memberId }, data: { lastLoginAt: new Date() } });
   return { cookie: memberCookieName(siteId), value, maxAge, memberId };
 }
@@ -125,20 +124,21 @@ export async function passwordSignIn(organizationId: string, siteId: string, ema
     return { ok: false, reason: "invalid" };
   }
   for (const key of keys) failures.delete(key);
-  return { ok: true, session: await openSession(organizationId, siteId, member.id) };
+  return { ok: true, session: await openSession(organizationId, siteId, member.id, "password") };
 }
 
 /**
  * Set or change the signed-in member's password. Changing an existing password needs the
- * current one, unless the session was opened by an emailed link in the last 30 minutes
- * (that is the "forgot password" path). Other sessions of the member are signed out.
+ * current one, unless the session was opened by a set-password link in the last 30 minutes
+ * (the "forgot password" path; it works once: the session becomes a normal one). Other
+ * sessions of the member are signed out. Returns the session's new lifetime in seconds.
  */
 export async function setMemberPassword(
   organizationId: string,
   siteId: string,
   sessionValue: string | null | undefined,
   input: { password: unknown; currentPassword?: unknown },
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; maxAge: number } | { ok: false; error: string }> {
   if (!sessionValue || !/^[A-Za-z0-9_-]{20,100}$/.test(sessionValue)) return { ok: false, error: "Sign in again first." };
   const db = tenantDb(organizationId);
   const session = await db.webMemberSession.findFirst({ where: { tokenHash: hashToken(sessionValue) } });
@@ -147,13 +147,26 @@ export async function setMemberPassword(
   if (!member) return { ok: false, error: "Sign in again first." };
   const problem = passwordProblem(input.password);
   if (problem) return { ok: false, error: problem };
-  const fresh = Date.now() - session.createdAt.getTime() < 30 * 60_000;
-  if (member.passwordHash && !fresh) {
+  const freshLink = session.method === "link" && Date.now() - session.createdAt.getTime() < LINK_MINUTES * 60_000;
+  if (member.passwordHash && !freshLink) {
     const current = typeof input.currentPassword === "string" ? input.currentPassword : "";
     if (!(await verifyPassword(current.slice(0, 200), member.passwordHash))) return { ok: false, error: "Your current password is not right." };
   }
   await db.webMember.updateMany({ where: { id: member.id }, data: { passwordHash: await hashPassword(input.password as string), passwordSetAt: new Date() } });
   await db.webMemberSession.deleteMany({ where: { memberId: member.id, id: { not: session.id } } });
+  // This session is now a normal signed-in one.
+  const maxAge = SESSION_DAYS * 24 * 60 * 60;
+  await db.webMemberSession.updateMany({ where: { id: session.id }, data: { method: "password", expiresAt: new Date(Date.now() + maxAge * 1000) } });
+  return { ok: true, maxAge };
+}
+
+/** Staff set a member's password (Websites → Members). Signs the member out everywhere. */
+export async function adminSetMemberPassword(organizationId: string, memberId: string, password: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const problem = passwordProblem(password);
+  if (problem) return { ok: false, error: problem };
+  const db = tenantDb(organizationId);
+  await db.webMember.updateMany({ where: { id: memberId }, data: { passwordHash: await hashPassword(password as string), passwordSetAt: new Date() } });
+  await db.webMemberSession.deleteMany({ where: { memberId } });
   return { ok: true };
 }
 

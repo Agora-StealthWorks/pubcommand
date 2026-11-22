@@ -32,7 +32,7 @@ import { assetPath, orgTimezone, siteEditors, sitePublications } from "./data";
 import { NEW_KEY_COOKIE, SITE_COOKIE, UUID_RE, ownSite, websitesAction, websitesWriteCtx, withMessage, type WebsitesCtx } from "./guard";
 import { storeAsset } from "./media";
 import { createApiKey, notifyExternalSite } from "./api";
-import { sendMemberSignInLink } from "./members";
+import { adminSetMemberPassword, sendSetPasswordLink } from "./members";
 
 // ---------------------------------------------------------------------------
 // Form readers
@@ -95,6 +95,7 @@ async function uniquePostSlug(organizationId: string, siteId: string, wanted: st
 
 const DEFAULT_MENU = [
   { label: "Latest", href: "/" },
+  { label: "Publications", href: "/publications" },
   { label: "Free Newsletters", href: "/newsletters" },
   { label: "Our Research", href: "/research" },
   { label: "Editors", href: "/editors" },
@@ -639,7 +640,21 @@ export async function emailSignInLink(formData: FormData) {
   const back = `/websites/members/${memberId}`;
   const ctx = await websitesAction(back, "websites.members");
   const { member, site } = await ownMember(ctx, memberId, "/websites/members");
-  const result = await sendMemberSignInLink({ organizationId: ctx.resolved.id, orgSlug: ctx.resolved.slug, site, member, origin: ctx.request.origin });
+  const result = await sendSetPasswordLink({ organizationId: ctx.resolved.id, site, member, origin: ctx.request.origin });
   await audit(ctx, "websites.member.link_sent", "web_member", member.id, { status: result.status });
-  redirect(withMessage(back, "notice", result.status === "sent" ? `Sign-in link emailed to ${member.email}.` : "Email is not set up yet (RESEND_API_KEY). The link was written to the server log."));
+  redirect(withMessage(back, "notice", result.status === "sent" ? `Set-password link emailed to ${member.email}.` : result.status === "failed" ? "The email could not be sent. Try again later." : "Email is not set up yet (RESEND_API_KEY). The link was written to the server log."));
+}
+
+/** Staff set a member's password directly. The member is signed out everywhere. */
+export async function setMemberPasswordByAdmin(formData: FormData) {
+  const memberId = text(formData, "memberId", 40);
+  const back = `/websites/members/${memberId}`;
+  const ctx = await websitesAction(back, "websites.members");
+  const { member } = await ownMember(ctx, memberId, "/websites/members");
+  const password = formData.get("password");
+  if (typeof password !== "string" || password !== formData.get("confirm")) redirect(withMessage(back, "error", "The two passwords do not match."));
+  const result = await adminSetMemberPassword(ctx.resolved.id, member.id, password);
+  if (!result.ok) redirect(withMessage(back, "error", result.error));
+  await audit(ctx, "websites.member.password_set", "web_member", member.id);
+  redirect(withMessage(back, "notice", `Password set for ${member.email}. Tell them yourself; nothing was emailed. They were signed out on every device.`));
 }

@@ -12,6 +12,7 @@ export type WikiPublication = {
   tagline: string | null;
   description: string | null;
   pubType: string | null;
+  category?: { name: string } | null;
   tier: string | null;
   frequency: string | null;
   status: string;
@@ -66,7 +67,7 @@ export function filterPublications<T extends WikiPublication>(pubs: readonly T[]
     if (pub.archived) return false;
     if (status === "active" && !isCurrent(pub)) return false;
     if (status === "retired" && pub.status !== "retired") return false;
-    return matchesAll([pub.name, pub.code, pub.tagline, pub.description, pub.pubType, pub.tier, pub.frequency, ...pub.editors.map((e) => e.name)], options.q ?? "");
+    return matchesAll([pub.name, pub.code, pub.tagline, pub.description, pub.category?.name, pub.tier, pub.frequency, ...pub.editors.map((e) => e.name)], options.q ?? "");
   });
 }
 

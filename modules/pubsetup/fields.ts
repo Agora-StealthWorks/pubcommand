@@ -5,7 +5,7 @@
  * surface picks it up. It is a fixed schema, not a user-defined field builder.
  */
 
-export type FieldKind = "text" | "textarea" | "select" | "date" | "url" | "email" | "color" | "font" | "list" | "number" | "code" | "slug" | "pairs";
+export type FieldKind = "text" | "textarea" | "select" | "date" | "url" | "email" | "color" | "font" | "list" | "number" | "code" | "slug" | "pairs" | "category";
 
 export type PairColumn = { key: string; label: string; kind?: "text" | "url"; max?: number; placeholder?: string };
 
@@ -97,7 +97,8 @@ export const PUBLICATION_FIELDS: readonly FieldDef[] = [
   { key: "code", label: "Code", kind: "code", group: "Basics", required: true, max: 20, hint: "Short key, e.g. WAR. Send stats match issues on it." },
   { key: "slug", label: "URL name", kind: "slug", group: "Basics", max: 60, deriveFrom: "name", hint: "Used in links (the wiki, funnels). Leave blank to make one from the name." },
   { key: "tagline", label: "Tagline", kind: "text", group: "Basics", max: 200 },
-  { key: "pubType", label: "Type", kind: "select", group: "Basics", options: PUBLICATION_TYPES },
+  // Type was replaced by the brand's own categories (pub_type is kept for the internal funnel rule).
+  { key: "categoryId", label: "Category", kind: "category", group: "Basics", internal: true, hint: "Websites list publications by category. Manage the list under Categories." },
   { key: "tier", label: "Tier", kind: "select", group: "Basics", options: PUBLICATION_TIERS },
   { key: "frequency", label: "Frequency", kind: "select", group: "Basics", options: FREQUENCIES },
   { key: "status", label: "Status", kind: "select", group: "Basics", required: true, options: PUBLICATION_STATUSES },
@@ -137,6 +138,18 @@ export const PUBLICATION_FIELDS: readonly FieldDef[] = [
     columns: [
       { key: "title", label: "Title", max: 200 },
       { key: "url", label: "Link", kind: "url", max: 1000 },
+    ],
+  },
+  {
+    key: "faq",
+    label: "Questions and answers",
+    kind: "pairs",
+    group: "Website",
+    maxRows: 8,
+    hint: "Shown on the publication's page on your website. Leave empty to hide the section.",
+    columns: [
+      { key: "question", label: "Question", max: 200 },
+      { key: "answer", label: "Answer", max: 1500 },
     ],
   },
   { key: "voiceNotes", label: "Voice and style", kind: "textarea", group: "Voice and compliance", max: 3000, rows: 3, hint: "How it sounds. Writers and AI drafts follow this." },
@@ -326,6 +339,8 @@ export function parseFields(defs: readonly FieldDef[], form: FormLike): ParseRes
             if (!validDay(value)) errors[def.key] = "Use a real date (YYYY-MM-DD).";
           } else if (def.kind === "select") {
             if (!def.options?.includes(value)) errors[def.key] = "Pick one of the options.";
+          } else if (def.kind === "category") {
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) errors[def.key] = "Pick one of the categories.";
           } else if (def.kind === "font") {
             if (!(FONT_OPTIONS as readonly string[]).includes(value)) errors[def.key] = "Pick one of the fonts.";
           }

@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { utcToZonedLocal } from "../../../../../../../../../../modules/miniblog/time";
 import { ENTITLEMENT_STATUSES, entitlementActive } from "../../../../../../../../../../modules/websites/content";
 import { Denied, Flash, PageHeader } from "@/components/ui";
-import { emailSignInLink, grantAccess, saveMember, updateAccess } from "@/features/websites/actions";
+import { emailSignInLink, grantAccess, saveMember, setMemberPasswordByAdmin, updateAccess } from "@/features/websites/actions";
 import { formatDate } from "@/features/websites/admin-ui";
 import { orgTimezone, sitePublications } from "@/features/websites/data";
 import { UUID_RE, websitesAccess } from "@/features/websites/guard";
@@ -159,16 +159,36 @@ export default async function MemberPage({ params, searchParams }: { params: Pro
               </div>
               <Button variant="secondary">Save</Button>
             </form>
-            <p className="mt-4 border-t border-line pt-4 text-sm">
-              Password: <b>{member.passwordHash ? `set ${formatDate(member.passwordSetAt, timeZone)}` : "not set yet"}</b>
-              <span className="block text-xs text-muted">Members set and change their own password. The sign-in link below also lets them set a new one.</span>
-            </p>
+            <div className="mt-4 border-t border-line pt-4 text-sm">
+              <p>
+                Password: <b>{member.passwordHash ? `set ${formatDate(member.passwordSetAt, timeZone)}` : "not set yet"}</b>
+              </p>
+              <p className="text-xs text-muted">Members log in with email and password, and can change it under Account. The link below lets them set a new one themselves.</p>
+            </div>
             <form action={emailSignInLink} className="mt-3">
               <input type="hidden" name="memberId" value={member.id} />
               <Button variant="secondary" className="w-full">
-                Email a sign-in link
+                Send set-password link
               </Button>
             </form>
+            <details className="mt-3 text-sm">
+              <summary className="inline-flex min-h-11 cursor-pointer items-center font-medium text-accent">Set a password for them</summary>
+              <form action={setMemberPasswordByAdmin} className="mt-2 space-y-2">
+                <input type="hidden" name="memberId" value={member.id} />
+                <div>
+                  <Label htmlFor="admin-password">New password</Label>
+                  <Input id="admin-password" name="password" type="password" minLength={10} maxLength={200} required autoComplete="new-password" />
+                </div>
+                <div>
+                  <Label htmlFor="admin-confirm">Type it again</Label>
+                  <Input id="admin-confirm" name="confirm" type="password" minLength={10} maxLength={200} required autoComplete="new-password" />
+                </div>
+                <p className="text-xs text-muted">At least 10 characters. Nothing is emailed: tell the member yourself. They are signed out on every device.</p>
+                <Button variant="secondary" className="w-full">
+                  Set password
+                </Button>
+              </form>
+            </details>
           </section>
           <section className="rounded-xl border border-line bg-white p-4 text-sm">
             <h2 className="mb-2 font-semibold">Free newsletters</h2>

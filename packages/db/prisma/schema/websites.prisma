@@ -202,7 +202,7 @@ model WebMember {
   name           String    @default("")
   /// active | disabled
   status         String    @default("active")
-  /// bcrypt hash; null until the member sets a password (they can always sign in by emailed link).
+  /// bcrypt hash; null until the member sets one (from a set-password link). Members log in with it.
   passwordHash   String?   @map("password_hash")
   passwordSetAt  DateTime? @map("password_set_at")
   lastLoginAt    DateTime? @map("last_login_at")
@@ -295,6 +295,9 @@ model WebMemberSession {
   tokenHash      String   @unique @map("token_hash")
   expiresAt      DateTime @map("expires_at")
   createdAt      DateTime @default(now()) @map("created_at")
+  /// How it was opened: "password" (login) or "link" (set/reset-password email). A link session
+  /// may set a new password without the current one, once, within 30 minutes.
+  method         String   @default("link")
 
   member WebMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 

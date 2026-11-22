@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { pageNumber } from "@/features/websites/archive";
-import { PublicationLanding } from "@/features/websites/landing";
+import { PublicationArchive } from "@/features/websites/landing";
+import { PublicationProfile } from "@/features/websites/publications-view";
 import { loadSite, loadViewer, pubBySlug } from "@/features/websites/public";
 
 type Params = Promise<{ slug: string; siteSlug: string; pub: string }>;
@@ -25,5 +26,6 @@ export default async function PublicationPage({ params, searchParams }: { params
   const found = await find(slug, siteSlug, pub);
   if (!found) notFound();
   const { member } = await loadViewer(found.loaded.organizationId, found.loaded.site.id);
-  return <PublicationLanding loaded={found.loaded} member={member} pub={found.pub} page={pageNumber(query.page)} signup={query.signup} kind="newsletters" />;
+  if (query.page) return <PublicationArchive loaded={found.loaded} member={member} pub={found.pub} page={pageNumber(query.page)} kind="newsletters" />;
+  return <PublicationProfile loaded={found.loaded} member={member} pub={found.pub} signup={query.signup} />;
 }

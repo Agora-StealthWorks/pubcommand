@@ -62,6 +62,7 @@ export const RESERVED_SLUGS = [
   "tag",
   "newsletters",
   "research",
+  "publications",
   "editors",
   "editor",
   "subscribe",
@@ -444,6 +445,65 @@ export function passwordProblem(password: unknown): string | null {
   if (password.length > 200) return "That password is too long.";
   if (/^\s|\s$/.test(password)) return "Remove spaces at the start or end.";
   return null;
+}
+
+/**
+ * Members log in with a password. A member who has none yet (a free sign-up, an imported
+ * reader, or someone who just used a set-password link) counts as signed out for reading,
+ * and every members-area page sends them to set one first. An emailed link never gives
+ * content access by itself.
+ */
+export function viewerFor(member: { hasPassword: boolean; access: Access } | null | undefined): Viewer {
+  return member?.hasPassword ? { signedIn: true, access: member.access } : { signedIn: false };
+}
+
+export type MembersGate = "sign-in" | "set-password" | "ok";
+
+export function membersGate(member: { hasPassword: boolean } | null | undefined): MembersGate {
+  if (!member) return "sign-in";
+  return member.hasPassword ? "ok" : "set-password";
+}
+
+/** Messages for the password forms' `?error=` codes (fixed text, nothing from the URL is shown). */
+export const PASSWORD_FORM_ERRORS: Record<string, string> = {
+  match: "The two passwords do not match.",
+  short: `Use at least ${PASSWORD_MIN} characters.`,
+  long: "That password is too long.",
+  spaces: "Remove spaces at the start or end.",
+  current: "Your current password is not right.",
+  stale: "This link has expired. Request a new one from the login page.",
+};
+
+/** Members-area path where a member sets (or resets) their password. */
+export const SET_PASSWORD_PATH = "/my/set-password";
+
+/** How long an emailed set-password link works. */
+export const LINK_MINUTES = 30;
+
+/**
+ * The From header for reader emails: the site's name as the display name, with the configured
+ * sending address ("Free Market Society <hello@x.com>"). Accepts "addr" or "Name <addr>".
+ */
+export function senderWithName(name: string, from: string): string {
+  const address = (/<([^<>\s]+@[^<>\s]+)>/.exec(from)?.[1] ?? from).trim();
+  const display = name.replace(/["\\<>\r\n]/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+  return display ? `"${display}" <${address}>` : address;
+}
+
+function escapeText(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
+}
+
+/** The set-password email (subject, HTML, text). Reader-facing: only the site's own name. */
+export function setPasswordEmail(input: { siteName: string; memberName: string; link: string; minutes?: number; accent?: string }): { subject: string; html: string; text: string } {
+  const minutes = input.minutes ?? LINK_MINUTES;
+  const site = escapeText(input.siteName);
+  const color = /^#[0-9a-f]{6}$/i.test(input.accent ?? "") ? input.accent! : "#10213a";
+  return {
+    subject: `Set your password for ${input.siteName}`,
+    html: `<p>Hello${input.memberName ? ` ${escapeText(input.memberName)}` : ""},</p><p>Use the button below to set your password for ${site}. The link works once and expires in ${minutes} minutes.</p><p><a href="${escapeText(input.link)}" style="display:inline-block;padding:12px 20px;background:${color};color:#ffffff;text-decoration:none;font-weight:600">Set your password</a></p><p style="color:#666;font-size:13px">If you did not ask for this, you can ignore this email. Your password stays as it is.</p>`,
+    text: `Set your password for ${input.siteName}: ${input.link}\n\nThe link works once and expires in ${minutes} minutes. If you did not ask for this, you can ignore this email.`,
+  };
 }
 
 // ---------------------------------------------------------------------------

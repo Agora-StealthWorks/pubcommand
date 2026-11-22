@@ -83,6 +83,11 @@ model CalendarPublication {
   updatedById         String?                @map("updated_by_id") @db.Uuid
   deletedAt           DateTime?              @map("deleted_at")
   editorLinks         PubPublicationEditor[]
+  /// The brand's publication category (replaces Type in the UI; pub_type stays for the funnel rule).
+  categoryId          String?                @map("category_id") @db.Uuid
+  category            PubCategory?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  /// [{ question, answer }] shown on the public website's publication page.
+  faq                 Json?
 
   @@unique([brandId, code])
   @@unique([brandId, slug])
@@ -176,4 +181,20 @@ model PubBrandBranding {
 
   @@index([organizationId])
   @@map("pubsetup_brand_branding")
+}
+
+/// A brand's publication category ("Free newsletters", "Trading services"...). Admins add,
+/// rename, reorder and delete them in Publication Setup; websites list publications by them.
+model PubCategory {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  brandId        String                @map("brand_id") @db.Uuid
+  name           String
+  sortOrder      Int                   @default(0) @map("sort_order")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  publications   CalendarPublication[]
+
+  @@index([organizationId, brandId])
+  @@map("pubsetup_categories")
 }

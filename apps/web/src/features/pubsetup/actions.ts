@@ -93,13 +93,20 @@ export async function savePublication(formData: FormData) {
     slug = uniqueSlug(slug, taken);
   }
 
+  // A category must be one of this brand's.
+  const categoryId = str(v, "categoryId");
+  if (categoryId && !(await db.pubCategory.findFirst({ where: { id: categoryId, brandId: ctx.brand.id }, select: { id: true } }))) {
+    redirect(withMessage(back, "error", "That category no longer exists. Pick another."));
+  }
+
   const status = str(v, "status") ?? "active";
+  // pub_type (the old Type) is no longer edited here: it is left as it is.
   const data = {
     code,
     name: str(v, "name")!,
     slug,
     tagline: str(v, "tagline"),
-    pubType: str(v, "pubType"),
+    categoryId,
     tier: str(v, "tier"),
     frequency: str(v, "frequency"),
     status,
@@ -121,6 +128,7 @@ export async function savePublication(formData: FormData) {
     signupUrl: str(v, "signupUrl"),
     archiveUrl: str(v, "archiveUrl"),
     sampleIssues: json(v.sampleIssues),
+    faq: json(v.faq),
     voiceNotes: str(v, "voiceNotes"),
     complianceNotes: str(v, "complianceNotes"),
     updatedById: ctx.actorId,

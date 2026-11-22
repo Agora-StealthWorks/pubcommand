@@ -94,7 +94,7 @@ export default async function WikiHomePage({ params, searchParams }: { params: P
                       <PubLogo pub={p} size="sm" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{p.name}</span>
-                        <span className="block truncate text-xs text-muted">{p.tagline || p.pubType || p.code}</span>
+                        <span className="block truncate text-xs text-muted">{p.tagline || p.category?.name || p.code}</span>
                       </span>
                     </Link>
                   </li>

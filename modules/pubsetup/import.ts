@@ -7,8 +7,9 @@
  * gets the fields it has left blank. Nothing an admin typed is ever overwritten,
  * so running the same file twice changes nothing the second time.
  */
-import { EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, parseFields, slugify, type FieldDef, type FieldValue, type FieldValues, type FormLike } from "./fields";
+import { EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, PUBLICATION_TYPES, parseFields, slugify, type FieldDef, type FieldValue, type FieldValues, type FormLike } from "./fields";
 import { slotForUpload, type LogoBackground } from "./logos";
+import { categoryName, findCategory } from "./categories";
 
 export const IMPORT_FORMAT = "pubcommand.publication-setup/v1";
 export const IMPORT_MAX_IMAGE_BYTES = 3 * 1024 * 1024;
@@ -21,7 +22,12 @@ export type ImportImage = { mime: string; data: Uint8Array<ArrayBuffer>; filenam
  * file did not fill. Unsorted, it counts as the light-background logo.
  */
 export type ImportLogos = { auto: ImportImage | null; light: ImportImage | null; dark: ImportImage | null };
-export type ImportPublication = { values: FieldValues; logos: ImportLogos };
+/**
+ * `category` is the category's name (created when the brand has none by that name).
+ * `pubType` is the legacy Type: still stored (the internal funnel rule reads it) and used as
+ * the category name when a record has no `category`.
+ */
+export type ImportPublication = { values: FieldValues; logos: ImportLogos; category: string | null; pubType: string | null };
 export type ImportEditor = { values: FieldValues; photo: ImportImage | null };
 export type ImportLink = { code: string; editorSlug: string; role: string };
 
@@ -92,7 +98,7 @@ export function parseImport(text: string): { ok: true; file: ParsedImport } | { 
   }
   const body = raw as { publications?: unknown; editors?: unknown; brand?: unknown; replace?: unknown };
   const warnings: string[] = [];
-  const replaceable = new Set(PUBLICATION_FIELDS.filter((d) => !d.required && !d.internal && d.kind !== "slug").map((d) => d.key));
+  const replaceable = new Set([...PUBLICATION_FIELDS.filter((d) => !d.required && !d.internal && d.kind !== "slug").map((d) => d.key), "category"]);
   const replace = (Array.isArray(body.replace) ? body.replace : []).filter((key): key is string => typeof key === "string" && replaceable.has(key));
   const publications: ImportPublication[] = [];
   const editors: ImportEditor[] = [];
@@ -132,7 +138,12 @@ export function parseImport(text: string): { ok: true; file: ParsedImport } | { 
       warnings.push(`${label} skipped. Code ${code} appears twice in the file.`);
       continue;
     }
-    publications.push({ values: parsed.values, logos: readLogos(rec, code.toLowerCase(), label, warnings) });
+    const pubType = typeof rec.pubType === "string" ? (PUBLICATION_TYPES as readonly string[]).find((t) => t.toLowerCase() === rec.pubType!.toString().trim().toLowerCase()) ?? null : null;
+    if (rec.pubType != null && rec.pubType !== "" && !pubType) warnings.push(`${label}: type "${String(rec.pubType)}" is not one of the known types, so it was left out.`);
+    let category = rec.category == null || rec.category === "" ? null : categoryName(rec.category);
+    if (rec.category != null && rec.category !== "" && !category) warnings.push(`${label}: the category must be text of up to 60 characters, so it was left out.`);
+    if (!category && (rec.category == null || rec.category === "") && pubType) category = pubType;
+    publications.push({ values: parsed.values, logos: readLogos(rec, code.toLowerCase(), label, warnings), category, pubType });
 
     const refs = Array.isArray(rec.editors) ? rec.editors : [];
     for (const ref of refs) {
@@ -216,7 +227,7 @@ export function fillBlanks(defs: readonly FieldDef[], existing: Record<string, u
   return out;
 }
 
-export type ExistingPublication = Record<string, unknown> & { id: string; code: string; slug: string | null; hasLogoLight: boolean; hasLogoDark: boolean };
+export type ExistingPublication = Record<string, unknown> & { id: string; code: string; slug: string | null; hasLogoLight: boolean; hasLogoDark: boolean; categoryId?: string | null; pubType?: string | null };
 export type ExistingEditor = Record<string, unknown> & { id: string; slug: string; name: string; hasPhoto: boolean };
 
 export type PlanStep<T> = {
@@ -229,6 +240,10 @@ export type PlanStep<T> = {
   image: boolean;
   /** Publications only: which logo slots the import fills. */
   logoSlots?: { light: boolean; dark: boolean };
+  /** Publications only: the category (by name) to put it in, or null to leave it. */
+  category?: string | null;
+  /** Publications only: the legacy type to store, or null to leave it. */
+  pubType?: string | null;
 };
 
 export type ImportPlan = {
@@ -238,6 +253,8 @@ export type ImportPlan = {
   /** Brand logo slots the import fills (only empty ones). */
   brandLogos: { light: boolean; dark: boolean };
   brandLogo: boolean;
+  /** Category names the import creates for the brand. */
+  categories: string[];
   counts: { create: number; fill: number; same: number; links: number };
 };
 
@@ -252,8 +269,10 @@ function labelFill(defs: readonly FieldDef[], fill: FieldValues, images: string[
 
 export function planImport(
   file: ParsedImport,
-  existing: { publications: ExistingPublication[]; editors: ExistingEditor[]; links: { code: string; editorSlug: string }[]; brandLogos: { light: boolean; dark: boolean } },
+  existing: { publications: ExistingPublication[]; editors: ExistingEditor[]; links: { code: string; editorSlug: string }[]; brandLogos: { light: boolean; dark: boolean }; categories?: { id: string; name: string }[] },
 ): ImportPlan {
+  const categories = existing.categories ?? [];
+  const categoryNameOf = (id: string | null | undefined) => (id ? categories.find((c) => c.id === id)?.name ?? null : null);
   const editors = file.editors.map((record): PlanStep<ImportEditor> => {
     const slug = String(record.values.slug);
     const name = String(record.values.name).toLowerCase();
@@ -271,14 +290,21 @@ export function planImport(
     const slots = logoSlotsOf(record.logos);
     if (!match) {
       const logoSlots = { light: Boolean(slots.light), dark: Boolean(slots.dark) };
-      return { action: "create", label: "new", record, existingId: null, fill: {}, image: logoSlots.light || logoSlots.dark, logoSlots };
+      return { action: "create", label: "new", record, existingId: null, fill: {}, image: logoSlots.light || logoSlots.dark, logoSlots, category: record.category, pubType: record.pubType };
     }
     const fill = fillBlanks(PUBLICATION_FIELDS, match, record.values, [], file.replace);
     const logoSlots = { light: Boolean(slots.light) && !match.hasLogoLight, dark: Boolean(slots.dark) && !match.hasLogoDark };
     const image = logoSlots.light || logoSlots.dark;
-    const action = Object.keys(fill).length || image ? "fill" : "same";
+    // Category: fill-only like every field (unless the file replaces "category").
+    const current = categoryNameOf(match.categoryId);
+    const replaceCategory = file.replace.includes("category");
+    const category = record.category && (!current || (replaceCategory && current.toLowerCase() !== record.category.toLowerCase())) ? record.category : null;
+    const pubType = record.pubType && !match.pubType ? record.pubType : null;
+    const action = Object.keys(fill).length || image || category || pubType ? "fill" : "same";
     const images = [...(logoSlots.light ? ["logo for light backgrounds"] : []), ...(logoSlots.dark ? ["logo for dark backgrounds"] : [])];
-    return { action, label: labelFill(PUBLICATION_FIELDS, fill, images, file.replace), record, existingId: match.id, fill, image, logoSlots };
+    const extra = [...(category && !current ? ["category"] : []), ...images];
+    const label = labelFill(PUBLICATION_FIELDS, fill, extra, file.replace);
+    return { action, label: category && current ? `${label === "already up to date" ? "" : `${label}; `}moves it to ${category}` : label, record, existingId: match.id, fill, image, logoSlots, category, pubType };
   });
 
   // An imported editor may match an existing one under a different slug (same name).
@@ -292,12 +318,20 @@ export function planImport(
   const all = [...editors, ...publications];
   const brandSlots = logoSlotsOf(file.brandLogos);
   const brandLogos = { light: Boolean(brandSlots.light) && !existing.brandLogos.light, dark: Boolean(brandSlots.dark) && !existing.brandLogos.dark };
+  const newCategories: string[] = [];
+  const needed = new Set(publications.flatMap((step) => (step.category ? [step.category.toLowerCase()] : [])));
+  // Named as the file first spells it.
+  for (const record of file.publications) {
+    const name = record.category;
+    if (name && needed.has(name.toLowerCase()) && !findCategory(categories, name) && !newCategories.some((n) => n.toLowerCase() === name.toLowerCase())) newCategories.push(name);
+  }
   return {
     publications,
     editors,
     links,
     brandLogos,
     brandLogo: brandLogos.light || brandLogos.dark,
+    categories: newCategories,
     counts: {
       create: all.filter((s) => s.action === "create").length,
       fill: all.filter((s) => s.action === "fill").length,

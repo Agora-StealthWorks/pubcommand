@@ -57,7 +57,7 @@ export default async function PublicationsPage({ params, searchParams }: { param
                       </span>
                       {pub.tagline || pub.description ? <span className="mt-1 line-clamp-2 block text-sm text-muted">{pub.tagline || pub.description}</span> : null}
                       <span className="mt-2 block text-xs text-muted [overflow-wrap:anywhere]">
-                        {[pub.pubType, pub.tier, pub.frequency, lead ? `${lead.name} (${EDITOR_ROLE_LABELS[lead.role] ?? lead.role})` : "No editor yet"].filter(Boolean).join(" · ")}
+                        {[pub.category?.name, pub.tier, pub.frequency, lead ? `${lead.name} (${EDITOR_ROLE_LABELS[lead.role] ?? lead.role})` : "No editor yet"].filter(Boolean).join(" · ")}
                       </span>
                     </span>
                   </Link>

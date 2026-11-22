@@ -5,9 +5,10 @@ import { createHash } from "node:crypto";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { resolveCustomHost } from "@/features/domains/resolve";
-import { getEditors, getPublications, type Editor, type Publication } from "@/features/pubsetup/read";
-import { menuFrom, publicBaseFor, sitePath, themeFrom, type MenuItem, type SiteTheme, type Viewer } from "../../../../../modules/websites/content";
+import { getCategories, getEditors, getPublications, type Editor, type Publication, type PublicationCategory } from "@/features/pubsetup/read";
+import { menuFrom, publicBaseFor, sitePath, themeFrom, viewerFor, type MenuItem, type SiteTheme, type Viewer } from "../../../../../modules/websites/content";
 import { isFreePublication, orgTimezone, type SiteRow } from "./data";
+import { sortByCategory } from "../../../../../modules/pubsetup/categories";
 import { readMember, type SignedInMember } from "./members";
 
 /** Is this request for the org the URL names? (Custom-domain requests resolve to their org.) */
@@ -45,7 +46,10 @@ export type LoadedSite = {
   /** Staff preview (drafts visible, nothing recorded). */
   staff: boolean;
   now: Date;
+  /** In website order: category order, then the publication's order, then name. */
   publications: Publication[];
+  /** The brand's publication categories (Publication Setup), in order. */
+  categories: PublicationCategory[];
   free: Publication[];
   paid: Publication[];
   editors: Editor[];
@@ -64,14 +68,16 @@ export const loadSite = cache(async (orgSlug: string, siteSlug: string): Promise
   if (!site) return null;
   const staff = await isStaffPreviewer(orgSlug);
   if (site.status !== "live" && !staff) return null;
-  const [brand, branding, timeZone, publications, editors, request] = await Promise.all([
+  const [brand, branding, timeZone, unsorted, editors, request, categories] = await Promise.all([
     db.brand.findFirst({ where: { id: site.brandId }, select: { name: true } }),
     db.pubBrandBranding.findFirst({ where: { brandId: site.brandId }, select: { logoMime: true, logoOnDarkMime: true } }),
     orgTimezone(org.id),
     getPublications(org.id, site.brandId, { activeOnly: true }),
     getEditors(org.id, site.brandId, { activeOnly: true }),
     currentRequest(),
+    getCategories(org.id, site.brandId),
   ]);
+  const publications = sortByCategory(unsorted, categories);
   return {
     organizationId: org.id,
     orgSlug,
@@ -85,6 +91,7 @@ export const loadSite = cache(async (orgSlug: string, siteSlug: string): Promise
     staff,
     now: new Date(),
     publications,
+    categories,
     free: publications.filter(isFreePublication),
     paid: publications.filter((pub) => !isFreePublication(pub)),
     editors,
@@ -105,10 +112,15 @@ async function linkBase(customDomain: string | null, siteSlug: string): Promise<
   return resolved?.targetPath === own ? "" : own;
 }
 
-/** The signed-in reader (if any), cached per request. */
-export const loadViewer = cache(async (organizationId: string, siteId: string): Promise<{ member: SignedInMember | null; viewer: Viewer }> => {
-  const member = await readMember(organizationId, siteId);
-  return { member, viewer: member ? { signedIn: true, access: member.access } : { signedIn: false } };
+/**
+ * The signed-in reader (if any), cached per request. `member` is set only for a member with a
+ * password; one who opened a set-password link but has not set it yet is `pending` and counts
+ * as signed out everywhere except the set-password page (see viewerFor / membersGate).
+ */
+export const loadViewer = cache(async (organizationId: string, siteId: string): Promise<{ member: SignedInMember | null; pending: SignedInMember | null; viewer: Viewer }> => {
+  const found = await readMember(organizationId, siteId);
+  const member = found?.hasPassword ? found : null;
+  return { member, pending: found && !found.hasPassword ? found : null, viewer: viewerFor(found) };
 });
 
 /** Live posts (or everything for staff previews). */

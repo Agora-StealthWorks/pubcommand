@@ -2,13 +2,15 @@ import { tenantDb, type Prisma } from "@pubcommand/db";
 import { getEditors, getImage, getPublications } from "@/features/pubsetup/read";
 import { authenticate, bodyForSite, cardJson, memberJson, minutes, siteJson, type ApiSite } from "@/features/websites/api";
 import { CARD_SELECT } from "@/features/websites/public";
-import { endSession, passwordSignIn, readMemberByToken, redeemSignInToken, sendMemberSignInLink, setMemberPassword } from "@/features/websites/members";
+import { endSession, passwordSignIn, readMemberByToken, redeemSignInToken, sendSetPasswordLink, setMemberPassword } from "@/features/websites/members";
 import { tickerQuotes } from "@/features/websites/ticker";
+import { approvedForPublication } from "@/features/testimonials/read";
+import { testimonialJson } from "@/features/websites/api";
 import { hashIp } from "@/features/websites/public";
 import { isFreePublication } from "@/features/websites/data";
 import { UUID_RE } from "@/features/websites/guard";
 import { logoFor } from "../../../../../../../../modules/pubsetup/logos";
-import { canRead, isLive, normalizeEmail, safeReturnPath, teaserHtml } from "../../../../../../../../modules/websites/content";
+import { canRead, isLive, normalizeEmail, safeReturnPath, teaserHtml, viewerFor } from "../../../../../../../../modules/websites/content";
 
 /**
  * Website API (v1) for a site that runs as its own app. Every call needs the site's
@@ -80,7 +82,8 @@ async function getHandler(request: Request, api: ApiSite, path: string[]): Promi
     const post = await db.webPost.findFirst({ where: { siteId: site.id, slug: a, deletedAt: null } });
     if (!post || !isLive(post, new Date())) return notFound();
     const member = await readMemberByToken(organizationId, site.id, memberToken(request));
-    const decision = canRead(post, member ? { signedIn: true, access: member.access } : { signedIn: false });
+    // A member who has not set a password yet reads as signed out.
+    const decision = canRead(post, viewerFor(member));
     const html = bodyForSite(post.bodyHtml, site.slug);
     const terms = await db.webPostTerm.findMany({ where: { postId: post.id }, select: { term: { select: { name: true, slug: true, kind: true } } } });
     return json({
@@ -94,6 +97,15 @@ async function getHandler(request: Request, api: ApiSite, path: string[]): Promi
       },
       access: decision,
     });
+  }
+
+  // Approved testimonials for one publication (Testimonials app), public fields only.
+  if (head === "testimonials" && path.length === 1) {
+    const pub = url.searchParams.get("publication") ?? "";
+    if (!UUID_RE.test(pub)) return bad("publication_required");
+    const take = Math.min(12, Math.max(1, Number(url.searchParams.get("take")) || 6));
+    const { items, total } = await approvedForPublication(organizationId, site.brandId, pub, take);
+    return json({ testimonials: items.map(testimonialJson), total }, 200, "public, max-age=300");
   }
 
   if (head === "ticker" && path.length === 1) {
@@ -114,7 +126,7 @@ async function getHandler(request: Request, api: ApiSite, path: string[]): Promi
       db.webProduct.findMany({ where: { siteId: site.id }, select: { id: true, name: true } }),
       db.webSignup.findMany({ where: { siteId: site.id, email: member.email, status: "subscribed" }, select: { publicationId: true } }),
     ]);
-    return json({ member: { ...memberJson(member, new Map(products.map((product) => [product.id, product.name]))), signups: signups.map((row) => row.publicationId) } });
+    return json({ member: { ...memberJson(member, new Map(products.map((product) => [product.id, product.name]))), mustSetPassword: !member.hasPassword, signups: signups.map((row) => row.publicationId) } });
   }
 
   // Images (proxied by the site under the same paths).
@@ -178,6 +190,8 @@ async function postHandler(request: Request, api: ApiSite, path: string[]): Prom
     return json({ ok: true, recorded: true });
   }
 
+  // Set / reset-password link ("Forgot your password, or never set one?"). It is NOT a way to log in:
+  // the link opens a short session that can only set a password (see README, Website API).
   if (route === "auth/link") {
     const email = normalizeEmail(input.email);
     if (!email) return bad("invalid_email");
@@ -186,14 +200,15 @@ async function postHandler(request: Request, api: ApiSite, path: string[]): Prom
     // Same answer whether or not the email has an account.
     if (member && (await db.webMemberToken.count({ where: { memberId: member.id, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } })) < 5) {
       const origin = new URL(request.url).origin;
-      await sendMemberSignInLink({ organizationId, orgSlug: "", site, member, origin, returnTo });
+      await sendSetPasswordLink({ organizationId, site, member, origin, returnTo });
     }
     return json({ ok: true });
   }
 
   if (route === "auth/verify") {
     const opened = await redeemSignInToken(organizationId, site.id, typeof input.token === "string" ? input.token : "");
-    return opened ? json({ session: opened.value, maxAge: opened.maxAge }) : json({ error: "expired" }, 401);
+    // mustSetPassword: send the reader to the set-password screen. The session reads as signed out until then.
+    return opened ? json({ session: opened.value, maxAge: opened.maxAge, mustSetPassword: !opened.hasPassword, purpose: "set-password" }) : json({ error: "expired" }, 401);
   }
 
   if (route === "auth/password") {
@@ -207,7 +222,7 @@ async function postHandler(request: Request, api: ApiSite, path: string[]): Prom
 
   if (route === "auth/set-password") {
     const result = await setMemberPassword(organizationId, site.id, memberToken(request), { password: input.password, currentPassword: input.currentPassword });
-    return result.ok ? json({ ok: true }) : json({ error: result.error }, 400);
+    return result.ok ? json({ ok: true, maxAge: result.maxAge }) : json({ error: result.error }, 400);
   }
 
   if (route === "auth/sign-out") {

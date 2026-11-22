@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { PublicationForm } from "@/features/pubsetup/forms";
 import { pubsetupPage } from "@/features/pubsetup/guard";
+import { getCategories } from "@/features/pubsetup/read";
 
 export default async function NewPublicationPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string }> }) {
   const { slug } = await params;
@@ -14,7 +15,7 @@ export default async function NewPublicationPage({ params, searchParams }: { par
       <h2 className="mb-1 text-lg font-semibold">New publication</h2>
       <p className="mb-4 text-sm text-muted">Only name, code and status are required. Fill in the rest when you have it: the more you add, the better every app and the Brain know this publication.</p>
       <Flash error={query.error} />
-      <PublicationForm />
+      <PublicationForm categories={await getCategories(access.ctx.resolved.id, access.ctx.brand.id)} />
     </div>
   );
 }
