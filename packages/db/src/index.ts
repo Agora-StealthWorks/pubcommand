@@ -50,5 +50,5 @@ export {
   type DomainDetachResult,
   type PurgeDomain,
 } from "./lifecycle";
-export { ensureBuiltInMemberRoles, ensureBuiltInMemberRolesForAll } from "./roles";
+export { ensureBuiltInMemberRoles, ensureBuiltInMemberRolesForAll, ensureBuiltInRolesForAll, ensureOwnerPermissions } from "./roles";
 export { changeOwnPassword, memberPasswordFacts, setMemberPassword, updateOwnName } from "./passwords";

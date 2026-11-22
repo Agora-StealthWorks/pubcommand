@@ -1,7 +1,8 @@
 import { rawPrisma } from "../src/client";
-import { ensureBuiltInMemberRolesForAll } from "../src/roles";
+import { ensureBuiltInRolesForAll } from "../src/roles";
 
-// Create-only: adds the built-in User and Editor roles to organizations that lack them.
-const created = await ensureBuiltInMemberRolesForAll();
-console.log(JSON.stringify({ ok: true, rolesCreated: created }));
+// Create-only: adds the built-in User and Editor roles to organizations that lack them,
+// and any permission the built-in Owner role is missing (never removes anything).
+const result = await ensureBuiltInRolesForAll();
+console.log(JSON.stringify({ ok: true, ...result }));
 await rawPrisma().$disconnect();

@@ -8,7 +8,7 @@ import {
 } from "@pubcommand/core";
 import { rawPrisma } from "./client";
 import { slugAvailability } from "./platform";
-import { ensureBuiltInMemberRoles } from "./roles";
+import { ensureBuiltInMemberRoles, ensureOwnerPermissions } from "./roles";
 
 type AuditInput = {
   organizationId: string;
@@ -151,6 +151,7 @@ export async function provisionOrganization(input: {
         }
       }
       await ensureBuiltInMemberRoles(tx, organization.id);
+      await ensureOwnerPermissions(tx, organization.id);
       const ownerRoleId = roles.get("owner");
       if (!ownerRoleId) throw new Error("Could not save the organization.");
       const existingUser = await tx.user.findFirst({

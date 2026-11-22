@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { execSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
+import { moduleRegistry } from "@pubcommand/modules";
 import {
   activateInvitedMemberships,
   addOrganizationMember,
@@ -87,7 +88,9 @@ describe("organization provisioning", () => {
     expect(organization.modules.map((row) => row.moduleId).sort()).toEqual(["knowledge", "settings"]);
     const owner = organization.roles.find((role) => role.slug === "owner");
     const admin = organization.roles.find((role) => role.slug === "admin");
-    expect(owner?.grants.map((grant) => grant.permission).sort()).toEqual(["knowledge.read", "settings.manage"]);
+    // The Owner always gets every manifest permission, whatever the caller passes.
+    const allKeys = [...new Set(moduleRegistry.all().flatMap((manifest) => manifest.permissions.map((permission) => permission.key)))].sort();
+    expect(owner?.grants.map((grant) => grant.permission).sort()).toEqual(allKeys);
     expect(admin?.grants.map((grant) => grant.permission).sort()).toEqual(["knowledge.read", "settings.manage"]);
     expect(organization.memberships).toEqual([
       expect.objectContaining({
