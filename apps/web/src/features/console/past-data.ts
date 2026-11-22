@@ -88,9 +88,11 @@ export async function copyPromosIntoConsole(options: { limit?: number } = {}): P
   const target = tenantDb(consoleId);
   const brand = await target.brand.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } });
   if (!brand) throw new Error("The console workspace has no brand.");
-  const counts: SyncCounts = { copied: 0, already: 0, files: 0, analyses: 0, remaining: 0 };
+  const counts: SyncCounts = { copied: 0, already: 0, analyses: 0, remaining: 0, filesRemoved: 0 };
   const limit = options.limit ?? 40;
   const copies = await target.promo.findMany({ where: { copiedFromId: { not: null } }, select: { id: true, copiedFromId: true } });
+  // Earlier versions copied file bytes too; drop those duplicates (the originals are untouched).
+  if (copies.length) counts.filesRemoved = (await target.promoFile.deleteMany({ where: { promoId: { in: copies.map((row) => row.id) } } })).count;
   const copied = new Map(copies.map((row) => [row.copiedFromId!, row.id]));
   for (const organizationId of await allOrganizationIds()) {
     if (organizationId === consoleId) continue;
@@ -108,7 +110,7 @@ export async function copyPromosIntoConsole(options: { limit?: number } = {}): P
         counts.remaining! += 1;
         continue;
       }
-      const promo = await source.promo.findFirst({ where: { id }, include: { analyses: { orderBy: { version: "asc" } }, files: true } });
+      const promo = await source.promo.findFirst({ where: { id }, include: { analyses: { orderBy: { version: "asc" } } } });
       if (!promo) continue;
       const created = await target.promo.create({
         data: {
@@ -160,12 +162,8 @@ export async function copyPromosIntoConsole(options: { limit?: number } = {}): P
         });
         counts.analyses! += 1;
       }
-      for (const file of promo.files) {
-        await target.promoFile.create({
-          data: { organizationId: consoleId, promoId: created.id, kind: file.kind, category: file.category, filename: file.filename, mimeType: file.mimeType, size: file.size, data: file.data, createdAt: file.createdAt },
-        });
-        counts.files! += 1;
-      }
+      // File bytes are not copied: they live in Postgres and would double the database's size.
+      // The copy keeps the text and analyses; the original file stays with the original promo.
       copied.set(id, created.id);
       counts.copied! += 1;
     }

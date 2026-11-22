@@ -16,6 +16,7 @@ import { jobRunsCleanup } from "./job-runs-cleanup";
 import { knowledgeConflictCheck } from "./knowledge-conflict-check";
 import { knowledgeIndustryLens } from "./knowledge-industry-lens";
 import { knowledgeLearnUp } from "./knowledge-learn-up";
+import { knowledgeVaultImport } from "./knowledge-vault-import";
 import { knowledgePromoSync } from "./knowledge-promo-sync";
 import { knowledgePushDown } from "./knowledge-push-down";
 import { miniblogCalendarStatus } from "./miniblog-calendar-status";
@@ -54,6 +55,7 @@ export const JOBS: JobDefinition[] = [
   knowledgeConflictCheck,
   knowledgeIndustryLens,
   knowledgeLearnUp,
+  knowledgeVaultImport,
   knowledgePromoSync,
   knowledgePushDown,
   miniblogCalendarStatus,
