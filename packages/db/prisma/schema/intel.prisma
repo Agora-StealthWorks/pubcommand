@@ -172,6 +172,8 @@ model IntelVideo {
   extractionModel  String?           @map("extraction_model")
   extractedAt      DateTime?         @map("extracted_at")
   analyzerPromoId  String?           @map("analyzer_promo_id") @db.Uuid
+  /// Set on the admin console's copy (VidRipper) of a video captured in another organization: the original video's id.
+  copiedFromId     String?           @map("copied_from_id") @db.Uuid
   startedAt        DateTime?         @map("started_at")
   finishedAt       DateTime?         @map("finished_at")
   createdById      String?           @map("created_by_id") @db.Uuid
@@ -185,6 +187,7 @@ model IntelVideo {
 
   @@index([organizationId, brandId, createdAt])
   @@index([status, createdAt])
+  @@index([copiedFromId])
   @@map("intel_videos")
 }
 

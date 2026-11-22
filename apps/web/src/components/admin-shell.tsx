@@ -10,7 +10,10 @@ const links: { href: string; label: string; permissions: string[] }[] = [
   { href: "/plans", label: "Plans", permissions: [PLATFORM_PERMISSIONS.managePlans, PLATFORM_PERMISSIONS.manageModules] },
   { href: "/domains", label: "Domains", permissions: [PLATFORM_PERMISSIONS.manageDomains] },
   { href: "/staff", label: "Staff", permissions: [PLATFORM_PERMISSIONS.manageStaff] },
-  { href: "/brain", label: "Main Brain", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
+  { href: "/brain", label: "Master Brain", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
+  { href: "/brain/chat", label: "BrainChat", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
+  { href: "/promo-studio", label: "Promo Analyzer", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
+  { href: "/intel/videos", label: "VidRipper", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
   { href: "/jobs", label: "Jobs", permissions: [PLATFORM_PERMISSIONS.manageJobs] },
   { href: "/audit", label: "Audit", permissions: [PLATFORM_PERMISSIONS.viewAudit] },
 ];
@@ -60,6 +63,9 @@ export function AdminShell({
 
 function isCurrent(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+  // BrainChat has its own entry; the Master Brain entry covers the rest of /brain.
+  if (href === "/brain" && pathname.startsWith("/brain/chat")) return false;
+  if (href === "/intel/videos") return pathname.startsWith("/intel");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

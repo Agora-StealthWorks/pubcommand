@@ -1,0 +1,40 @@
+// BrainChat: platform staff chat with the Master Brain (admin console). Platform tables:
+// no organization_id, RLS allows only app.bypass_rls (like main_brain_*).
+
+/// One BrainChat conversation, owned by the staff member who started it.
+model MainBrainChat {
+  id          String                 @id @default(uuid()) @db.Uuid
+  title       String                 @default("New chat")
+  createdById String?                @map("created_by_id") @db.Uuid
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  deletedAt   DateTime?              @map("deleted_at")
+  messages    MainBrainChatMessage[]
+
+  @@index([createdById, updatedAt])
+  @@map("main_brain_chats")
+}
+
+/// One turn in a BrainChat. Assistant turns stream into `content` while RUNNING.
+model MainBrainChatMessage {
+  id        String        @id @default(uuid()) @db.Uuid
+  chatId    String        @map("chat_id") @db.Uuid
+  /// user or assistant
+  role      String
+  content   String        @default("")
+  /// DONE, RUNNING, FAILED (assistant turns); user turns are DONE.
+  status    String        @default("DONE")
+  error     String?
+  /// Files uploaded with a user turn: [{ name, noteId, chars, kind }].
+  uploads   Json          @default("[]")
+  /// What the assistant did: [{ tool, input, summary, noteIds }].
+  activity  Json          @default("[]")
+  model     String?
+  usage     Json?
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  chat      MainBrainChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@map("main_brain_chat_messages")
+}

@@ -4,7 +4,7 @@ import { can } from "@pubcommand/core";
 import { appendOrgAudit, tenantDb } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
-import { getOrgContext } from "@/lib/org";
+import { getOrgContext, requestOrgSlug } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { PROMO_STATUSES, PROMO_TYPES } from "../../../../../modules/promo-studio/analysis";
 import { syncBestPerformers } from "../packager/training";
@@ -19,8 +19,9 @@ const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 async function promoContext(permission: "promo.read" | "promo.write") {
   const request = await currentRequest();
-  if (request.site.kind !== "org") redirect("/");
-  const ctx = await getOrgContext(request.site.slug);
+  const orgSlug = requestOrgSlug(request);
+  if (!orgSlug) redirect("/");
+  const ctx = await getOrgContext(orgSlug);
   if (ctx.kind !== "ok") redirect("/");
   if (!ctx.subject.entitledModuleIds.includes("promo-studio") || !can(ctx.subject, permission, ctx.scope)) {
     redirect("/promo-studio?error=You do not have permission.");
