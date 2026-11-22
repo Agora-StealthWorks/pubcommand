@@ -306,8 +306,10 @@ export async function overrideTier(formData: FormData) {
 export async function linkPerformance(formData: FormData) {
   const ctx = await promoAction("promo.write", PERF);
   const performanceId = field(formData, "performanceId", 40);
-  const target = field(formData, "target", 40);
-  if (target !== "auto" && target !== "none" && !/^[0-9a-f-]{36}$/i.test(target)) go(PERF, "error", "Pick a promo.", `#row-${performanceId}`);
+  const choice = field(formData, "target", 40);
+  // "promo": the promo comes from the shared list, typed or picked as "Title (code) · <id>".
+  const target = choice === "promo" ? (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(field(formData, "promo", 400))?.[0] ?? "") : choice;
+  if (target !== "auto" && target !== "none" && !/^[0-9a-f-]{36}$/i.test(target)) go(PERF, "error", "Pick a promo from the list.", `#row-${performanceId}`);
   const result = await linkPerformanceRow({ organizationId: ctx.resolved.id, brandId: ctx.brand.id, performanceId, target });
   if ("error" in result) go(PERF, "error", result.error ?? "That did not work.");
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "promo.performance.linked", targetType: "promo_performance", targetId: performanceId, metadata: { code: result.codeKey, from: result.from, to: result.to, mode: target === "auto" || target === "none" ? target : "promo" } });

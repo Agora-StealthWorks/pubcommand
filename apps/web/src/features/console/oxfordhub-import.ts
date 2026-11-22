@@ -3,9 +3,11 @@ import { join } from "node:path";
 import { tenantDb, type Prisma } from "@pubcommand/db";
 import { componentSpec } from "../../../../../modules/promo-studio/packager";
 import { promoCodeKeys } from "../../../../../modules/promo-studio/performance";
-import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, performanceFromOld, rawFromOldSections } from "../../../../../modules/promo-studio/oxfordhub";
+import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, matchPackagePromo, performanceFromOld, rawFromOldSections } from "../../../../../modules/promo-studio/oxfordhub";
 import { buildStored, effectiveScorecard } from "../../../../../modules/promo-studio/stored";
 import { ensureConsoleOrganization } from "@/lib/console-workspace";
+import { learnedKey } from "../../../../../modules/knowledge/main-brain";
+import { mainBrain } from "../main-brain/db";
 import { retier } from "../promos/insights";
 
 /**
@@ -218,66 +220,101 @@ export async function importOxfordHub(input: { dir: string; apply: boolean; onLi
 
   // ---------- packages ----------
   {
-    const promos = await db.promo.findMany({ where: { deletedAt: null }, select: { id: true, title: true, filename: true } });
-    const norm = (value: string) => value.toLowerCase().replace(/\.[a-z0-9]+$/i, "").replace(/[^a-z0-9]+/g, " ").trim();
+    // Packages join the analyzed promo they were attached to in OxfordHub, and nothing else:
+    // a package whose promo was never analyzed is not brought over (it is not a promo of its own).
+    const candidates = (await db.promo.findMany({ where: { deletedAt: null, source: { startsWith: "oxfordhub:" } }, select: { id: true, title: true, filename: true, source: true } })).map((p) => ({
+      id: p.id,
+      reviewId: p.source!.slice("oxfordhub:".length),
+      names: [p.title, p.filename ?? ""].filter(Boolean),
+    }));
     let added = 0;
-    let stubs = 0;
+    const skipped: string[] = [];
     for (const name of packageFiles) {
-      const pkg = (JSON.parse(readFileSync(join(dir, "packager", name), "utf8")) as { package: { id: string; createdAt?: string; brief: Record<string, unknown> & { title?: string; reviewId?: string; analyzerReviewId?: string }; components: { slug: string; items?: { text?: string }[] }[] } }).package;
+      const pkg = (JSON.parse(readFileSync(join(dir, "packager", name), "utf8")) as { package: { id: string; createdAt?: string; brief: Record<string, unknown> & { title?: string; reviewId?: string | null }; components: { slug: string; items?: { text?: string }[] }[] } }).package;
       if (await db.promoPackage.findFirst({ where: { direction: { path: ["oxfordhubId"], equals: pkg.id } }, select: { id: true } })) continue;
       const brief = pkg.brief ?? {};
       const title = String(brief.title ?? "Package").slice(0, 200);
-      const reviewId = (brief.reviewId ?? brief.analyzerReviewId) as string | undefined;
-      let promoId = reviewId ? existing.get(reviewId) : undefined;
+      const promoId = matchPackagePromo({ title, reviewId: (brief.reviewId as string | null | undefined) ?? null }, candidates);
       if (!promoId) {
-        const key = norm(title);
-        promoId = promos.find((p) => norm(p.title) === key || (p.filename && norm(p.filename) === key))?.id;
+        skipped.push(title);
+        continue;
       }
-      if (!promoId) {
-        // The package was built from a promo the analyzer never kept: the brief carries its text; keep it as a promo and analyze it.
-        const text = String(brief.promoFullText ?? brief.promoExcerpt ?? "").trim();
-        const stub = await db.promo.create({
-          data: {
-            organizationId,
-            brandId: brand.id,
-            title,
-            inputType: "text",
-            sourceText: text.slice(0, 400_000),
-            publisher: typeof brief.publisher === "string" ? brief.publisher : null,
-            gurus: Array.isArray(brief.gurus) ? (brief.gurus as string[]) : [],
-            product: typeof brief.product === "string" ? brief.product.slice(0, 300) : null,
-            promoStatus: "Draft (Untested)",
-            source: `oxfordhub-package:${pkg.id}`,
-            analysisStatus: text.length >= 200 ? "QUEUED" : "NONE",
-          },
-          select: { id: true },
-        });
-        if (text.length >= 200) await db.promoBulkJob.create({ data: { organizationId, brandId: brand.id, promoId: stub.id, actorId: null } });
-        promoId = stub.id;
-        stubs += 1;
-      }
-      const createdAt = pkg.createdAt ? new Date(pkg.createdAt) : new Date();
-      const created = await db.promoPackage.create({
-        data: { organizationId, brandId: brand.id, promoId, title, direction: { oxfordhubId: pkg.id, brief: Object.fromEntries(Object.entries(brief).filter(([key]) => key !== "promoFullText" && key !== "promoExcerpt")) } as Prisma.InputJsonValue, createdAt },
-        select: { id: true },
-      });
-      let position = 0;
-      for (const component of pkg.components ?? []) {
-        const kind = kindForOldSlug(component.slug);
-        const items = component.items ?? [];
-        if (!kind || !items.length) continue;
-        const content = componentContent(kind, items);
-        const row = await db.promoPackageComponent.create({
-          data: { organizationId, packageId: created.id, kind, position: position++, quantity: items.length, content, genStatus: "DONE", currentVersion: 1, createdAt },
-          select: { id: true },
-        });
-        await db.promoPackageComponentVersion.create({ data: { organizationId, componentId: row.id, version: 1, source: "imported", content, createdAt } });
-      }
+      await createPackage(db, { organizationId, brandId: brand.id, promoId, pkg, title });
       added += 1;
     }
-    log(`Packages: ${added} added (${stubs} with a promo of their own, queued for analysis).`);
+    log(`Packages: ${added} attached to their analyzed promo; ${skipped.length} not attached to an analyzed promo in OxfordHub, left out${skipped.length ? `: ${skipped.join(", ")}` : ""}.`);
   }
 
+  log("Done.");
+  return { applied: true, lines };
+}
+
+type OldPackage = { id: string; createdAt?: string; brief: Record<string, unknown>; components: { slug: string; items?: { text?: string }[] }[] };
+
+async function createPackage(db: ReturnType<typeof tenantDb>, input: { organizationId: string; brandId: string; promoId: string; pkg: OldPackage; title: string }) {
+  const { organizationId, pkg } = input;
+  const createdAt = pkg.createdAt ? new Date(pkg.createdAt) : new Date();
+  const brief = Object.fromEntries(Object.entries(pkg.brief ?? {}).filter(([key]) => key !== "promoFullText" && key !== "promoExcerpt"));
+  const created = await db.promoPackage.create({
+    data: { organizationId, brandId: input.brandId, promoId: input.promoId, title: input.title, direction: { oxfordhubId: pkg.id, brief } as Prisma.InputJsonValue, createdAt },
+    select: { id: true },
+  });
+  let position = 0;
+  for (const component of pkg.components ?? []) {
+    const kind = kindForOldSlug(component.slug);
+    const items = component.items ?? [];
+    if (!kind || !items.length) continue;
+    const content = componentContent(kind, items);
+    const row = await db.promoPackageComponent.create({
+      data: { organizationId, packageId: created.id, kind, position: position++, quantity: items.length, content, genStatus: "DONE", currentVersion: 1, createdAt },
+      select: { id: true },
+    });
+    await db.promoPackageComponentVersion.create({ data: { organizationId, componentId: row.id, version: 1, source: "imported", content, createdAt } });
+  }
+}
+
+/**
+ * Undo the placeholder promos an earlier import made for packages: move each
+ * package that was attached in OxfordHub to its analyzed promo, and delete the
+ * placeholder promos with everything they produced (packages left on them, queued
+ * analysis, their notes in the console Brain and the Master Brain). Idempotent.
+ */
+export async function fixOxfordhubPackages(input: { apply: boolean }): Promise<{ applied: boolean; lines: string[] }> {
+  const lines: string[] = [];
+  const log = (line: string) => lines.push(line);
+  const organizationId = await ensureConsoleOrganization();
+  const db = tenantDb(organizationId);
+  const placeholders = await db.promo.findMany({ where: { source: { startsWith: "oxfordhub-package:" } }, select: { id: true, title: true } });
+  const candidates = (await db.promo.findMany({ where: { deletedAt: null, source: { startsWith: "oxfordhub:" } }, select: { id: true, title: true, filename: true, source: true } })).map((p) => ({
+    id: p.id,
+    reviewId: p.source!.slice("oxfordhub:".length),
+    names: [p.title, p.filename ?? ""].filter(Boolean),
+  }));
+  const ids = placeholders.map((p) => p.id);
+  const packages = ids.length ? await db.promoPackage.findMany({ where: { promoId: { in: ids } }, select: { id: true, title: true, direction: true } }) : [];
+  const moves: { packageId: string; title: string; promoId: string }[] = [];
+  for (const pkg of packages) {
+    const brief = ((pkg.direction ?? {}) as { brief?: { title?: string; reviewId?: string | null } }).brief ?? {};
+    const promoId = matchPackagePromo({ title: brief.title ?? pkg.title, reviewId: brief.reviewId ?? null }, candidates);
+    if (promoId) moves.push({ packageId: pkg.id, title: pkg.title, promoId });
+  }
+  const target = new Map(candidates.map((c) => [c.id, c.names[0]]));
+  log(`Placeholder promos: ${placeholders.length} (${placeholders.map((p) => p.title).join(", ") || "none"}).`);
+  log(`Packages moved to their analyzed promo: ${moves.map((m) => `${m.title} → ${target.get(m.promoId)}`).join("; ") || "none"}.`);
+  log(`Packages removed with their placeholder: ${packages.length - moves.length}.`);
+  if (!input.apply) {
+    log("Dry run. Nothing was written.");
+    return { applied: false, lines };
+  }
+  for (const move of moves) await db.promoPackage.updateMany({ where: { id: move.packageId }, data: { promoId: move.promoId } });
+  if (ids.length) {
+    const refs = ids.flatMap((id) => [`promo:${id}`, `promo-intel:${id}`, `promo-copy:${id}`]);
+    const brandNotes = await db.knowledgePage.updateMany({ where: { sourceRef: { in: refs }, deletedAt: null }, data: { deletedAt: new Date() } });
+    // Master Brain copies of those notes: deleted (learn-up never brings a deleted note back).
+    const mainNotes = await mainBrain((tx) => tx.mainBrainNote.updateMany({ where: { key: { in: refs.map((ref) => learnedKey(organizationId, ref)) }, deletedAt: null }, data: { deletedAt: new Date() } }));
+    const promos = await db.promo.deleteMany({ where: { id: { in: ids } } });
+    log(`Removed ${promos.count} placeholder promos (their queued analysis and remaining packages with them), ${brandNotes.count} console Brain notes and ${mainNotes.count} Master Brain notes.`);
+  }
   log("Done.");
   return { applied: true, lines };
 }

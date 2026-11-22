@@ -12,12 +12,14 @@ import { LESSON_CATEGORIES } from "../../../../../../../../../modules/promo-stud
 
 const STALE_MS = 10 * 60 * 1000;
 
+const LESSONS_PER_PAGE = 50;
+
 export default async function LessonsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ show?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ show?: string; error?: string; notice?: string; category?: string; page?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
@@ -26,8 +28,23 @@ export default async function LessonsPage({
   const { ctx, writable } = access;
   const db = tenantDb(ctx.resolved.id);
   const showHidden = query.show === "hidden";
+  // A page at a time: an imported library can hold hundreds of lessons, each with its own forms.
+  const category = (LESSON_CATEGORIES as readonly string[]).includes(query.category ?? "") ? query.category! : null;
+  const where = { brandId: ctx.brand.id, hidden: showHidden, ...(category ? { category } : {}) };
+  const total = await db.promoLesson.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / LESSONS_PER_PAGE));
+  const pageNumber = Math.min(Math.max(1, Number.parseInt(query.page ?? "1", 10) || 1), pageCount);
+  const pageHref = (input: { page?: number; category?: string | null }) => {
+    const params = new URLSearchParams();
+    if (showHidden) params.set("show", "hidden");
+    const c = input.category === undefined ? category : input.category;
+    if (c) params.set("category", c);
+    if (input.page && input.page > 1) params.set("page", String(input.page));
+    const text = params.toString();
+    return `/promo-studio/lessons${text ? `?${text}` : ""}`;
+  };
   const [lessons, run, hiddenCount, analyzed, promos] = await Promise.all([
-    db.promoLesson.findMany({ where: { brandId: ctx.brand.id, hidden: showHidden }, orderBy: [{ pinned: "desc" }, { evidenceCount: "desc" }, { createdAt: "asc" }] }),
+    db.promoLesson.findMany({ where, orderBy: [{ pinned: "desc" }, { evidenceCount: "desc" }, { createdAt: "asc" }], skip: (pageNumber - 1) * LESSONS_PER_PAGE, take: LESSONS_PER_PAGE }),
     db.promoLessonRun.findFirst({ where: { brandId: ctx.brand.id }, orderBy: { createdAt: "desc" } }),
     db.promoLesson.count({ where: { brandId: ctx.brand.id, hidden: true } }),
     db.promo.count({ where: { brandId: ctx.brand.id, deletedAt: null, effectivenessScore: { not: null } } }),
@@ -75,7 +92,18 @@ export default async function LessonsPage({
       <div className="flex flex-wrap gap-3 text-sm">
         <Link href="/promo-studio/lessons" className={showHidden ? "text-accent hover:underline" : "font-semibold"}>Visible</Link>
         <Link href="/promo-studio/lessons?show=hidden" className={showHidden ? "font-semibold" : "text-accent hover:underline"}>Hidden ({hiddenCount})</Link>
+        <span className="text-line" aria-hidden>|</span>
+        <Link href={pageHref({ category: null })} className={category ? "text-accent hover:underline" : "font-semibold"}>All</Link>
+        {LESSON_CATEGORIES.map((c) => (
+          <Link key={c} href={pageHref({ category: c })} className={category === c ? "font-semibold" : "text-accent hover:underline"}>
+            {c}
+          </Link>
+        ))}
       </div>
+      <p className="text-xs text-muted">
+        {total} lesson{total === 1 ? "" : "s"}
+        {pageCount > 1 ? ` · showing ${(pageNumber - 1) * LESSONS_PER_PAGE + 1}–${Math.min(pageNumber * LESSONS_PER_PAGE, total)}` : ""}
+      </p>
 
       <ul className="space-y-3">
         {lessons.map((lesson) => (
@@ -160,10 +188,17 @@ export default async function LessonsPage({
         ))}
         {lessons.length === 0 ? (
           <li className="rounded-xl border border-line bg-white p-5 text-sm text-muted">
-            {showHidden ? "No hidden lessons." : analyzed ? "No themes yet. Build them from your analyses, or add one by hand." : "Analyze some promos first; each analysis adds lessons."}
+            {category ? "No lessons in this category." : showHidden ? "No hidden lessons." : analyzed ? "No themes yet. Build them from your analyses, or add one by hand." : "Analyze some promos first; each analysis adds lessons."}
           </li>
         ) : null}
       </ul>
+      {pageCount > 1 ? (
+        <nav className="flex flex-wrap items-center gap-2 text-sm" aria-label="Lesson pages">
+          {pageNumber > 1 ? <Link href={pageHref({ page: pageNumber - 1 })} className="text-accent hover:underline">← Previous</Link> : null}
+          <span className="text-muted">Page {pageNumber} of {pageCount}</span>
+          {pageNumber < pageCount ? <Link href={pageHref({ page: pageNumber + 1 })} className="text-accent hover:underline">Next →</Link> : null}
+        </nav>
+      ) : null}
 
       {writable && !showHidden ? (
         <details className="rounded-xl border border-line bg-white p-4">

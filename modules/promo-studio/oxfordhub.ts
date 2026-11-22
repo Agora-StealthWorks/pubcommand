@@ -180,3 +180,38 @@ export function performanceFromOld(record: { promoCode?: string | null; stats?: 
     extra: { ...stats, ...(record.notes ? { Notes: record.notes } : {}) },
   };
 }
+
+const GENERIC_TITLE_WORDS = new Set(["package", "script", "for", "video", "marked", "final", "to", "design", "legal", "edits", "page", "promo", "the", "a", "of", "and", "v1", "v2", "v3", "v4", "copy", "clean"]);
+
+function titleTokens(title: string): string[] {
+  return title
+    .toLowerCase()
+    .replace(/\.[a-z0-9]{2,4}$/i, "")
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word && !GENERIC_TITLE_WORDS.has(word));
+}
+
+/**
+ * The analyzed promo an old Packager package belongs to. Only packages that were
+ * attached to a promo in OxfordHub (brief.reviewId) are matched: by that review
+ * id, else by name (same publication code first, and every other significant
+ * word of the package title in the promo's name). Null: no analyzed promo.
+ */
+export function matchPackagePromo(
+  brief: { title?: string | null; reviewId?: string | null },
+  promos: readonly { id: string; reviewId: string | null; names: readonly string[] }[],
+): string | null {
+  if (!brief.reviewId) return null;
+  const byId = promos.find((p) => p.reviewId === brief.reviewId);
+  if (byId) return byId.id;
+  const want = titleTokens(brief.title ?? "");
+  if (want.length < 2) return null;
+  const [code, ...rest] = want;
+  const hits = promos.filter((p) =>
+    p.names.some((name) => {
+      const have = titleTokens(name);
+      return have[0] === code && rest.every((word) => have.includes(word));
+    }),
+  );
+  return hits.length === 1 ? hits[0]!.id : null;
+}

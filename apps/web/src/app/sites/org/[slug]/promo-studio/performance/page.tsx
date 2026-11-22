@@ -37,12 +37,14 @@ import {
   type ColumnMapping,
 } from "../../../../../../../../../modules/promo-studio/performance";
 
+const RESULTS_PER_PAGE = 100;
+
 export default async function PerformancePage({
   params,
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ import?: string; error?: string; notice?: string; sheet?: string; show?: string }>;
+  searchParams: Promise<{ import?: string; error?: string; notice?: string; sheet?: string; show?: string; q?: string; page?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
@@ -63,9 +65,27 @@ export default async function PerformancePage({
     loadSheetSync(ctx.resolved.id, ctx.brand.id),
   ]);
   const titles = new Map(promoTitles.map((p) => [p.id, p.title]));
+  const optionText = (p: { id: string; title: string; promoCode: string | null }) => `${p.title}${p.promoCode ? ` (${p.promoCode})` : ""} · ${p.id}`;
+  const promoById = new Map(promoTitles.map((p) => [p.id, p]));
+  const promoOption = (id: string) => (promoById.get(id) ? optionText(promoById.get(id)!) : "");
   const unmatchedCount = allRecords.filter((r) => !r.promoId).length;
   const showUnmatched = query.show === "unmatched";
-  const records = showUnmatched ? allRecords.filter((r) => !r.promoId) : allRecords;
+  // Results show a page at a time (a sheet can hold thousands of codes; rendering them all froze the page).
+  const search = (query.q ?? "").trim().toLowerCase().slice(0, 100);
+  const filtered = (showUnmatched ? allRecords.filter((r) => !r.promoId) : allRecords).filter(
+    (r) => !search || [r.promoCode, r.label ?? "", r.promoId ? (titles.get(r.promoId) ?? "") : ""].some((value) => value.toLowerCase().includes(search)),
+  );
+  const pageCount = Math.max(1, Math.ceil(filtered.length / RESULTS_PER_PAGE));
+  const pageNumber = Math.min(Math.max(1, Number.parseInt(query.page ?? "1", 10) || 1), pageCount);
+  const records = filtered.slice((pageNumber - 1) * RESULTS_PER_PAGE, pageNumber * RESULTS_PER_PAGE);
+  const pageHref = (n: number) => {
+    const params = new URLSearchParams();
+    if (showUnmatched) params.set("show", "unmatched");
+    if (search) params.set("q", query.q!.trim());
+    if (n > 1) params.set("page", String(n));
+    const text = params.toString();
+    return `/promo-studio/performance${text ? `?${text}` : ""}`;
+  };
   const sheetMapping = sheet?.headers.length ? mappingFromHeaders(parseHeaderMapping(sheet.mapping), sheet.headers) : null;
   const sheetGuess = sheet?.headers.length ? (sheetMapping && sheetMapping.code >= 0 ? sheetMapping : guessMapping(sheet.headers)) : null;
   const sheetBusy = sheet?.status === "RUNNING" && Date.now() - sheet.updatedAt.getTime() < 30 * 60_000;
@@ -302,7 +322,23 @@ export default async function PerformancePage({
       </details>
 
       <section className="space-y-2">
-        <h2 className="font-semibold">Results</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">Results</h2>
+          <form action="/promo-studio/performance" className="flex min-w-0 gap-2">
+            {showUnmatched ? <input type="hidden" name="show" value="unmatched" /> : null}
+            <input name="q" defaultValue={query.q ?? ""} placeholder="Code, label or promo" aria-label="Search results" className="pc-control min-w-0 text-sm" />
+            <Button type="submit" size="sm" variant="secondary">
+              Search
+            </Button>
+          </form>
+        </div>
+        {filtered.length ? (
+          <p className="text-xs text-muted">
+            {filtered.length} result{filtered.length === 1 ? "" : "s"}
+            {search ? ` matching “${query.q!.trim()}”` : ""}
+            {pageCount > 1 ? ` · showing ${(pageNumber - 1) * RESULTS_PER_PAGE + 1}–${Math.min(pageNumber * RESULTS_PER_PAGE, filtered.length)}` : ""}
+          </p>
+        ) : null}
         {records.length ? (
           <TableScroll>
             <table className="w-full min-w-[1180px] text-sm">
@@ -341,13 +377,19 @@ export default async function PerformancePage({
                             <summary className="cursor-pointer text-accent">{row.promoId ? "Change link" : "Link to a promo"}</summary>
                             <form action={linkPerformance} className="mt-2 flex w-64 flex-col gap-2">
                               <input type="hidden" name="performanceId" value={row.id} />
-                              <select name="target" defaultValue={row.linkedManually ? (row.promoId ?? "none") : "auto"} className="pc-control w-full text-xs" aria-label={`Promo for ${row.promoCode}`}>
+                              <select name="target" defaultValue={row.linkedManually ? (row.promoId ? "promo" : "none") : "auto"} className="pc-control w-full text-xs" aria-label={`Link for ${row.promoCode}`}>
                                 <option value="auto">Match by promo code</option>
                                 <option value="none">No promo (keep unlinked)</option>
-                                {promoTitles.map((p) => (
-                                  <option key={p.id} value={p.id}>{p.title}{p.promoCode ? ` (${p.promoCode})` : ""}</option>
-                                ))}
+                                <option value="promo">This promo:</option>
                               </select>
+                              <input
+                                name="promo"
+                                list="promo-options"
+                                defaultValue={row.linkedManually && row.promoId ? promoOption(row.promoId) : ""}
+                                placeholder="Type to find a promo"
+                                className="pc-control w-full text-xs"
+                                aria-label={`Promo for ${row.promoCode}`}
+                              />
                               <Button type="submit" size="sm" variant="secondary">Save link</Button>
                             </form>
                           </details>
@@ -402,9 +444,26 @@ export default async function PerformancePage({
               </tbody>
             </table>
           </TableScroll>
+        ) : search ? (
+          <p className="rounded-xl border border-line bg-white p-5 text-sm text-muted">No results match that search.</p>
         ) : (
           <p className="rounded-xl border border-line bg-white p-5 text-sm text-muted">No results yet. Upload a sheet to start. Set each promo&apos;s code on its Details tab so rows can match.</p>
         )}
+        {pageCount > 1 ? (
+          <nav className="flex flex-wrap items-center gap-2 text-sm" aria-label="Result pages">
+            {pageNumber > 1 ? <Link href={pageHref(pageNumber - 1)} className="text-accent hover:underline">← Previous</Link> : null}
+            <span className="text-muted">Page {pageNumber} of {pageCount}</span>
+            {pageNumber < pageCount ? <Link href={pageHref(pageNumber + 1)} className="text-accent hover:underline">Next →</Link> : null}
+          </nav>
+        ) : null}
+        {/* One promo list for every row's "Link to a promo" (a list per row repeated every promo thousands of times). */}
+        {writable ? (
+          <datalist id="promo-options">
+            {promoTitles.map((p) => (
+              <option key={p.id} value={optionText(p)} />
+            ))}
+          </datalist>
+        ) : null}
       </section>
 
       {imports.length ? (

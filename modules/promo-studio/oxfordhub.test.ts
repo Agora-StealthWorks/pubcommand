@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, performanceFromOld, rawFromOldSections, reviewIdFromNote, sourceCopyFromNote } from "./oxfordhub";
+import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, matchPackagePromo, performanceFromOld, rawFromOldSections, reviewIdFromNote, sourceCopyFromNote } from "./oxfordhub";
 import { parseAnalysis } from "./parse";
 import { buildStored, effectiveScorecard } from "./stored";
 
@@ -72,5 +72,20 @@ describe("old lessons and results", () => {
     const row = performanceFromOld({ promoCode: "SEI NVDA BUY - 1", stats: { Affiliate: "AF: Paradigm Press", "Primary Item": "SEI - True Alpha", "Total IRIS Promotion Views": "1016864", "Total IRIS Clicks to Order From": "28335", "Total Gross Orders": "7188", "Total Gross Revenue": "$14,472,118.28" } });
     expect(row).toMatchObject({ codeKey: "SEINVDABUY1", views: 1016864, clicks: 28335, orders: 7188, revenue: 14472118.28, label: "AF: Paradigm Press · SEI - True Alpha" });
     expect(performanceFromOld({ promoCode: " " })).toBeNull();
+  });
+});
+
+describe("old packages", () => {
+  const promos = [
+    { id: "moon", reviewId: "r1", names: ["PMK Moonlight Trade  (V4).docx"] },
+    { id: "empire", reviewId: "r2", names: ["TPU Empire for legal_LEGAL_mk_SPAS.docx"] },
+    { id: "energy", reviewId: "r3", names: ["SKI Infinite Energy (4).docx"] },
+  ];
+  it("attaches only packages that were attached in OxfordHub, to a promo that is really there", () => {
+    expect(matchPackagePromo({ title: "PMK Moonlight Package", reviewId: "gone" }, promos)).toBe("moon");
+    expect(matchPackagePromo({ title: "TPU Empire", reviewId: "gone" }, promos)).toBe("empire");
+    expect(matchPackagePromo({ title: "Anything", reviewId: "r3" }, promos)).toBe("energy");
+    expect(matchPackagePromo({ title: "TPU Energy", reviewId: "gone" }, promos)).toBeNull();
+    expect(matchPackagePromo({ title: "PMK Moonlight Package", reviewId: null }, promos)).toBeNull();
   });
 });

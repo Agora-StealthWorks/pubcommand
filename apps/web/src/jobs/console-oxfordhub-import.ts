@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, normalize, sep } from "node:path";
 import { readS3Config } from "@pubcommand/core";
-import { importOxfordHub } from "@/features/console/oxfordhub-import";
+import { fixOxfordhubPackages, importOxfordHub } from "@/features/console/oxfordhub-import";
 import { defineJob } from "@/lib/jobs/types";
 import { s3Delete, s3Get, s3Put } from "@/lib/s3";
 
@@ -26,9 +26,14 @@ export const consoleOxfordhubImport = defineJob({
     if (!config) return { idle: "no bucket configured" };
     const requestBytes = await s3Get(config, `${PREFIX}/request.json`);
     if (!requestBytes) return { idle: true };
-    const request = JSON.parse(Buffer.from(requestBytes).toString("utf8")) as { apply?: boolean };
+    const request = JSON.parse(Buffer.from(requestBytes).toString("utf8")) as { apply?: boolean; task?: "import" | "fix-packages" };
     await s3Delete(config, `${PREFIX}/request.json`);
     const startedAt = new Date().toISOString();
+    if (request.task === "fix-packages") {
+      const result = await fixOxfordhubPackages({ apply: request.apply === true });
+      await s3Put(config, `${PREFIX}/report.json`, Buffer.from(JSON.stringify({ ok: true, startedAt, finishedAt: new Date().toISOString(), ...result }, null, 2)), "application/json");
+      return { task: "fix-packages", applied: result.applied };
+    }
     const dir = join(tmpdir(), `oxfordhub-${Date.now()}`);
     try {
       const manifestBytes = await s3Get(config, `${PREFIX}/manifest.json`);
