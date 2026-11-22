@@ -103,10 +103,8 @@ export function publicationJson(pub: Publication) {
     longDescription: pub.longDescription,
     positioning: pub.positioning,
     frequency: pub.frequency,
-    /** Deprecated, internal: do not show. Use `category` to group and `free` for free vs paid. */
-    pubType: pub.pubType,
-    /** Deprecated, internal funnel term: never show it to readers. */
-    tier: pub.tier,
+    // Type and tier are internal-only classifications and are never sent to a website.
+    // Use `category` to group and `free` for free vs paid.
     free: isFreePublication(pub),
     /** The brand's category (Publication Setup → Categories); null = uncategorized (list it last). */
     category: pub.category ? { id: pub.category.id, name: pub.category.name, order: pub.category.sortOrder } : null,
