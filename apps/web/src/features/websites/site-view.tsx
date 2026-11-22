@@ -4,6 +4,7 @@ import { contentTypeLabel, menuHref } from "../../../../../modules/websites/cont
 import type { CardPost, LoadedSite } from "./public";
 import type { SignedInMember } from "./members";
 import { formatPrice, tickerQuotes } from "./ticker";
+import { isFreePublication } from "./data";
 
 /** Theme colors and logo size as CSS variables on the .ws root. */
 export function themeStyle(loaded: LoadedSite): CSSProperties {
@@ -58,8 +59,7 @@ export function Img({ loaded, assetId, className = "img", light = false, alt = "
  */
 function subtitle(pub: Publication, sub?: string): string {
   if (sub !== undefined) return sub.slice(0, 32);
-  const type = (pub.pubType ?? "").toLowerCase();
-  const free = type === "free newsletter" || (pub.tier ?? "").toLowerCase() === "free / lead gen";
+  const free = isFreePublication(pub);
   const freq = (pub.frequency ?? "").trim();
   if (free) return freq ? `Free ${freq.toLowerCase()}` : "Free";
   return freq.slice(0, 32);
@@ -157,7 +157,7 @@ export function SiteShell({ loaded, member, active, children }: { loaded: Loaded
   const home = base || "/";
   return (
     <div className="ws" style={themeStyle(loaded)}>
-      {loaded.staff && site.status !== "live" ? <div className="preview-bar">Preview: this site is not live yet. Only signed-in staff can see it.</div> : null}
+      {loaded.staff && site.status !== "live" ? <div className="preview-bar">Preview: this site is not live yet. Only you and your team can see it.</div> : null}
       {site.showTicker ? <Ticker text={site.tickerText} /> : null}
       <header className="hdr">
         <div className="wrap">
@@ -281,6 +281,9 @@ export function Footer({ loaded }: { loaded: LoadedSite }) {
                   <a href={`${base}/research/${pub.slug}`}>{pub.name}</a>
                 </li>
               ))}
+              <li>
+                <a href={`${base}/publications`}>All publications</a>
+              </li>
               <li>
                 <a href={`${base}/editors`}>Our editors</a>
               </li>

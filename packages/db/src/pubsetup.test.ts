@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { provisionOrganization } from "./provision";
@@ -82,5 +83,39 @@ describe("Publication Setup owns calendar_publications without breaking the cale
     const [a] = orgs as [{ id: string; brandId: string }];
     const admin = await db.role.findFirstOrThrow({ where: { organizationId: a.id, slug: "admin" }, include: { grants: true } });
     expect(admin.grants.map((p) => p.permission)).toContain("pubsetup.manage");
+  });
+
+  it("seeds categories from each brand's types once, keeps them per brand and inside RLS", async () => {
+    const [a, b] = orgs as [{ id: string; brandId: string }, { id: string; brandId: string }];
+    const ta = tenantDb(a.id);
+    const mk = (t: typeof ta, org: { id: string; brandId: string }, code: string, pubType: string | null) =>
+      t.calendarPublication.create({ data: { organizationId: org.id, brandId: org.brandId, code: `${code}${suffix}`.slice(0, 20).toUpperCase(), name: code, pubType } });
+    const p1 = await mk(ta, a, "SA", "Paid newsletter");
+    const p2 = await mk(ta, a, "SB", "Free newsletter");
+    const p3 = await mk(ta, a, "SC", "free newsletter");
+    const p4 = await mk(ta, a, "SD", null);
+    const p5 = await mk(tenantDb(b.id), b, "SE", "Paid newsletter");
+    // An admin already made "PAID NEWSLETTER" in brand A: the seed must reuse it, not add another.
+    const existing = await ta.pubCategory.create({ data: { organizationId: a.id, brandId: a.brandId, name: "PAID NEWSLETTER", sortOrder: 99 } });
+    const sql = readFileSync(new URL("../prisma/schema/migrations/20261122120000_websites_members_categories/migration.sql", import.meta.url), "utf8");
+    const seed = sql.slice(sql.indexOf("-- seed:begin"), sql.indexOf("-- seed:end"));
+    const statements = seed.split(/;\s*\n/).map((part) => part.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean);
+    for (let run = 0; run < 2; run += 1) for (const statement of statements) await db.$executeRawUnsafe(statement);
+
+    const catsA = await ta.pubCategory.findMany({ where: { brandId: a.brandId }, orderBy: { sortOrder: "asc" } });
+    expect(catsA.map((c) => c.name).sort()).toEqual(["Free newsletter", "PAID NEWSLETTER"]);
+    expect(catsA.find((c) => c.name === "Free newsletter")?.sortOrder).toBe(10);
+    const byId = async (id: string) => (await ta.calendarPublication.findFirst({ where: { id } }))!.categoryId;
+    expect(await byId(p1.id)).toBe(existing.id);
+    expect(await byId(p2.id)).toBe(await byId(p3.id));
+    expect(await byId(p4.id)).toBeNull();
+    const catsB = await tenantDb(b.id).pubCategory.findMany({ where: { brandId: b.brandId } });
+    expect(catsB.map((c) => c.name)).toEqual(["Paid newsletter"]);
+    expect((await tenantDb(b.id).calendarPublication.findFirst({ where: { id: p5.id } }))!.categoryId).toBe(catsB[0]!.id);
+    // RLS: org B cannot see org A's categories.
+    expect(await tenantDb(b.id).pubCategory.count({ where: { brandId: a.brandId } })).toBe(0);
+    // Deleting a category leaves its publications uncategorized (ON DELETE SET NULL).
+    await ta.pubCategory.deleteMany({ where: { id: existing.id } });
+    expect(await byId(p1.id)).toBeNull();
   });
 });

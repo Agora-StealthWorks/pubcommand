@@ -24,6 +24,7 @@ export type FactRecord = Record<string, unknown>;
 function pairText(key: string, row: Record<string, string>): string {
   if (key === "offers") return [row.label, row.price, row.term].filter(Boolean).join(" · ");
   if (key === "sampleIssues") return [row.title, row.url].filter(Boolean).join(" ");
+  if (key === "faq") return [row.question, row.answer].filter(Boolean).join(" ");
   return [row.label, row.url].filter(Boolean).join(": ");
 }
 
@@ -63,6 +64,8 @@ export function publicationFacts(input: {
   now?: Date;
 }): Facts {
   const fields = collect(PUBLICATION_FIELDS, input.record);
+  const category = input.record.category as { name?: unknown } | null | undefined;
+  if (category && typeof category.name === "string" && category.name) fields.category = category.name;
   if (input.editors.length) fields.editors = input.editors.map((e) => `${e.name} (${EDITOR_ROLE_LABELS[e.role] ?? e.role})`);
   if (input.archived) fields.archived = "yes";
   return { version: 1, kind: "publication", ref: `pub:${input.id}`, brand: input.brandName, updatedAt: (input.now ?? new Date()).toISOString(), fields };
@@ -98,7 +101,7 @@ export function publicationNote(facts: Facts): { title: string; body: string } {
   const name = String(f.name ?? "Publication");
   const code = f.code ? ` (${String(f.code)})` : "";
   const status = PUBLICATION_STATUS_LABELS[String(f.status ?? "active")] ?? String(f.status ?? "");
-  const line = [f.pubType, f.tier, f.frequency, status, f.launchDate ? `launched ${String(f.launchDate)}` : ""].filter(Boolean).join(" · ");
+  const line = [f.category, f.tier, f.frequency, status, f.launchDate ? `launched ${String(f.launchDate)}` : ""].filter(Boolean).join(" · ");
   const lines = [
     `${name}${code} is a ${facts.brand} publication.${f.archived ? " It is archived and no longer offered." : ""}`,
     line ? `${line}` : "",
@@ -122,6 +125,7 @@ export function publicationNote(facts: Facts): { title: string; body: string } {
       (["websiteUrl", "signupUrl", "archiveUrl"] as const).flatMap((key) => (f[key] ? [`${labelOf(PUBLICATION_FIELDS, key)}: ${String(f[key])}`] : [])),
     ),
     ...section("Sample issues", f.sampleIssues),
+    ...section("Questions and answers", f.faq),
     "",
     "Source: Publication Setup (entered by the publisher's admins). Treat these as the official facts about this publication.",
   ];

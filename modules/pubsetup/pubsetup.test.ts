@@ -41,14 +41,14 @@ describe("publication fields", () => {
         websiteUrl: "javascript:alert(1)",
         launchDate: "2026-02-31",
         color: "blue",
-        pubType: "Hedge fund",
+        categoryId: "not-a-uuid",
         "sampleIssues.0.title": "Issue 1",
         "sampleIssues.0.url": "not a link",
       }),
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(Object.keys(result.errors).sort()).toEqual(["code", "color", "launchDate", "pubType", "sampleIssues", "slug", "websiteUrl"]);
+    expect(Object.keys(result.errors).sort()).toEqual(["categoryId", "code", "color", "launchDate", "sampleIssues", "slug", "websiteUrl"]);
   });
 
   it("reads list and pair rows, skipping empty rows", () => {
@@ -126,7 +126,8 @@ describe("facts and Brain notes", () => {
     name: "The Daily Edge",
     code: "TDE",
     status: "active",
-    pubType: "Paid newsletter",
+    category: { id: "c1", name: "Paid newsletters", sortOrder: 10 },
+    categoryId: "c1",
     positioning: "Plain-English daily briefing.",
     offers: [{ label: "Annual", price: "$49", term: "per year" }],
     sortOrder: 3,
@@ -146,13 +147,14 @@ describe("facts and Brain notes", () => {
         name: "The Daily Edge",
         code: "TDE",
         status: "active",
-        pubType: "Paid newsletter",
         launchDate: "2024-05-01",
         positioning: "Plain-English daily briefing.",
         offers: ["Annual · $49 · per year"],
+        category: "Paid newsletters",
         editors: ["Ada Lee (Lead editor)"],
       },
     });
+    expect(publicationNote(facts).body).toContain("Paid newsletters ·");
     const note = publicationNote(facts);
     expect(note.title).toBe("The Daily Edge (TDE)");
     expect(note.body).toContain("## Positioning");

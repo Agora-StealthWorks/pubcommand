@@ -12,6 +12,8 @@ import { sortLegacyLogos } from "./logo-tone";
  * own app's permission first. Binary images are never loaded here; use getImage().
  */
 
+export type PublicationCategory = { id: string; name: string; sortOrder: number };
+
 export type PublicationEditorRef = { id: string; name: string; slug: string; role: string; title: string | null };
 
 export type Publication = {
@@ -43,6 +45,11 @@ export type Publication = {
   signupUrl: string | null;
   archiveUrl: string | null;
   sampleIssues: { title: string; url: string }[];
+  /** Questions and answers for the public website. */
+  faq: { question: string; answer: string }[];
+  /** The brand's category this publication is filed under (Publication Setup → Categories). */
+  categoryId: string | null;
+  category: PublicationCategory | null;
   voiceNotes: string | null;
   complianceNotes: string | null;
   /** Calendar chip color. */
@@ -117,6 +124,9 @@ const PUB_SELECT = {
   signupUrl: true,
   archiveUrl: true,
   sampleIssues: true,
+  faq: true,
+  categoryId: true,
+  category: { select: { id: true, name: true, sortOrder: true } },
   voiceNotes: true,
   complianceNotes: true,
   color: true,
@@ -184,6 +194,9 @@ type PubRow = {
   signupUrl: string | null;
   archiveUrl: string | null;
   sampleIssues: unknown;
+  faq: unknown;
+  categoryId: string | null;
+  category: PublicationCategory | null;
   voiceNotes: string | null;
   complianceNotes: string | null;
   color: string;
@@ -202,13 +215,14 @@ function pick<K extends string>(rows: Pair[], keys: readonly K[]): Record<K, str
 }
 
 function toPublication(row: PubRow): Publication {
-  const { logoMime, logoOnDarkMime, coverMime, deletedAt, editorLinks, launchDate, offers, sampleIssues, slug, ...rest } = row;
+  const { logoMime, logoOnDarkMime, coverMime, deletedAt, editorLinks, launchDate, offers, sampleIssues, faq, slug, ...rest } = row;
   return {
     ...rest,
     slug: slug ?? row.code.toLowerCase(),
     launchDate: launchDate ? launchDate.toISOString().slice(0, 10) : null,
     offers: pick(asPairs(offers), ["label", "price", "term"] as const),
     sampleIssues: pick(asPairs(sampleIssues), ["title", "url"] as const),
+    faq: pick(asPairs(faq), ["question", "answer"] as const).filter((row) => row.question && row.answer),
     hasLogo: Boolean(logoMime || logoOnDarkMime),
     logos: { light: Boolean(logoMime), dark: Boolean(logoOnDarkMime) },
     hasCover: Boolean(coverMime),
@@ -265,6 +279,12 @@ export async function getPublications(organizationId: string, brandId: string, o
     select: PUB_SELECT,
   });
   return rows.map(toPublication);
+}
+
+/** A brand's publication categories, in display order (sortOrder, then name). */
+export async function getCategories(organizationId: string, brandId: string): Promise<PublicationCategory[]> {
+  const rows = await tenantDb(organizationId).pubCategory.findMany({ where: { brandId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, sortOrder: true } });
+  return rows;
 }
 
 /** One publication by id, slug or code (archived included, so old links still resolve). */

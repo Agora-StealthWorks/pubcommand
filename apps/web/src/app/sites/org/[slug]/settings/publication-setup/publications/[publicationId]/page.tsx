@@ -63,7 +63,7 @@ export default async function PublicationPage({ params, searchParams }: { params
           {pub.tagline ? <p className="mt-1 text-sm text-muted">{pub.tagline}</p> : null}
           <p className="mt-1 text-xs text-muted [overflow-wrap:anywhere]">
             URL name: {pub.slug}
-            {[pub.pubType, pub.tier, pub.frequency].filter(Boolean).length ? ` · ${[pub.pubType, pub.tier, pub.frequency].filter(Boolean).join(" · ")}` : ""}
+            {[pub.category?.name, pub.tier, pub.frequency].filter(Boolean).length ? ` · ${[pub.category?.name, pub.tier, pub.frequency].filter(Boolean).join(" · ")}` : ""}
           </p>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">

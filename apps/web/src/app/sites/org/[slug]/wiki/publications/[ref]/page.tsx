@@ -49,7 +49,7 @@ export default async function WikiPublicationPage({ params }: { params: Promise<
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">{[pub.code, pub.pubType].filter(Boolean).join(" · ")}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">{[pub.code, pub.category?.name].filter(Boolean).join(" · ")}</p>
             <h2 className="mt-1 text-2xl font-semibold [overflow-wrap:anywhere] sm:text-3xl" style={{ fontFamily: heading }}>
               {pub.name}
             </h2>

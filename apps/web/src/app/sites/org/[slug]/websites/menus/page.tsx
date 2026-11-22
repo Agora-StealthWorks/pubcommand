@@ -13,6 +13,7 @@ const BUILTIN = [
   ["Home", "/"],
   ["Latest articles", "/latest"],
   ["Free newsletters", "/newsletters"],
+  ["All publications", "/publications"],
   ["Our research", "/research"],
   ["Editors", "/editors"],
   ["Member login", "/sign-in"],

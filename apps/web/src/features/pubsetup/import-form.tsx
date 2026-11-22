@@ -35,6 +35,7 @@ export function ImportForm() {
           <p className="text-sm">
             {ok.counts.create} to add · {ok.counts.fill} to fill in · {ok.counts.same} unchanged · {ok.counts.links} editor link{ok.counts.links === 1 ? "" : "s"} to add
             {ok.brandLogo ? " · brand logo" : ""}
+            {ok.categories.length ? ` · new categories: ${ok.categories.join(", ")}` : ""}
           </p>
           {ok.warnings.length ? (
             <ul className="list-disc space-y-1 rounded-md border border-[#fedf89] bg-[#fffaeb] py-2 pl-8 pr-3 text-sm text-[#93370d]">

@@ -102,7 +102,10 @@ describe("pricing and logo slots in the import", () => {
     expect(pro!.values).toMatchObject({ retailPrice: "$7,500/yr", lifetimePrice: "$25,000 one-time", salePrice: "$4,995", pricingNotes: "Renews at list." });
     expect(pro!.logos.light?.filename).toBe("pro-on-light.png");
     expect(pro!.logos.dark?.filename).toBe("pro-on-dark.png");
-    expect(auto!.values).toMatchObject({ pubType: "Text letter (SMS)", tier: "Bonus / complimentary" });
+    expect(auto!.values).toMatchObject({ tier: "Bonus / complimentary" });
+    // The legacy type is kept (internal funnel rule) and names the category when none is given.
+    expect(auto!.pubType).toBe("Text letter (SMS)");
+    expect(auto!.category).toBe("Text letter (SMS)");
     expect(auto!.logos.auto).not.toBeNull();
     expect(bad!.logos).toEqual({ auto: null, light: null, dark: null });
     expect(parsed.file.warnings.join("\n")).toMatch(/Bad Logo: the logo for dark backgrounds is not/);
@@ -154,5 +157,66 @@ describe("replace", () => {
     });
     expect(plan.publications[0]!.fill).toEqual({ offers: [] });
     expect(plan.publications[0]!.label).toBe("replaces price points and offers");
+  });
+});
+
+describe("categories in the import", () => {
+  const text = JSON.stringify({
+    format: IMPORT_FORMAT,
+    publications: [
+      { code: "A", name: "Alpha", category: "  Trading   services " },
+      { code: "B", name: "Bravo", category: "trading services" },
+      { code: "C", name: "Charlie", category: "Free newsletters" },
+      { code: "D", name: "Delta", category: "x".repeat(70) },
+      { code: "E", name: "Echo", pubType: "Free newsletter", category: "Research" },
+      { code: "F", name: "Foxtrot", pubType: "Hedge fund" },
+    ],
+  });
+
+  it("reads category by name, tidies it and warns on bad ones", () => {
+    const parsed = parseImport(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    const byCode = Object.fromEntries(parsed.file.publications.map((p) => [String(p.values.code), p]));
+    expect(byCode.A!.category).toBe("Trading services");
+    expect(byCode.D!.category).toBeNull();
+    expect(byCode.E).toMatchObject({ category: "Research", pubType: "Free newsletter" });
+    expect(byCode.F).toMatchObject({ category: null, pubType: null });
+    expect(parsed.file.warnings.join("\n")).toMatch(/Delta: the category/);
+    expect(parsed.file.warnings.join("\n")).toMatch(/Foxtrot: type "Hedge fund"/);
+  });
+
+  it("creates missing categories once (any case) and only fills an empty category", () => {
+    const parsed = parseImport(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    const plan = planImport(parsed.file, {
+      publications: [
+        { id: "pa", code: "A", slug: "a", name: "Alpha", status: "active", color: "#000000", hasLogoLight: false, hasLogoDark: false, categoryId: "free" },
+        { id: "pb", code: "B", slug: "b", name: "Bravo", status: "active", color: "#000000", hasLogoLight: false, hasLogoDark: false, categoryId: null },
+      ],
+      editors: [],
+      links: [],
+      brandLogos: { light: false, dark: false },
+      categories: [{ id: "free", name: "FREE NEWSLETTERS" }],
+    });
+    expect(plan.categories).toEqual(["Trading services", "Research"]);
+    const step = (code: string) => plan.publications.find((p) => p.record.values.code === code)!;
+    expect(step("A").category).toBeNull(); // already has one: fill-only
+    expect(step("B")).toMatchObject({ action: "fill", category: "trading services" });
+    expect(step("B").label).toContain("category");
+    expect(step("C")).toMatchObject({ action: "create", category: "Free newsletters" });
+  });
+
+  it("moves a publication to the file's category when the file replaces category", () => {
+    const parsed = parseImport(JSON.stringify({ format: IMPORT_FORMAT, replace: ["category"], publications: [{ code: "A", name: "Alpha", category: "Research" }] }));
+    if (!parsed.ok) throw new Error(parsed.error);
+    const plan = planImport(parsed.file, {
+      publications: [{ id: "pa", code: "A", slug: "a", name: "Alpha", status: "active", color: "#7f77dd", hasLogoLight: false, hasLogoDark: false, categoryId: "free" }],
+      editors: [],
+      links: [],
+      brandLogos: { light: false, dark: false },
+      categories: [{ id: "free", name: "Free newsletters" }],
+    });
+    expect(plan.publications[0]).toMatchObject({ action: "fill", category: "Research" });
+    expect(plan.publications[0]!.label).toContain("moves it to Research");
   });
 });

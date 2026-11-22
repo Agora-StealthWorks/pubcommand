@@ -18,6 +18,16 @@ The one place a publisher records each publication, its editors and its branding
 | `pubsetup_editors` (`PubEditor`) | Editors / experts, photo as bytes. |
 | `pubsetup_publication_editors` (`PubPublicationEditor`) | Who writes which publication, with a role (`lead`, `co-editor`, `contributor`, `analyst`, `guest`). Cascades with either side. |
 | `pubsetup_brand_branding` (`PubBrandBranding`) | One row per brand: branding defaults publications inherit. |
+| `pubsetup_categories` (`PubCategory`) | A brand's publication categories (name, order). `calendar_publications.category_id` points at one (`ON DELETE SET NULL`). |
+
+## Categories (replace "Type")
+
+- Publication Setup → **Categories**: add, rename, reorder (↑/↓), delete. Deleting a category in use asks whether to move its publications to another category or leave them uncategorized. Names are unique per brand, any case. Audited `pubsetup.category.*`.
+- Each publication picks one category in its form (the "Type" select is gone). `pub_type` is kept untouched (additive policy) and still feeds the internal funnel rule, but no screen shows it any more: lists, detail, wiki and Brain notes show the category name.
+- Migration `20261122120000_websites_members_categories` seeded one category per distinct Type each brand used (same name, old Type order) and filed each publication under it. Idempotent (`-- seed:begin/end` block, tested in `packages/db/src/pubsetup.test.ts`; `planCategorySeed()` is the pure mirror).
+- Websites list publications grouped and ordered by category: category order, then the publication's order, then name (`groupByCategory()` in `categories.ts`). Wiki and Publication Setup lists keep the internal funnel grouping.
+- Import: `"category": "<name>"` (created when missing, fill-only like every field; add `"category"` to `replace` to move publications). Legacy `"pubType"` is still read: stored in `pub_type`, and used as the category name when `category` is absent.
+- "Questions and answers" (`faq`, pairs) shows as the FAQ on the website's publication page.
 
 Why the calendar table: issues, send stats, Mini-Blog and the CUB/What's Working code all key on `calendar_publications` (by `brand_id` + `code`). Keeping the table, model name and every column means none of them change and no data moves; Publication Setup adds nullable or defaulted columns only. `slug` was backfilled from `code` (unique per brand, `-2` on a clash), `status` from `active`.
 

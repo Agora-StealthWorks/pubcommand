@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { PublicationForm } from "@/features/pubsetup/forms";
 import { pubsetupPage } from "@/features/pubsetup/guard";
-import { getPublication } from "@/features/pubsetup/read";
+import { getCategories, getPublication } from "@/features/pubsetup/read";
 
 export default async function EditPublicationPage({ params, searchParams }: { params: Promise<{ slug: string; publicationId: string }>; searchParams: Promise<{ error?: string }> }) {
   const { slug, publicationId } = await params;
@@ -20,7 +20,7 @@ export default async function EditPublicationPage({ params, searchParams }: { pa
       </Link>
       <h2 className="mb-4 text-lg font-semibold">Edit {pub.name}</h2>
       <Flash error={query.error} />
-      <PublicationForm pub={pub} />
+      <PublicationForm pub={pub} categories={await getCategories(access.ctx.resolved.id, access.ctx.brand.id)} />
     </div>
   );
 }

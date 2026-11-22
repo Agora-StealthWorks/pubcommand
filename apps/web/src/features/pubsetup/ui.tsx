@@ -12,7 +12,9 @@ function text(value: unknown): string {
   return String(value);
 }
 
-function FieldInput({ def, value }: { def: FieldDef; value: unknown }) {
+export type CategoryOption = { id: string; name: string };
+
+function FieldInput({ def, value, categories = [] }: { def: FieldDef; value: unknown; categories?: readonly CategoryOption[] }) {
   const id = `f-${def.key}`;
   const common = { id, name: def.key, required: def.required, defaultValue: text(value) };
   switch (def.kind) {
@@ -27,6 +29,17 @@ function FieldInput({ def, value }: { def: FieldDef; value: unknown }) {
           {(def.options ?? []).map((option) => (
             <option key={option} value={option}>
               {optionLabel(def, option)}
+            </option>
+          ))}
+        </select>
+      );
+    case "category":
+      return (
+        <select {...common} className="pc-control w-full">
+          <option value="">No category</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
             </option>
           ))}
         </select>
@@ -66,7 +79,7 @@ function PairsInput({ def, value }: { def: FieldDef; value: unknown }) {
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className="grid gap-2 rounded-md border border-line p-2 sm:grid-cols-3 sm:border-0 sm:p-0">
           {columns.map((column) => (
-            <div key={column.key} className={columns.length === 2 && column.kind === "url" ? "sm:col-span-2" : ""}>
+            <div key={column.key} className={columns.length === 2 && column === columns[1] ? "sm:col-span-2" : ""}>
               <label className="sr-only" htmlFor={`f-${def.key}-${i}-${column.key}`}>
                 {column.label} {i + 1}
               </label>
@@ -89,7 +102,7 @@ function PairsInput({ def, value }: { def: FieldDef; value: unknown }) {
 const WIDE = new Set(["textarea", "list", "pairs"]);
 
 /** Renders every field in the list, grouped, from the shared field definitions. */
-export function FieldSections({ defs, values = {} }: { defs: readonly FieldDef[]; values?: FormValues }) {
+export function FieldSections({ defs, values = {}, categories }: { defs: readonly FieldDef[]; values?: FormValues; categories?: readonly CategoryOption[] }) {
   return (
     <div className="space-y-5">
       {fieldGroups(defs).map(({ group, fields }) => (
@@ -102,7 +115,7 @@ export function FieldSections({ defs, values = {} }: { defs: readonly FieldDef[]
                   {def.label}
                   {def.required ? <span className="text-[#b42318]"> *</span> : null}
                 </Label>
-                <div className="mt-1">{def.kind === "pairs" ? <PairsInput def={def} value={values[def.key]} /> : <FieldInput def={def} value={values[def.key]} />}</div>
+                <div className="mt-1">{def.kind === "pairs" ? <PairsInput def={def} value={values[def.key]} /> : <FieldInput def={def} value={values[def.key]} categories={categories} />}</div>
                 {def.hint ? <p className="mt-1 text-xs text-muted">{def.hint}</p> : null}
               </div>
             ))}
@@ -171,10 +184,11 @@ export function StatusBadge({ status, archived }: { status: string; archived?: b
   return <Badge tone={tone}>{status === "inactive" ? "Inactive" : status.charAt(0).toUpperCase() + status.slice(1)}</Badge>;
 }
 
-export function SubNav({ active }: { active: "publications" | "editors" | "brand" | "import" }) {
+export function SubNav({ active }: { active: "publications" | "editors" | "categories" | "brand" | "import" }) {
   const tabs = [
     ["publications", "/settings/publication-setup", "Publications"],
     ["editors", "/settings/publication-setup/editors", "Editors"],
+    ["categories", "/settings/publication-setup/categories", "Categories"],
     ["import", "/settings/publication-setup/import", "Import"],
   ] as const;
   return (

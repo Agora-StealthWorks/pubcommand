@@ -6,7 +6,8 @@ import { currentRequest } from "@/lib/request";
 import { logoFor } from "../../../../../modules/pubsetup/logos";
 import { normalizeEmail, safeReturnPath } from "../../../../../modules/websites/content";
 import { UUID_RE } from "./guard";
-import { endSession, memberCookieName, redeemSignInToken, sendMemberSignInLink } from "./members";
+import { endSession, memberCookieName, passwordSignIn, redeemSignInToken, sendSetPasswordLink, setMemberPassword } from "./members";
+import { SET_PASSWORD_PATH } from "../../../../../modules/websites/content";
 import { clientIp, hashIp, loadSite, sameOrigin } from "./public";
 
 function seeOther(location: string) {
@@ -66,7 +67,7 @@ export async function handleSubscribe(request: Request, orgSlug: string, siteSlu
   return seeOther(withQuery(back, { signup: "subscribed" }));
 }
 
-/** POST /sign-in/submit: email a one-time link. Always answers the same way, so it never reveals who is a member. */
+/** POST /sign-in/submit: email + password login. One answer for every failure, rate limited. */
 export async function handleSignInRequest(request: Request, orgSlug: string, siteSlug: string): Promise<Response> {
   const loaded = await loadSite(orgSlug, siteSlug);
   if (!loaded || !sameOrigin(request)) return notFound();
@@ -75,32 +76,79 @@ export async function handleSignInRequest(request: Request, orgSlug: string, sit
   const page = `${loaded.base}/sign-in`;
   const next = safeReturnPath(form.get("next"), `${loaded.base}/my`);
   const email = normalizeEmail(form.get("email"));
-  if (!email) return seeOther(withQuery(page, { error: "email", next }));
+  const password = String(form.get("password") ?? "");
+  if (!email || !password) return seeOther(withQuery(page, { error: "invalid", next }));
+  const result = await passwordSignIn(loaded.organizationId, loaded.site.id, email, password, hashIp(clientIp(request.headers)));
+  if (!result.ok) return seeOther(withQuery(page, { error: result.reason, next }));
+  (await cookies()).set(result.session.cookie, result.session.value, await cookieOptions(result.session.maxAge));
+  return seeOther(next);
+}
+
+/**
+ * POST /sign-in/link: "Forgot your password / never set one?" Emails a link that leads to the
+ * set-password page. Always answers the same way, so it never reveals who is a member.
+ */
+export async function handleSetPasswordLinkRequest(request: Request, orgSlug: string, siteSlug: string): Promise<Response> {
+  const loaded = await loadSite(orgSlug, siteSlug);
+  if (!loaded || !sameOrigin(request)) return notFound();
+  const form = await readForm(request);
+  if (!form) return new Response("Bad request", { status: 400 });
+  const page = `${loaded.base}/sign-in`;
+  const next = safeReturnPath(form.get("next"), `${loaded.base}/my`);
+  const email = normalizeEmail(form.get("email"));
+  if (!email) return seeOther(withQuery(page, { forgot: "1", error: "email", next }));
   const db = tenantDb(loaded.organizationId);
-  const ipHash = hashIp(clientIp(request.headers));
   const member = await db.webMember.findFirst({ where: { siteId: loaded.site.id, email, status: "active" } });
   const params: Record<string, string> = { sent: "1" };
   if (member) {
     const recent = await db.webMemberToken.count({ where: { memberId: member.id, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
     if (recent < 5) {
       const { origin } = await currentRequest();
-      const result = await sendMemberSignInLink({ organizationId: loaded.organizationId, orgSlug, site: loaded.site, member, origin, returnTo: next });
+      const result = await sendSetPasswordLink({ organizationId: loaded.organizationId, site: loaded.site, member, origin, returnTo: next });
       if (exposeMagicLinkOnPage()) params.dev = result.link;
     }
   }
-  void ipHash;
   return seeOther(withQuery(page, params));
 }
 
-/** GET /sign-in/verify?token=…: open a session and go to the members area (or where the reader was). */
+/** GET /sign-in/verify?token=…: open a short "link" session and go straight to the set-password page. */
 export async function handleSignInVerify(request: Request, orgSlug: string, siteSlug: string): Promise<Response> {
   const loaded = await loadSite(orgSlug, siteSlug);
   if (!loaded) return notFound();
   const url = new URL(request.url);
   const opened = await redeemSignInToken(loaded.organizationId, loaded.site.id, url.searchParams.get("token") ?? "");
-  if (!opened) return seeOther(withQuery(`${loaded.base}/sign-in`, { error: "expired" }));
+  if (!opened) return seeOther(withQuery(`${loaded.base}/sign-in`, { forgot: "1", error: "expired" }));
   (await cookies()).set(opened.cookie, opened.value, await cookieOptions(opened.maxAge));
-  return seeOther(safeReturnPath(url.searchParams.get("next"), `${loaded.base}/my`));
+  const next = safeReturnPath(url.searchParams.get("next"), `${loaded.base}/my`);
+  return seeOther(withQuery(`${loaded.base}${SET_PASSWORD_PATH}`, { next }));
+}
+
+/**
+ * POST /my/set-password/submit (kind "set": after a link) and POST /my/account/password
+ * (kind "change": current + new). Both use setMemberPassword, which signs out other sessions.
+ */
+export async function handlePasswordForm(request: Request, orgSlug: string, siteSlug: string, kind: "set" | "change"): Promise<Response> {
+  const loaded = await loadSite(orgSlug, siteSlug);
+  if (!loaded || !sameOrigin(request)) return notFound();
+  const form = await readForm(request);
+  if (!form) return new Response("Bad request", { status: 400 });
+  const page = kind === "set" ? `${loaded.base}${SET_PASSWORD_PATH}` : `${loaded.base}/my/account`;
+  const next = safeReturnPath(form.get("next"), `${loaded.base}/my`);
+  const back = (params: Record<string, string>) => seeOther(withQuery(page, kind === "set" ? { ...params, next } : params) + (kind === "change" ? "#password" : ""));
+  const password = String(form.get("password") ?? "");
+  if (password !== String(form.get("confirm") ?? "")) return back({ error: "match" });
+  const jar = await cookies();
+  const name = memberCookieName(loaded.site.id);
+  const value = jar.get(name)?.value;
+  if (!value) return seeOther(withQuery(`${loaded.base}/sign-in`, { next }));
+  const result = await setMemberPassword(loaded.organizationId, loaded.site.id, value, { password, currentPassword: form.get("currentPassword") });
+  if (!result.ok) {
+    if (result.error === "Sign in again first.") return seeOther(withQuery(`${loaded.base}/sign-in`, { next }));
+    const code = result.error === "Your current password is not right." ? (kind === "set" ? "stale" : "current") : result.error.startsWith("Use at least") ? "short" : result.error.startsWith("Remove spaces") ? "spaces" : "long";
+    return back({ error: code });
+  }
+  jar.set(name, value, await cookieOptions(result.maxAge));
+  return kind === "set" ? seeOther(withQuery(next, { password: "set" })) : back({ password: "changed" });
 }
 
 /** POST /sign-out */

@@ -4,14 +4,14 @@ import { EDITOR_FIELDS, PUBLICATION_FIELDS } from "../../../../../modules/pubset
 import { saveEditor, savePublication } from "./actions";
 import type { Editor, Publication } from "./read";
 import { LogoSlotsField } from "./logo-field";
-import { FieldSections, ImageField, imageUrl } from "./ui";
+import { FieldSections, ImageField, imageUrl, type CategoryOption } from "./ui";
 
-export function PublicationForm({ pub }: { pub?: Publication | null }) {
+export function PublicationForm({ pub, categories }: { pub?: Publication | null; categories: readonly CategoryOption[] }) {
   const values = pub ?? { status: "active", color: "#7f77dd", sortOrder: 0 };
   return (
     <form action={savePublication} className="max-w-4xl space-y-5">
       {pub ? <input type="hidden" name="publicationId" value={pub.id} /> : null}
-      <FieldSections defs={PUBLICATION_FIELDS} values={values} />
+      <FieldSections defs={PUBLICATION_FIELDS} values={values} categories={categories} />
       <fieldset className="rounded-xl border border-line bg-white p-4">
         <legend className="px-1 text-sm font-semibold">Logos</legend>
         <LogoSlotsField
