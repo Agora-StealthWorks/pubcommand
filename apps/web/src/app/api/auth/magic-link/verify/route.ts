@@ -40,5 +40,5 @@ export async function GET(request: Request) {
   // Staff who still need two-factor finish that first; everyone else without a password sets one.
   const needsTwoFactor = Boolean(staff) && staffTwoFactorRequired();
   const setPassword = !account.passwordHash && !needsTwoFactor ? await setPasswordDestination(consumed.userId, host, origin, url.searchParams) : null;
-  return NextResponse.redirect(setPassword ?? loginDestination({ staff: Boolean(staff), next, requestHost: host }));
+  return NextResponse.redirect(new URL(setPassword ?? loginDestination({ staff: Boolean(staff), next, requestHost: host }), origin));
 }
