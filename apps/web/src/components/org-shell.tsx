@@ -23,7 +23,6 @@ export function OrgShell({
   brand,
   subject,
   pathname,
-  email,
   impersonating,
   switcher,
   children,
@@ -121,18 +120,6 @@ export function OrgShell({
             Settings
           </Link>
         ) : null}
-        <Link className={navClass(pathname === "/account")} href="/account">
-          <span aria-hidden className="w-5 text-center">
-            👤
-          </span>
-          Your account
-        </Link>
-        <div className="mt-2 flex items-center justify-between gap-2 px-3">
-          <span className="truncate text-xs text-muted">{email}</span>
-          <form action="/api/auth/logout" method="post">
-            <button className="inline-flex min-h-9 items-center whitespace-nowrap text-xs font-semibold text-muted hover:text-ink">Sign out</button>
-          </form>
-        </div>
       </div>
     </div>
   );
