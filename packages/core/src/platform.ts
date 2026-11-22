@@ -104,7 +104,8 @@ export function decideAdminAccess(input: {
     return { type: "allow" };
   }
   if (!input.staffRole) {
-    if (input.pathname === "/login") return { type: "allow" };
+    // Signing in and "Forgot your password?" work on every host, including this one.
+    if (input.pathname === "/login" || input.pathname === "/reset-password") return { type: "allow" };
     if (!input.hasSession) return { type: "login" };
     return { type: "reject" };
   }

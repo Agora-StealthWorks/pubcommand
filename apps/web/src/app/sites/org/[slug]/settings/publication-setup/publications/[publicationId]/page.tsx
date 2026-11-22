@@ -6,6 +6,9 @@ import { linkEditor, setPublicationArchived, unlinkEditor } from "@/features/pub
 import { pubsetupPage } from "@/features/pubsetup/guard";
 import { BRANDING_KEYS, EDITOR_ROLES, EDITOR_ROLE_LABELS, PUBLICATION_FIELDS, optionLabel } from "@/features/pubsetup/module";
 import { getBranding, getEditors, getPublication } from "@/features/pubsetup/read";
+import { savePublicationSenderAction } from "@/features/email/actions";
+import { getSender } from "@/features/email/org-email";
+import { SenderForm } from "@/features/email/sender-form";
 import { Detail, PubChip, PubLogoTile, SafeLink, StatusBadge, imageUrl } from "@/features/pubsetup/ui";
 
 const BRANDING_LABELS: Record<string, string> = {
@@ -41,7 +44,11 @@ export default async function PublicationPage({ params, searchParams }: { params
   const { ctx } = access;
   const pub = await getPublication(ctx.resolved.id, ctx.brand.id, publicationId);
   if (!pub || pub.id !== publicationId) notFound();
-  const [branding, editors] = await Promise.all([getBranding(ctx.resolved.id, pub.id), getEditors(ctx.resolved.id, ctx.brand.id)]);
+  const [branding, editors, sender] = await Promise.all([
+    getBranding(ctx.resolved.id, pub.id),
+    getEditors(ctx.resolved.id, ctx.brand.id),
+    getSender(ctx.resolved.id, "publication", pub.id),
+  ]);
   const linked = new Set(pub.editors.map((e) => e.id));
   const available = editors.filter((e) => !linked.has(e.id));
   const def = (key: string) => PUBLICATION_FIELDS.find((d) => d.key === key)!;
@@ -265,6 +272,13 @@ export default async function PublicationPage({ params, searchParams }: { params
               </dl>
             </section>
           ) : null}
+          <section id="email-sender" className="scroll-mt-4 rounded-xl border border-line bg-white p-4">
+            <h3 className="text-sm font-semibold">Email sender (optional)</h3>
+            <p className="mb-3 mt-1 text-xs text-muted">
+              For reader emails about this publication. Blank fields use the brand&apos;s sender, then the default in Settings → Email.
+            </p>
+            <SenderForm id="publication" action={savePublicationSenderAction} hidden={{ publicationId: pub.id }} value={sender} placeholders={{ fromName: pub.name }} />
+          </section>
         </div>
       </div>
     </div>

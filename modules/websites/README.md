@@ -17,7 +17,7 @@ Given to the `owner` and `admin` roles by migration `20261119120000_websites`; p
 
 ## Publications come from Publication Setup
 
-Nothing about publications is copied. Posts (`web_posts.publication_id`) and products (`web_products.publication_ids`) hold `calendar_publications` ids. Free vs paid uses the Publication Setup funnel rule (`funnelGroup()`: tier "Free / lead gen", or the legacy type "Free newsletter", = free). Publication logos, editors, bios and photos are read from Publication Setup and served by the site's own routes. Editor emails are never shown.
+Nothing about publications is copied. Posts (`web_posts.publication_id`) and products (`web_products.publication_ids`) hold `calendar_publications` ids. Free vs paid uses the Publication Setup funnel rule (`funnelGroup()`: tier "Free", or the legacy type "Free newsletter", = free). Publication logos, editors, bios and photos are read from Publication Setup and served by the site's own routes. Editor emails are never shown.
 
 **Lists are grouped and ordered by the brand's publication categories** (Publication Setup → Categories): category order, then the publication's order, then name; uncategorized publications last (`modules/pubsetup/categories.ts`). The internal funnel tier and the old Type are never shown on any public page.
 
@@ -47,7 +47,7 @@ Emailed links are no longer a way to log in. They only set or reset a password.
 | Call | Now |
 | --- | --- |
 | `POST auth/password` `{ email, password, ip? }` | **The login.** `{ session, maxAge }`, or 401 `{ error: "invalid" }` (same answer for unknown email, no password yet, wrong password), 429 `{ error: "limited" }` (10 failures per 15 min per email and per IP). |
-| `POST auth/link` `{ email, returnTo? }` | **Set/reset-password link** ("Forgot your password, or never set one?"). Always `{ ok: true }`. Emails "Set your password for <site>" from the site's name, linking to `<site address>/sign-in/verify?token=…&next=…`. |
+| `POST auth/link` `{ email, returnTo? }` | **Set/reset-password link** ("Forgot your password, or never set one?"). Always `{ ok: true }`. Emails "Set your password for <site>" through the organization's email (Settings → Email: the publication's sender when `returnTo` is a `/research/<slug>` or `/newsletters/<slug>` page, else the brand's, else the org default; the org's Resend key, else PubCommand's), linking to `<site address>/sign-in/verify?token=…&next=…`. |
 | `POST auth/verify` `{ token }` | Redeems that link once: `{ session, maxAge, mustSetPassword, purpose: "set-password" }`. The session is short (60 min) and **reads as signed out** (members-only posts stay locked) until a password is set. |
 | `POST auth/set-password` `{ password, currentPassword? }` + `x-member-session` | Sets or changes the password. `currentPassword` is required unless the session came from a link in the last 30 minutes (once). Returns `{ ok: true, maxAge }`: extend the session cookie to `maxAge`. Other sessions of the member are signed out. 400 `{ error }` is a readable message. |
 | `GET me` | Adds `mustSetPassword` (true while the member has no password). |

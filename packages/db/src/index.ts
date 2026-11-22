@@ -51,4 +51,4 @@ export {
   type PurgeDomain,
 } from "./lifecycle";
 export { ensureBuiltInMemberRoles, ensureBuiltInMemberRolesForAll, ensureBuiltInRolesForAll, ensureOwnerPermissions } from "./roles";
-export { changeOwnPassword, memberPasswordFacts, setMemberPassword, updateOwnName } from "./passwords";
+export { changeOwnPassword, memberPasswordFacts, resetForgottenPassword, setMemberPassword, updateOwnName } from "./passwords";

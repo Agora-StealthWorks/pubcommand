@@ -82,6 +82,26 @@ describe("planImport", () => {
   });
 });
 
+describe("tier names in the import", () => {
+  it("maps the old tier name to Free and keeps the new one", () => {
+    const parsed = parseImport(
+      JSON.stringify({
+        format: IMPORT_FORMAT,
+        publications: [
+          { code: "OLD", name: "Old Daily", tier: "Free / lead gen" },
+          { code: "NEW", name: "New Daily", tier: "Free" },
+          { code: "ODD", name: "Odd Daily", tier: "Free-ish" },
+        ],
+      }),
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    const [oldPub, newPub] = parsed.file.publications;
+    expect(oldPub!.values.tier).toBe("Free");
+    expect(newPub!.values.tier).toBe("Free");
+    expect(parsed.file.warnings.join("\n")).toMatch(/Odd Daily/);
+  });
+});
+
 describe("pricing and logo slots in the import", () => {
   const DARK = "data:image/png;base64,ZGFyaw==";
   const LIGHT = "data:image/png;base64,bGlnaHQ=";

@@ -6,6 +6,9 @@ import Link from "next/link";
 import { canManagePublications } from "@/features/pubsetup/module";
 import { getOrgContext } from "@/lib/org";
 import { createBrand, updateBrand } from "@/server/org-actions";
+import { saveBrandSenderAction } from "@/features/email/actions";
+import { getSender } from "@/features/email/org-email";
+import { SenderForm } from "@/features/email/sender-form";
 
 function BrandFields({ id, niche, audience, complianceNotes }: { id: string; niche?: string; audience?: string | null; complianceNotes?: string | null }) {
   const defaults = brandProfile({ name: "", niche: niche ?? "general" });
@@ -48,6 +51,7 @@ export default async function BrandsPage({
   if (ctx.kind !== "ok") notFound();
   if (!can(ctx.subject, "settings.manage", ctx.scope)) return <Denied />;
   const pubsetupOn = ctx.subject.entitledModuleIds.includes("pubsetup");
+  const senders = new Map(await Promise.all(ctx.brands.map(async (brand) => [brand.id, await getSender(ctx.resolved.id, "brand", brand.id)] as const)));
   return (
     <div className="max-w-2xl min-w-0">
       <PageHeader
@@ -80,6 +84,20 @@ export default async function BrandsPage({
                 ) : null}
               </div>
             </form>
+            <div className="border-t border-line px-4 py-4" id={`email-${brand.id}`}>
+              <h3 className="text-sm font-semibold">Email sender</h3>
+              <p className="mb-3 mt-1 text-xs text-muted">
+                Who reader emails from this brand&apos;s websites come from. Blank fields use the default in{" "}
+                <Link href="/settings/email" className="font-semibold text-accent">Settings → Email</Link>.
+              </p>
+              <SenderForm
+                id={`brand-${brand.id}`}
+                action={saveBrandSenderAction}
+                hidden={{ brandId: brand.id }}
+                value={senders.get(brand.id) ?? { fromName: null, fromAddress: null, replyTo: null }}
+                placeholders={{ fromName: brand.name }}
+              />
+            </div>
           </details>
         ))}
       </div>

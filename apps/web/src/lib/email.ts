@@ -19,17 +19,19 @@ export async function sendEmail(input: {
   replyTo?: string;
   from?: string;
   attachments?: { filename: string; content: Buffer | Uint8Array }[];
+  /** Another Resend key (an organization's own). Defaults to PubCommand's RESEND_API_KEY. */
+  apiKey?: string | null;
   fetchImpl?: typeof fetch;
 }): Promise<EmailResult> {
   const recipients = (Array.isArray(input.to) ? input.to : [input.to]).map((value) => value.trim()).filter(Boolean);
   if (recipients.length === 0) return { status: "failed", reason: "No recipient." };
-  const apiKey = process.env.RESEND_API_KEY?.trim() ?? "";
+  const apiKey = (input.apiKey ?? process.env.RESEND_API_KEY)?.trim() ?? "";
   if (!apiKey) {
     console.info(`[email] not sent (RESEND_API_KEY unset): "${input.subject}" to ${recipients.length} recipient(s)`);
     return { status: "logged" };
   }
   try {
-    const response = await (input.fetchImpl ?? fetch)("https://api.resend.com/emails", {
+    const response = await (input.fetchImpl ?? fetch)(`${resendApiBase()}/emails`, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -54,6 +56,11 @@ export async function sendEmail(input: {
   } catch (error) {
     return { status: "failed", reason: error instanceof Error ? error.message : "Email failed." };
   }
+}
+
+/** Resend's API. RESEND_API_URL points tests at a local mock server; it is never needed in production. */
+export function resendApiBase(): string {
+  return (process.env.RESEND_API_URL?.trim() || "https://api.resend.com").replace(/\/+$/, "");
 }
 
 export function emailConfigured(): boolean {

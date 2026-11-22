@@ -3,7 +3,7 @@
  * One rule, here, unit tested in groups.test.ts.
  *
  * 1. Type "Text letter (SMS)" or "Alert service" → Text letters & alerts.
- * 2. Type "Free newsletter" or tier "Free / lead gen" → Free newsletters.
+ * 2. Type "Free newsletter" or tier "Free" (old name "Free / lead gen") → Free newsletters.
  * 3. Otherwise the tier decides. No tier (or an unknown one) → Other.
  * Within a group: sortOrder, then name.
  */
@@ -24,6 +24,8 @@ export type FunnelGroupKey = (typeof FUNNEL_GROUPS)[number]["key"];
 
 const TEXT_TYPES = new Set(["text letter (sms)", "alert service"]);
 const TIER_GROUP: Record<string, FunnelGroupKey> = {
+  free: "free",
+  // Old name, until every stored row is renamed (migration 20261122150000).
   "free / lead gen": "free",
   "front-end": "front",
   "mid-tier": "mid",
