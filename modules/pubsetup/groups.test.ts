@@ -9,6 +9,8 @@ describe("funnel grouping", () => {
     expect(PUBLICATION_TYPES).toContain("Free newsletter");
     expect(PUBLICATION_TIERS).toContain("Bonus / complimentary");
     expect(PUBLICATION_TIERS).toContain("Lifetime");
+    expect(PUBLICATION_TIERS[0]).toBe("Free");
+    expect(PUBLICATION_TIERS).not.toContain("Free / lead gen");
   });
 
   it("puts text letters and alerts together whatever their tier", () => {
@@ -18,6 +20,9 @@ describe("funnel grouping", () => {
 
   it("puts free newsletters first, by type or by tier", () => {
     expect(funnelGroup({ pubType: "Free newsletter", tier: null })).toBe("free");
+    expect(funnelGroup({ pubType: "Paid newsletter", tier: "Free" })).toBe("free");
+    expect(funnelGroup({ pubType: null, tier: "free" })).toBe("free");
+    // A row not yet renamed still counts as free.
     expect(funnelGroup({ pubType: "Paid newsletter", tier: "Free / lead gen" })).toBe("free");
   });
 

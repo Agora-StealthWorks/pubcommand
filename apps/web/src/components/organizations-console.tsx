@@ -199,6 +199,7 @@ export function OrganizationDetail({
   canSuspend,
   canImpersonate,
   listHref = "/orgs",
+  workspace,
   actions,
   children,
 }: {
@@ -213,6 +214,12 @@ export function OrganizationDetail({
   canSuspend: boolean;
   canImpersonate: boolean;
   listHref?: string;
+  /**
+   * "Open workspace" for the staff member looking at this page. `member`: they belong to it.
+   * `super_admin`: the platform super admin may open any organization. `none`: they must add
+   * themselves as admin or view as a member first (nothing is granted from this link).
+   */
+  workspace?: { href: string; access: "member" | "super_admin" | "none" };
   children?: React.ReactNode;
   actions?: {
     addMember?: FormAction;
@@ -243,9 +250,36 @@ export function OrganizationDetail({
         <a href={publicUrl} className="pc-break mt-2 block text-sm font-semibold text-accent">
           {publicUrl}
         </a>
-        <a href={publicUrl} className={`${secondaryLink} mt-3 w-full sm:w-auto`}>
-          Open org
-        </a>
+        {workspace && workspace.access !== "none" && !organization.deleted ? (
+          <div className="mt-3">
+            <a href={workspace.href} className={primaryLink} data-testid="open-workspace">
+              Open workspace
+            </a>
+            <p className="mt-2 text-xs text-muted">
+              {workspace.access === "member" ? "You are a member. Use the switcher at the top of the sidebar to come back here." : "You are not a member. As super admin you can still open any organization."}
+            </p>
+          </div>
+        ) : workspace && !organization.deleted ? (
+          <p className="mt-3 text-sm text-muted" data-testid="open-workspace-none">
+            You are not a member, so you cannot open its workspace yet.{" "}
+            {canManage ? (
+              <>
+                <a href="#members" className="font-semibold text-accent">Add yourself as admin</a>
+                {canImpersonate ? " or " : "."}
+              </>
+            ) : null}
+            {canImpersonate ? (
+              <>
+                <a href="#impersonate" className="font-semibold text-accent">view it as a member</a>.
+              </>
+            ) : null}
+            {!canManage && !canImpersonate ? "Ask a super admin to add you." : null}
+          </p>
+        ) : (
+          <a href={publicUrl} className={`${secondaryLink} mt-3 w-full sm:w-auto`}>
+            Open org
+          </a>
+        )}
       </section>
       <section className="rounded-lg border border-line bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Plan</h2>
@@ -266,7 +300,7 @@ export function OrganizationDetail({
           </form>
         ) : null}
       </section>
-      <section className="rounded-lg border border-line bg-white p-4">
+      <section id="members" className="scroll-mt-4 rounded-lg border border-line bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Members</h2>
         {members.length === 0 ? <p className="mt-2 text-sm text-muted">No members yet.</p> : null}
         <ul className="mt-2">
@@ -351,7 +385,7 @@ export function OrganizationDetail({
       ) : null}
       {children}
       {canImpersonate && !organization.deleted ? (
-        <section className="rounded-lg border border-line bg-white p-4">
+        <section id="impersonate" className="scroll-mt-4 rounded-lg border border-line bg-white p-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Impersonate</h2>
           <form action={actions?.impersonate} className="pc-form-row mt-3">
             <input type="hidden" name="organizationId" value={organization.id} />

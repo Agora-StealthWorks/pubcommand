@@ -133,6 +133,10 @@ Each slot runs once across all servers; failures are retried at the next slot; p
 
 `sendEmail({ to, subject, html, text })` in `apps/web/src/lib/email.ts` sends through Resend when `RESEND_API_KEY` is set and returns `{ status: "logged" }` otherwise; show "email is not set up yet" in the UI in that case. `escapeHtml()` is there too. Only email people who expect it (reviewers someone named, the team, subscribers who opted in).
 
+- That is **PubCommand's own** email (env key and `EMAIL_FROM`): use it for PubCommand user emails (invites, password resets).
+- Email an organization sends to **its readers** goes through `sendOrgEmail()` (`apps/web/src/features/email/org-email.ts`): the organization's own Resend key from Settings → Email (encrypted, never shown again), falling back to PubCommand's key with PubCommand's address and the brand's name. The sender resolves per field: publication → brand → organization default. Never put "PubCommand" in a reader email.
+- Use `renderEmailLayout()` from `@pubcommand/core` for a clean HTML + text email (logo as an absolute PNG/JPEG URL; email clients block SVG).
+
 ## Web research in AI calls
 
 `runStructured({ ..., webSearch: { maxUses: 5 } })` lets the model search the web. When you use it, the prompt must ask for a source URL next to every fact, and the UI must show those sources.

@@ -10,7 +10,16 @@ export {
   type ImpersonationPayload,
 } from "./edge";
 export { createLucia, type AppLucia, type AuthSession, type AuthUser } from "./lucia";
-export { consumeMagicLink, createMagicLinkToken, hashMagicLinkToken, issueMagicLink, type MagicLinkStore } from "./magic-link";
+export {
+  consumeMagicLink,
+  createMagicLinkToken,
+  hashMagicLinkToken,
+  inspectMagicLink,
+  issueMagicLink,
+  MAGIC_LINK_TTL_MS,
+  type MagicLinkPurpose,
+  type MagicLinkStore,
+} from "./magic-link";
 export { hashPassword, verifyPassword } from "./password";
 export { ssoNotConfigured, type SsoHooks, type SsoIdentity, type SsoProvider } from "./sso";
 export {
@@ -20,3 +29,4 @@ export {
   otpauthUrl,
   verifyTotp,
 } from "./totp";
+export { decryptSecret, encryptSecret, secretHint } from "./secret-box";

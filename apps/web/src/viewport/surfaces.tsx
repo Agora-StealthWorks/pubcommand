@@ -16,6 +16,7 @@ import { PlansConsole } from "@/components/plans-console";
 import { UserDetail, UsersList } from "@/components/users-console";
 import { TableScroll } from "@/components/table-scroll";
 import { PageHeader } from "@/components/ui";
+import { buildSwitcher } from "@/features/navigation/switcher";
 import { VIEWPORT_ORG_ID, viewportSubject } from "./subject";
 
 const EMAIL = "stephen.operator.with.a.very.long.mailbox@onenationfinancial.example";
@@ -26,6 +27,8 @@ const SHARE_URL =
 
 const organization = { id: VIEWPORT_ORG_ID, name: "Northstar Publishing Desk", slug: SLUG };
 const brands = [{ id: "brand-desk", name: "Northstar Desk" }];
+const switcherOrgs = [organization, { slug: "harbor-research-and-a-very-long-organization-name", name: "Harbor Research and a Very Long Organization Name" }];
+const switcherBase = { organizations: switcherOrgs, staff: { ready: true }, rootDomain: "pubcommand.com", requestHost: `${SLUG}.pubcommand.com` };
 
 function orgFrame(pathname: string, children: React.ReactNode, impersonating = false) {
   return (
@@ -37,6 +40,7 @@ function orgFrame(pathname: string, children: React.ReactNode, impersonating = f
       pathname={pathname}
       email={EMAIL}
       impersonating={impersonating ? { targetEmail: EMAIL } : null}
+      switcher={buildSwitcher({ ...switcherBase, here: { kind: "org", slug: SLUG, name: organization.name } })}
     >
       {children}
     </OrgShell>
@@ -45,7 +49,7 @@ function orgFrame(pathname: string, children: React.ReactNode, impersonating = f
 
 function adminFrame(pathname: string, children: React.ReactNode) {
   return (
-    <AdminShell role="SUPER_ADMIN" email={EMAIL} pathname={pathname}>
+    <AdminShell role="SUPER_ADMIN" email={EMAIL} pathname={pathname} switcher={buildSwitcher({ ...switcherBase, here: { kind: "admin" } })}>
       {children}
     </AdminShell>
   );

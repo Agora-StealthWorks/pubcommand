@@ -14,6 +14,7 @@ const TABS = [
   { href: "/settings/brands", label: "Brands" },
   { href: "/settings/modules", label: "Apps" },
   { href: "/settings/domains", label: "Domains" },
+  { href: "/settings/email", label: "Email" },
   { href: "/settings/audit", label: "Activity" },
 ];
 

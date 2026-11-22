@@ -2,6 +2,7 @@
  * Pure rules for the Websites app: slugs, post states, access, teasers and paths.
  * No database; unit tested in websites.test.ts.
  */
+import { renderEmailLayout } from "@pubcommand/core";
 
 export const POST_KINDS = ["post", "page"] as const;
 export type PostKind = (typeof POST_KINDS)[number];
@@ -490,20 +491,25 @@ export function senderWithName(name: string, from: string): string {
   return display ? `"${display}" <${address}>` : address;
 }
 
-function escapeText(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
-}
-
-/** The set-password email (subject, HTML, text). Reader-facing: only the site's own name. */
-export function setPasswordEmail(input: { siteName: string; memberName: string; link: string; minutes?: number; accent?: string }): { subject: string; html: string; text: string } {
+/**
+ * The set-password email (subject, HTML, text). Reader-facing: only the site's own name and logo
+ * (the site's logo, else the brand logo from Publication Setup), never PubCommand.
+ */
+export function setPasswordEmail(input: { siteName: string; memberName: string; link: string; minutes?: number; accent?: string; logoUrl?: string | null }): { subject: string; html: string; text: string } {
   const minutes = input.minutes ?? LINK_MINUTES;
-  const site = escapeText(input.siteName);
   const color = /^#[0-9a-f]{6}$/i.test(input.accent ?? "") ? input.accent! : "#10213a";
-  return {
-    subject: `Set your password for ${input.siteName}`,
-    html: `<p>Hello${input.memberName ? ` ${escapeText(input.memberName)}` : ""},</p><p>Use the button below to set your password for ${site}. The link works once and expires in ${minutes} minutes.</p><p><a href="${escapeText(input.link)}" style="display:inline-block;padding:12px 20px;background:${color};color:#ffffff;text-decoration:none;font-weight:600">Set your password</a></p><p style="color:#666;font-size:13px">If you did not ask for this, you can ignore this email. Your password stays as it is.</p>`,
-    text: `Set your password for ${input.siteName}: ${input.link}\n\nThe link works once and expires in ${minutes} minutes. If you did not ask for this, you can ignore this email.`,
-  };
+  const body = renderEmailLayout({
+    senderName: input.siteName,
+    logoUrl: input.logoUrl ?? null,
+    heading: `Set your password for ${input.siteName}`,
+    paragraphs: [
+      `Hello${input.memberName ? ` ${input.memberName}` : ""},`,
+      `Use the button below to set your password for ${input.siteName}. The link works once and expires in ${minutes} minutes.`,
+    ],
+    button: { label: "Set your password", url: input.link, color },
+    footnote: "If you did not ask for this, you can ignore this email. Your password stays as it is.",
+  });
+  return { subject: `Set your password for ${input.siteName}`, ...body };
 }
 
 // ---------------------------------------------------------------------------

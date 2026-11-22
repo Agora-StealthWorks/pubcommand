@@ -76,6 +76,12 @@ describe("platform staff", () => {
       decideAdminAccess({ pathname: "/login", hasSession: false, staffRole: null, mfaVerified: false }),
     ).toEqual({ type: "allow" });
     expect(
+      decideAdminAccess({ pathname: "/reset-password", hasSession: false, staffRole: null, mfaVerified: false }),
+    ).toEqual({ type: "allow" });
+    expect(
+      decideAdminAccess({ pathname: "/api/auth/password-reset", hasSession: false, staffRole: null, mfaVerified: false }),
+    ).toEqual({ type: "allow" });
+    expect(
       decideAdminAccess({
         pathname: "/orgs",
         hasSession: true,

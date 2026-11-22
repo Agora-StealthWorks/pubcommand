@@ -642,7 +642,7 @@ export async function emailSignInLink(formData: FormData) {
   const { member, site } = await ownMember(ctx, memberId, "/websites/members");
   const result = await sendSetPasswordLink({ organizationId: ctx.resolved.id, site, member, origin: ctx.request.origin });
   await audit(ctx, "websites.member.link_sent", "web_member", member.id, { status: result.status });
-  redirect(withMessage(back, "notice", result.status === "sent" ? `Set-password link emailed to ${member.email}.` : result.status === "failed" ? "The email could not be sent. Try again later." : "Email is not set up yet (RESEND_API_KEY). The link was written to the server log."));
+  redirect(withMessage(back, "notice", result.status === "sent" ? `Set-password link emailed to ${member.email}.` : result.status === "failed" ? "The email could not be sent. Try again later." : "Email is not set up yet (Settings → Email). The link was written to the server log."));
 }
 
 /** Staff set a member's password directly. The member is signed out everywhere. */

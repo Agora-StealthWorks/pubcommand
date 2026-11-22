@@ -1,4 +1,4 @@
-import { PLATFORM_PERMISSIONS, appAccessSummary, defaultMemberRoleId, organizationPurgeDate, platformCan } from "@pubcommand/core";
+import { buildSiteUrl, PLATFORM_PERMISSIONS, appAccessSummary, defaultMemberRoleId, organizationPurgeDate, platformCan } from "@pubcommand/core";
 import { loadEntitlementState, platformTx, rawPrisma } from "@pubcommand/db";
 import { moduleRegistry } from "@pubcommand/modules";
 import { OrgAppsSection, OrgDangerZone, OrgDomainsSection, type OrgAppRow } from "@/components/platform-admin";
@@ -6,7 +6,8 @@ import { appCatalog } from "@/lib/apps";
 import { notFound } from "next/navigation";
 import { OrganizationDetail, type OrganizationMemberRow } from "@/components/organizations-console";
 import { Denied, Flash } from "@/components/ui";
-import { readSession, readStaff, rootDomain } from "@/lib/auth";
+import { readSession, readStaff, rootDomain, staffReady } from "@/lib/auth";
+import { currentRequest } from "@/lib/request";
 import {
   addOrganizationMember,
   addSelfAsOrganizationAdmin,
@@ -86,6 +87,12 @@ export default async function OrganizationDetailPage({
   const self = auth.user
     ? organization.memberships.find((member) => member.userId === auth.user?.id && member.status === "ACTIVE")
     : undefined;
+  const request = await currentRequest();
+  const workspace = {
+    href: buildSiteUrl({ rootDomain: rootDomain(), requestHost: request.host, site: { kind: "org", slug: organization.slug }, pathname: "/" }),
+    // Same rule as getOrgContext: members get in; the super admin may open any organization.
+    access: self ? ("member" as const) : staff.role === "SUPER_ADMIN" && staffReady(staff, auth.session) && !organization.suspendedAt ? ("super_admin" as const) : ("none" as const),
+  };
   const members: OrganizationMemberRow[] = organization.memberships.map((member) => ({
     id: member.id,
     email: member.user.email,
@@ -120,6 +127,7 @@ export default async function OrganizationDetailPage({
         roles={[...roles].sort((a, b) => Number(b.id === defaultRoleId) - Number(a.id === defaultRoleId)).map((role) => ({ id: role.id, name: role.name }))}
         members={members}
         rootDomain={rootDomain()}
+        workspace={workspace}
         selfIsAdmin={Boolean(self && (self.role.slug === "admin" || self.role.slug === "owner"))}
         canManage={platformCan(staff.role, PLATFORM_PERMISSIONS.manageOrgs)}
         canPlan={platformCan(staff.role, PLATFORM_PERMISSIONS.managePlans)}

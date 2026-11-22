@@ -4,6 +4,8 @@ import { rawPrisma } from "@pubcommand/db";
 import { redirect } from "next/navigation";
 import { readSession, readStaff, rootDomain, staffReady } from "@/lib/auth";
 import { currentRequest } from "@/lib/request";
+import { SiteSwitcher } from "@/components/site-switcher";
+import { loadSwitcher } from "@/features/navigation/load";
 
 export default async function OrgPickerPage() {
   const auth = await readSession();
@@ -36,9 +38,14 @@ export default async function OrgPickerPage() {
     );
   }
 
+  const switcher = await loadSwitcher({ userId: auth.user.id, session: auth.session, here: { kind: "app" } });
+
   return (
     <main data-surface="app" className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
       <BrandLogo className="h-9 w-auto" />
+      <div className="mt-4 max-w-xs">
+        <SiteSwitcher model={switcher} />
+      </div>
       <h1 className="mt-2 break-words text-3xl font-semibold">Choose a workspace</h1>
       <p className="pc-break mt-2 text-sm text-muted">{auth.user.email}</p>
       {staff ? (

@@ -46,7 +46,7 @@ export default async function SignupsPage({ params, searchParams }: { params: Pr
             <p className="text-xs text-muted">+{week} in the last 7 days</p>
           </a>
         ))}
-        {counts.length === 0 ? <p className="text-sm text-muted">No free newsletters in Publication Setup yet (set a publication's tier to &quot;Free / lead gen&quot;).</p> : null}
+        {counts.length === 0 ? <p className="text-sm text-muted">No free newsletters in Publication Setup yet (set a publication's tier to &quot;Free&quot;).</p> : null}
       </div>
       <div className="rounded-xl border border-line bg-white">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">

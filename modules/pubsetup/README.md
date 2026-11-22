@@ -57,7 +57,7 @@ Each publication and the brand defaults have two logo slots, named by the backgr
 - `fields.ts`: **the field list** for publications, editors and branding (key, label, kind, group, limits, options). Forms, validation (`parseFields`), facts and Brain notes all read it. Add a field = one entry here + one column. It is a fixed schema, not a user field builder.
 - `branding.ts`: `resolveBranding(publication, brandDefaults, brandName)`: own value → brand default → platform default, with the source of each value. Logos follow the same rule (see Logos).
 - `logos.ts`: logo slots, `logoFor()`, artwork tone.
-- `groups.ts`: funnel order for publication lists, `groupByFunnel()`: Free newsletters, Text letters & alerts (type "Text letter (SMS)" or "Alert service"), Front-end, Mid-tier, Back-end, High-ticket, Lifetime / bundles, Bonus / complimentary, Other. Type "Free newsletter" or tier "Free / lead gen" is free. Within a group: sortOrder, then name. Used by the wiki list and home and the Publication Setup list.
+- `groups.ts`: funnel order for publication lists, `groupByFunnel()`: Free newsletters, Text letters & alerts (type "Text letter (SMS)" or "Alert service"), Front-end, Mid-tier, Back-end, High-ticket, Lifetime / bundles, Bonus / complimentary, Other. Type "Free newsletter" or tier "Free" is free (the old name "Free / lead gen" is accepted on import and saved as "Free"). Within a group: sortOrder, then name. Used by the wiki list and home and the Publication Setup list.
 - `brain.ts`: facts, Brain notes, `publicationPromptContext()` for AI prompts, `matchPublication()` (promo product → publication by code, slug or name).
 
 ## Brain

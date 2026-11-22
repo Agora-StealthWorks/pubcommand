@@ -179,6 +179,8 @@ model MagicLink {
   tokenHash  String    @unique @map("token_hash")
   expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
+  /// "login" (sign-in and invite links) or "password_reset". A token only works for its own purpose.
+  purpose    String    @default("login")
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])

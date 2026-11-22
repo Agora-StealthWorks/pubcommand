@@ -1,13 +1,36 @@
 import { createAttemptLimiter, type AttemptLimiter } from "@pubcommand/core";
 
 /**
- * Wrong "current password" attempts on Your account, per user: 5 per 15 minutes.
- * There is no login throttle elsewhere to share yet; kept on globalThis so dev
- * reloads do not reset it.
+ * In-memory limiters (per server process), kept on globalThis so dev reloads do not reset them.
  */
-const holder = globalThis as typeof globalThis & { __pcPasswordLimiter?: AttemptLimiter };
+const holder = globalThis as typeof globalThis & {
+  __pcPasswordLimiter?: AttemptLimiter;
+  __pcResetEmailLimiter?: AttemptLimiter;
+  __pcResetIpLimiter?: AttemptLimiter;
+};
 
+/** Wrong "current password" attempts on Your account, per user: 5 per 15 minutes. */
 export function currentPasswordLimiter(): AttemptLimiter {
   holder.__pcPasswordLimiter ??= createAttemptLimiter({ max: 5, windowMs: 15 * 60_000 });
   return holder.__pcPasswordLimiter;
+}
+
+/** "Forgot your password?" requests: 3 per email and 10 per IP address in 15 minutes. */
+export const RESET_LIMITS = { perEmail: 3, perIp: 10, windowMs: 15 * 60_000 } as const;
+
+/**
+ * Counts one reset request and says whether it may send an email. Over the limit the caller
+ * still shows the usual "If that account exists…" message and simply sends nothing.
+ */
+export function allowResetRequest(email: string, ip: string): boolean {
+  holder.__pcResetEmailLimiter ??= createAttemptLimiter({ max: RESET_LIMITS.perEmail, windowMs: RESET_LIMITS.windowMs });
+  holder.__pcResetIpLimiter ??= createAttemptLimiter({ max: RESET_LIMITS.perIp, windowMs: RESET_LIMITS.windowMs });
+  const byEmail = holder.__pcResetEmailLimiter;
+  const byIp = holder.__pcResetIpLimiter;
+  const emailKey = email.trim().toLowerCase();
+  const ipKey = ip || "unknown";
+  const allowed = !byEmail.blocked(emailKey) && !byIp.blocked(ipKey);
+  byEmail.fail(emailKey);
+  byIp.fail(ipKey);
+  return allowed;
 }
