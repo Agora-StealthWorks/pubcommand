@@ -6,6 +6,7 @@ import splitRules from "../../../../../scripts/brain-split.mta.json";
 import { classifyNote, compileRules, publicationsFromTable, type ClassifierRules } from "../../../../../modules/knowledge/classify";
 import { frameNote } from "../../../../../modules/knowledge/industry-lens";
 import { decodeText, exportDecision, MTA_EXPORT_RULES, planVaultImport, type ExistingNote, type VaultDecision } from "../../../../../modules/knowledge/vault";
+import { packagerKindFromName } from "../../../../../modules/promo-studio/oxfordhub";
 import { cleanPromoTitle, codeFromFileName, isOrderForm, parseVaultPromoPath, pptxText, promoFieldsFromVault } from "../../../../../modules/promo-studio/vault-promos";
 import { reframeMainBrainNotes } from "../main-brain/lens";
 import { copyPackagerIntoConsole, copyPromosIntoConsole, copyVideosIntoConsole, syncPromosToMasterBrain } from "./past-data";
@@ -18,7 +19,8 @@ import { copyPackagerIntoConsole, copyPromosIntoConsole, copyVideosIntoConsole, 
  *   - the publisher's own notes → that organization's Brain (Brain app import rules)
  *   - Resources/Promos/{FE's,BE's} → promos in that organization's Promo Analyzer (their text;
  *     original files stay in the vault), results tier recorded, queued for analysis
- *   - order forms → Packager training examples in that organization
+ *   - order forms and other Packager output (lift notes, ads, emails…) → Packager training
+ *     examples in that organization, never promos
  *   - then the console sync: promo notes into the Master Brain, industry lens, and copies
  *     into the admin console's Promo Analyzer, Packager and VidRipper
  *
@@ -71,7 +73,14 @@ export async function importBrainVault(input: { dir: string; orgSlug?: string | 
   }
 
   const isPromoFile = (path: string) => parseVaultPromoPath(path) !== null;
+  /** Packager output in the promo library (lift notes, ads, emails, order forms…), by its file or promo-folder name: never a promo. */
+  const packagerKindOfVaultFile = (path: string): string | null => {
+    const parsed = parseVaultPromoPath(path);
+    if (!parsed) return null;
+    return packagerKindFromName(path) ?? (parsed.group ? packagerKindFromName(parsed.group.split("/").pop()) : null);
+  };
   const isOrderFormFile = (path: string) => /\.(docx)$/i.test(path) && (path.startsWith("Resources/Order Forms/") || (isPromoFile(path) && isOrderForm(path)));
+  const isPackagerFile = (path: string) => isOrderFormFile(path) || (/\.(docx|pptx)$/i.test(path) && packagerKindOfVaultFile(path) !== null);
 
   // Notes: Markdown, plus Word/PowerPoint documents that are not promos or order forms (lift guides, editorial guides, descriptions…).
   const decisions: VaultDecision[] = [];
@@ -161,7 +170,7 @@ export async function importBrainVault(input: { dir: string; orgSlug?: string | 
   const groups = new Map<string, PromoGroup>();
   for (const file of all) {
     const parsed = parseVaultPromoPath(file.path);
-    if (!parsed || isOrderForm(file.path) || /\.md$/i.test(file.path)) continue;
+    if (!parsed || isOrderForm(file.path) || packagerKindOfVaultFile(file.path) || /\.md$/i.test(file.path)) continue;
     const key = parsed.group ?? file.path;
     const group = groups.get(key) ?? { key, files: [] };
     group.files.push(file);
@@ -172,10 +181,10 @@ export async function importBrainVault(input: { dir: string; orgSlug?: string | 
   log(`Promos: ${groups.size} in the library, ${newGroups.length} new.`);
 
   // ---------- order forms ----------
-  const orderForms = all.filter((f) => isOrderFormFile(f.path));
+  const orderForms = all.filter((f) => isPackagerFile(f.path));
   const existingExamples = new Set((await db.promoTrainingExample.findMany({ where: { brandId: brand.id, sourceRef: { startsWith: "vault:" } }, select: { sourceRef: true } })).map((e) => e.sourceRef!));
   const newForms = orderForms.filter((f) => !existingExamples.has(`vault:${f.path}`));
-  log(`Order forms: ${orderForms.length} in the vault, ${newForms.length} new training examples.`);
+  log(`Packager files (order forms, lift notes, ads…): ${orderForms.length} in the vault, ${newForms.length} new training examples.`);
 
   if (!apply) {
     log("Dry run. Nothing was written.");
@@ -295,11 +304,11 @@ export async function importBrainVault(input: { dir: string; orgSlug?: string | 
       if (text.length < 100) continue;
       const name = file.path.split("/").pop()!;
       await db.promoTrainingExample.create({
-        data: { organizationId: org.id, brandId: brand.id, kind: "order-form", publication: codeFromFileName(name), niche: brand.niche ?? "general", title: cleanPromoTitle(name).slice(0, 200), content: text.slice(0, 60_000), source: "vault", sourceRef: `vault:${file.path}`, tags: ["brain-vault"] },
+        data: { organizationId: org.id, brandId: brand.id, kind: (isOrderFormFile(file.path) ? null : packagerKindOfVaultFile(file.path)) ?? "order-form", publication: codeFromFileName(name), niche: brand.niche ?? "general", title: cleanPromoTitle(name).slice(0, 200), content: text.slice(0, 60_000), source: "vault", sourceRef: `vault:${file.path}`, tags: ["brain-vault"] },
       });
       created += 1;
     }
-    log(`Packager training: ${created} order-form examples added.`);
+    log(`Packager training: ${created} examples added.`);
   }
 
   // Console sync (the same functions the app's jobs run)

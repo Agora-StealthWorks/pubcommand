@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, normalize, sep } from "node:path";
 import { readS3Config } from "@pubcommand/core";
-import { fixOxfordhubPackages, importOxfordHub } from "@/features/console/oxfordhub-import";
+import { countOxfordhubPackagePromos, fixOxfordhubPackages, importOxfordHub } from "@/features/console/oxfordhub-import";
 import { defineJob } from "@/lib/jobs/types";
 import { s3Delete, s3Get, s3Put } from "@/lib/s3";
 
@@ -10,7 +10,9 @@ const PREFIX = "platform/oxfordhub";
 
 /**
  * One-off import of the old OxfordHub Promo Analyzer and Packager export into
- * the admin console (features/console/oxfordhub-import.ts). Idle unless
+ * the admin console (features/console/oxfordhub-import.ts). First removes any
+ * promo an earlier import made from a Packager package (the analyzer holds
+ * promos only). Otherwise idle unless
  * platform/oxfordhub/request.json is in the bucket. Downloads every file listed
  * in platform/oxfordhub/manifest.json (one at a time, to disk), runs the import
  * (dry run unless the request says apply), writes platform/oxfordhub/report.json,
@@ -22,6 +24,12 @@ export const consoleOxfordhubImport = defineJob({
   schedule: "*/5 * * * *",
   timeoutMs: 50 * 60_000,
   async run() {
+    // The Promo Analyzer analyzes promos only: Packager placeholders an earlier import made are removed on sight.
+    if ((await countOxfordhubPackagePromos()) > 0) {
+      const result = await fixOxfordhubPackages({ apply: true });
+      for (const line of result.lines) console.log(`[oxfordhub] ${line}`);
+      return { task: "remove-packager-promos", applied: true };
+    }
     const config = readS3Config();
     if (!config) return { idle: "no bucket configured" };
     const requestBytes = await s3Get(config, `${PREFIX}/request.json`);

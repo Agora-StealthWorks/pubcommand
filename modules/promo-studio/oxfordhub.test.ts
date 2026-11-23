@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, matchPackagePromo, performanceFromOld, rawFromOldSections, reviewIdFromNote, sourceCopyFromNote } from "./oxfordhub";
+import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, matchPackagePromo, packagerKindFromName, packagerKindOfPromo, performanceFromOld, rawFromOldSections, reviewIdFromNote, sourceCopyFromNote } from "./oxfordhub";
 import { parseAnalysis } from "./parse";
 import { buildStored, effectiveScorecard } from "./stored";
 
@@ -87,5 +87,23 @@ describe("old packages", () => {
     expect(matchPackagePromo({ title: "Anything", reviewId: "r3" }, promos)).toBe("energy");
     expect(matchPackagePromo({ title: "TPU Energy", reviewId: "gone" }, promos)).toBeNull();
     expect(matchPackagePromo({ title: "PMK Moonlight Package", reviewId: null }, promos)).toBeNull();
+  });
+});
+
+describe("Packager output is not a promo", () => {
+  it("recognizes Packager components by name", () => {
+    expect(packagerKindOfPromo({ title: "SKI Infinite lifts" })).toBe("vsl-lift-notes");
+    expect(packagerKindFromName("TPU Unicorn Lift Notes_LEGAL.docx")).toBe("vsl-lift-notes");
+    expect(packagerKindFromName("PMK Hotlist Lifts.docx")).toBe("event-lift-notes");
+    expect(packagerKindFromName("SEI Space Ads v2.docx")).toBe("space-ads");
+    expect(packagerKindFromName("SEI_Exit_Popup.docx")).toBe("exit-popup");
+    expect(packagerKindFromName("TPU OF final.docx")).toBe("order-form");
+    expect(packagerKindFromName("Webinar Warm-Up Emails")).toBe("event-warmup-emails");
+    expect(packagerKindFromName("Facebook Video Ads - SKI")).toBe("facebook-video-ads");
+    expect(packagerKindOfPromo({ title: "Lifetime Upsell", filename: null })).toBe("lifetime-upsell");
+  });
+
+  it("leaves promos alone", () => {
+    for (const name of ["PMK Moonlight Trade  (V4).docx", "SEI NVDA Buyout VSL", "Lift-Off Stocks of 2027", "The Space Race Promo", "Exit Strategy Webinar", "AI Infinite Profits"]) expect(packagerKindFromName(name)).toBeNull();
   });
 });

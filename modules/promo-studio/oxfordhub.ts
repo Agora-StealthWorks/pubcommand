@@ -10,6 +10,7 @@ import { LESSON_CATEGORIES, type LessonCategory } from "./lessons";
 import { componentSpec } from "./packager";
 import { normalizeCode } from "./performance";
 import type { SectionKey } from "./sections";
+import { isOrderForm } from "./vault-promos";
 
 /** Old review section → PubCommand section. */
 const SECTION_MAP: Record<string, SectionKey> = {
@@ -214,4 +215,40 @@ export function matchPackagePromo(
     }),
   );
   return hits.length === 1 ? hits[0]!.id : null;
+}
+
+/**
+ * The Packager component a document's name says it is ("SKI Infinite lifts" → lift
+ * notes, "… Space Ads", "… Order Form"…), or null for a promo. The Promo Analyzer
+ * holds promos only: Packager output (lift notes, ads, emails, order forms, upsells)
+ * is Packager material, never a promo to analyze. Checks one name (title or file name).
+ */
+export function packagerKindFromName(name: string | null | undefined): string | null {
+  const file = (name ?? "").split("/").pop() ?? "";
+  const n = file
+    .replace(/\.[a-z0-9]{2,4}$/i, "")
+    .replace(/[_]+/g, " ")
+    .toLowerCase();
+  if (!n.trim()) return null;
+  const event = /\b(hotlist|event|webinar)\b/.test(n);
+  if (/\blift(?:s|\s*notes?|\s*emails?)?\b(?![\s-]*off)/.test(n) || /\binvit(?:e|ation)\s*emails?\b/.test(n)) return event ? "event-lift-notes" : "vsl-lift-notes";
+  if (/\bwarm[\s-]*ups?(?:\s*emails?)?\b/.test(n)) return "event-warmup-emails";
+  if (/\breminder\s*emails?\b/.test(n)) return "event-reminder-emails";
+  if (/\bspace\s*ads?\b/.test(n)) return event ? "event-space-ads" : "space-ads";
+  if (/\b(?:facebook|fb)\s*video\s*ads?\b/.test(n)) return "facebook-video-ads";
+  if (/\b(?:youtube|yt)\s*(?:video\s*)?ads?\b/.test(n)) return "youtube-video-ads";
+  if (/\b(?:facebook|fb)\s*(?:text\s*)?ads?\b/.test(n)) return "facebook-text-ads";
+  if (/\b(?:short\s*)?(?:text|sms)\s*ads?\b/.test(n)) return event ? "event-text-ads" : "short-text-ads";
+  if (/\bcart\s*(?:abandon(?:ment)?|recovery)\b/.test(n)) return "cart-abandon-emails";
+  if (/\bexit\s*pop(?:[\s-]*up)?s?\b/.test(n)) return "exit-popup";
+  if (/\bupsells?\b/.test(n)) return "lifetime-upsell";
+  if (/\balt(?:ernative|\.)?\s*headlines\b/.test(n)) return "alternative-headlines";
+  if (/\beditorial\s*guide\b/.test(n)) return "editorial-guide";
+  if (isOrderForm(file)) return "order-form";
+  return null;
+}
+
+/** The Packager kind of a promo whose title or file name marks it as Packager output, else null. */
+export function packagerKindOfPromo(promo: { title?: string | null; filename?: string | null }): string | null {
+  return packagerKindFromName(promo.title) ?? packagerKindFromName(promo.filename);
 }

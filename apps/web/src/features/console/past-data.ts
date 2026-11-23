@@ -1,6 +1,7 @@
 import { rawPrisma, tenantDb, type Prisma } from "@pubcommand/db";
 import { learnedKey } from "../../../../../modules/knowledge/main-brain";
 import { promoMasterNotes } from "../../../../../modules/promo-studio/master-brain";
+import { packagerKindOfPromo } from "../../../../../modules/promo-studio/oxfordhub";
 import { currentAnalysis } from "../../../../../modules/promo-studio/stored";
 import { ensureConsoleOrganization } from "@/lib/console-workspace";
 import { mainBrain } from "../main-brain/db";
@@ -99,8 +100,10 @@ export async function copyPromosIntoConsole(options: { limit?: number } = {}): P
     if (organizationId === consoleId) continue;
     const source = tenantDb(organizationId);
     const brandNames = new Map((await source.brand.findMany({ select: { id: true, name: true } })).map((row) => [row.id, row.name]));
-    const ids = await source.promo.findMany({ where: { deletedAt: null }, select: { id: true }, orderBy: { createdAt: "asc" } });
-    for (const { id } of ids) {
+    const ids = await source.promo.findMany({ where: { deletedAt: null }, select: { id: true, title: true, filename: true }, orderBy: { createdAt: "asc" } });
+    for (const { id, ...names } of ids) {
+      // The console's Promo Analyzer holds promos only, never Packager output (lift notes, ads, order forms…).
+      if (packagerKindOfPromo(names)) continue;
       const copyId = copied.get(id);
       if (copyId) {
         counts.already! += 1;

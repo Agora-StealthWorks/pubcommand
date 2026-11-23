@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tenantDb, type Prisma } from "@pubcommand/db";
 import { componentSpec } from "../../../../../modules/promo-studio/packager";
 import { promoCodeKeys } from "../../../../../modules/promo-studio/performance";
-import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, matchPackagePromo, performanceFromOld, rawFromOldSections } from "../../../../../modules/promo-studio/oxfordhub";
+import { componentContent, kindForOldCategory, kindForOldSlug, lessonFromOld, matchPackagePromo, packagerKindOfPromo, performanceFromOld, rawFromOldSections } from "../../../../../modules/promo-studio/oxfordhub";
 import { buildStored, effectiveScorecard } from "../../../../../modules/promo-studio/stored";
 import { ensureConsoleOrganization } from "@/lib/console-workspace";
 import { learnedKey } from "../../../../../modules/knowledge/main-brain";
@@ -72,8 +72,10 @@ export async function importOxfordHub(input: { dir: string; apply: boolean; onLi
   if (!brand) throw new Error("The console workspace has no brand.");
 
   const existing = new Map((await db.promo.findMany({ where: { source: { startsWith: "oxfordhub:" } }, select: { id: true, source: true } })).map((p) => [p.source!.slice("oxfordhub:".length), p.id]));
-  const fresh = reviews.filter((r) => !existing.has(r.id));
-  log(`Promos: ${fresh.length} new, ${reviews.length - fresh.length} already imported.`);
+  // The Promo Analyzer holds promos only: reviews of Packager output (lift notes, ads, order forms…) stay out.
+  const outputs = reviews.filter((r) => packagerKindOfPromo({ title: names.get(r.id) ?? null, filename: r.filename }));
+  const fresh = reviews.filter((r) => !existing.has(r.id) && !outputs.includes(r));
+  log(`Promos: ${fresh.length} new, ${reviews.filter((r) => existing.has(r.id) && !outputs.includes(r)).length} already imported; ${outputs.length} reviews of Packager output left out${outputs.length ? `: ${outputs.map((r) => names.get(r.id) ?? r.filename).join(", ")}` : ""}.`);
   if (!input.apply) {
     log("Dry run. Nothing was written.");
     return { applied: false, lines };
@@ -273,24 +275,48 @@ async function createPackage(db: ReturnType<typeof tenantDb>, input: { organizat
   }
 }
 
+/** Console promos that are really Packager output: placeholders an earlier import built from packages, and lift notes, ads, order forms… by name. */
+async function packagerPromos(db: ReturnType<typeof tenantDb>) {
+  // Only imported promos (OxfordHub, the vault, copies from other workspaces): a promo staff upload themselves is never removed by its name.
+  const rows = await db.promo.findMany({
+    where: { OR: [{ source: { startsWith: "oxfordhub" } }, { source: { startsWith: "vault:" } }, { copiedFromId: { not: null } }] },
+    select: { id: true, title: true, filename: true, source: true, publisher: true },
+  });
+  return rows.flatMap((p) => {
+    const kind = packagerKindOfPromo(p);
+    return p.source?.startsWith("oxfordhub-package:") || kind ? [{ ...p, kind }] : [];
+  });
+}
+
+/** How many Packager-output "promos" are still in the console's Promo Analyzer. */
+export async function countOxfordhubPackagePromos(): Promise<number> {
+  return (await packagerPromos(tenantDb(await ensureConsoleOrganization()))).length;
+}
+
 /**
- * Undo the placeholder promos an earlier import made for packages: move each
- * package that was attached in OxfordHub to its analyzed promo, and delete the
- * placeholder promos with everything they produced (packages left on them, queued
- * analysis, their notes in the console Brain and the Master Brain). Idempotent.
+ * The Promo Analyzer holds promos only, never Packager output. Removes from the
+ * console's Promo Analyzer (1) the placeholder promos an earlier import built from
+ * Packager packages (their brief text, analyzed as if it were a promo) and (2)
+ * promos that are Packager output by name ("SKI Infinite lifts", "… Space Ads",
+ * "… Order Form"). Output copy is kept as a Packager training example of its kind.
+ * Each package that was attached in OxfordHub moves to its analyzed promo; the rest
+ * go with the removed promo, as do its analyses, queued analysis and its notes in
+ * the console Brain and the Master Brain. Idempotent.
  */
 export async function fixOxfordhubPackages(input: { apply: boolean }): Promise<{ applied: boolean; lines: string[] }> {
   const lines: string[] = [];
   const log = (line: string) => lines.push(line);
   const organizationId = await ensureConsoleOrganization();
   const db = tenantDb(organizationId);
-  const placeholders = await db.promo.findMany({ where: { source: { startsWith: "oxfordhub-package:" } }, select: { id: true, title: true } });
-  const candidates = (await db.promo.findMany({ where: { deletedAt: null, source: { startsWith: "oxfordhub:" } }, select: { id: true, title: true, filename: true, source: true } })).map((p) => ({
-    id: p.id,
-    reviewId: p.source!.slice("oxfordhub:".length),
-    names: [p.title, p.filename ?? ""].filter(Boolean),
-  }));
-  const ids = placeholders.map((p) => p.id);
+  const removing = await packagerPromos(db);
+  const ids = removing.map((p) => p.id);
+  const candidates = (await db.promo.findMany({ where: { deletedAt: null, source: { startsWith: "oxfordhub:" } }, select: { id: true, title: true, filename: true, source: true } }))
+    .filter((p) => !ids.includes(p.id))
+    .map((p) => ({
+      id: p.id,
+      reviewId: p.source!.slice("oxfordhub:".length),
+      names: [p.title, p.filename ?? ""].filter(Boolean),
+    }));
   const packages = ids.length ? await db.promoPackage.findMany({ where: { promoId: { in: ids } }, select: { id: true, title: true, direction: true } }) : [];
   const moves: { packageId: string; title: string; promoId: string }[] = [];
   for (const pkg of packages) {
@@ -299,21 +325,41 @@ export async function fixOxfordhubPackages(input: { apply: boolean }): Promise<{
     if (promoId) moves.push({ packageId: pkg.id, title: pkg.title, promoId });
   }
   const target = new Map(candidates.map((c) => [c.id, c.names[0]]));
-  log(`Placeholder promos: ${placeholders.length} (${placeholders.map((p) => p.title).join(", ") || "none"}).`);
+  log(`Packager output in the Promo Analyzer: ${removing.length} (${removing.map((p) => `${p.title}${p.kind ? ` [${componentSpec(p.kind)?.label ?? p.kind}]` : " [package placeholder]"}`).join(", ") || "none"}).`);
   log(`Packages moved to their analyzed promo: ${moves.map((m) => `${m.title} → ${target.get(m.promoId)}`).join("; ") || "none"}.`);
-  log(`Packages removed with their placeholder: ${packages.length - moves.length}.`);
+  log(`Packages removed with them: ${packages.length - moves.length}.`);
   if (!input.apply) {
     log("Dry run. Nothing was written.");
     return { applied: false, lines };
   }
   for (const move of moves) await db.promoPackage.updateMany({ where: { id: move.packageId }, data: { promoId: move.promoId } });
   if (ids.length) {
+    // The output copy stays useful as Packager training material.
+    const brand = await db.brand.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true, niche: true } });
+    let examples = 0;
+    for (const p of removing) {
+      if (!brand || !p.kind) continue;
+      const text = ((await db.promo.findFirst({ where: { id: p.id }, select: { sourceText: true } }))?.sourceText ?? "").trim();
+      if (text.length < 100) continue;
+      const sourceRef = `promo-output:${p.source ?? p.id}`;
+      if (await db.promoTrainingExample.findFirst({ where: { brandId: brand.id, sourceRef }, select: { id: true } })) continue;
+      await db.promoTrainingExample.create({
+        data: { organizationId, brandId: brand.id, kind: p.kind, publication: p.publisher ?? null, niche: brand.niche ?? "general", title: `${componentSpec(p.kind)?.label ?? p.kind}: ${p.title}`.slice(0, 200), content: text.slice(0, 60_000), source: "oxfordhub", sourceRef, tags: ["oxfordhub"], edited: true },
+      });
+      examples += 1;
+    }
     const refs = ids.flatMap((id) => [`promo:${id}`, `promo-intel:${id}`, `promo-copy:${id}`]);
     const brandNotes = await db.knowledgePage.updateMany({ where: { sourceRef: { in: refs }, deletedAt: null }, data: { deletedAt: new Date() } });
     // Master Brain copies of those notes: deleted (learn-up never brings a deleted note back).
     const mainNotes = await mainBrain((tx) => tx.mainBrainNote.updateMany({ where: { key: { in: refs.map((ref) => learnedKey(organizationId, ref)) }, deletedAt: null }, data: { deletedAt: new Date() } }));
+    // Lessons that cited them as evidence stop citing them.
+    let lessons = 0;
+    for (const lesson of await db.promoLesson.findMany({ where: { promoIds: { hasSome: ids } }, select: { id: true, promoIds: true } })) {
+      await db.promoLesson.updateMany({ where: { id: lesson.id }, data: { promoIds: lesson.promoIds.filter((id) => !ids.includes(id)) } });
+      lessons += 1;
+    }
     const promos = await db.promo.deleteMany({ where: { id: { in: ids } } });
-    log(`Removed ${promos.count} placeholder promos (their queued analysis and remaining packages with them), ${brandNotes.count} console Brain notes and ${mainNotes.count} Master Brain notes.`);
+    log(`Removed ${promos.count} from the Promo Analyzer (their analyses, queued analysis and remaining packages with them), ${brandNotes.count} console Brain notes, ${mainNotes.count} Master Brain notes; ${lessons} lessons no longer cite them; ${examples} kept as Packager training examples.`);
   }
   log("Done.");
   return { applied: true, lines };
