@@ -239,6 +239,35 @@ export async function updateBrand(formData: FormData) {
   redirect(`/settings/brands?notice=${encodeURIComponent(`${name} saved.`)}`);
 }
 
+/**
+ * Settings → Brands → Remove brand. Permanently deletes the brand and all of its app data
+ * (the database cascades from brands). Refused for the last brand, without the typed name,
+ * and while members or roles are limited to the brand (they would be left pointing at nothing).
+ */
+export async function deleteBrand(formData: FormData) {
+  const ctx = await orgMutation("settings.manage");
+  const brandId = String(formData.get("brandId") ?? "");
+  const confirm = String(formData.get("confirmName") ?? "").trim();
+  const db = tenantDb(ctx.resolved.id);
+  const brands = await db.brand.findMany({ select: { id: true, name: true } });
+  const brand = brands.find((row) => row.id === brandId);
+  if (!brand) redirect("/settings/brands?error=Unknown brand.");
+  if (brands.length <= 1) redirect("/settings/brands?error=An organization needs at least one brand. Add another brand before removing this one.");
+  if (confirm.toLowerCase() !== brand.name.trim().toLowerCase()) {
+    redirect(`/settings/brands?error=${encodeURIComponent(`Type the brand name (${brand.name}) to confirm removing it.`)}`);
+  }
+  const [members, roles] = await Promise.all([db.membership.count({ where: { brandId } }), db.role.count({ where: { brandId } })]);
+  if (members > 0 || roles > 0) {
+    const what = [members ? `${members} member${members === 1 ? "" : "s"}` : "", roles ? `${roles} role${roles === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
+    redirect(`/settings/brands?error=${encodeURIComponent(`${what} limited to ${brand.name}. Change them in Settings → Users and Roles first.`)}`);
+  }
+  await db.exclusion.deleteMany({ where: { brandId } });
+  const removed = await db.brand.deleteMany({ where: { id: brandId } });
+  if (removed.count === 0) redirect("/settings/brands?error=Could not remove the brand.");
+  await audit(ctx, "brand.deleted", "brand", brandId, { name: brand.name });
+  redirect(`/settings/brands?notice=${encodeURIComponent(`${brand.name} removed, with all of its app data.`)}`);
+}
+
 // ── Member profile: role and per-app access (Settings → Users → member) ─────────
 
 function memberHref(userId: string): string {

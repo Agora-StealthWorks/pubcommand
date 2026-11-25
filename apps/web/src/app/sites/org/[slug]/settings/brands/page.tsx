@@ -5,7 +5,7 @@ import { Denied, Flash, PageHeader } from "@/components/ui";
 import Link from "next/link";
 import { canManagePublications } from "@/features/pubsetup/module";
 import { getOrgContext } from "@/lib/org";
-import { createBrand, updateBrand } from "@/server/org-actions";
+import { createBrand, deleteBrand, updateBrand } from "@/server/org-actions";
 import { saveBrandSenderAction } from "@/features/email/actions";
 import { getSender } from "@/features/email/org-email";
 import { SenderForm } from "@/features/email/sender-form";
@@ -98,6 +98,22 @@ export default async function BrandsPage({
                 placeholders={{ fromName: brand.name }}
               />
             </div>
+            {ctx.brands.length > 1 ? (
+              <form action={deleteBrand} className="space-y-3 border-t border-line px-4 py-4">
+                <input type="hidden" name="brandId" value={brand.id} />
+                <h3 className="text-sm font-semibold text-[#b42318]">Remove brand</h3>
+                <p className="text-xs text-muted">
+                  Permanently deletes {brand.name} and everything in it: promos, calendar, brain notes, forms, websites, testimonials and other app data. This cannot be undone.
+                </p>
+                <div>
+                  <Label htmlFor={`confirm-${brand.id}`}>Type {brand.name} to confirm</Label>
+                  <Input id={`confirm-${brand.id}`} name="confirmName" autoComplete="off" required maxLength={80} />
+                </div>
+                <Button type="submit" variant="danger" className="w-full sm:w-auto">
+                  Remove {brand.name}
+                </Button>
+              </form>
+            ) : null}
           </details>
         ))}
       </div>
