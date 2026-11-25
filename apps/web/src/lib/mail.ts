@@ -1,4 +1,4 @@
-import { inviteEmail, signInLinkEmail } from "@pubcommand/core";
+import { inviteEmail, signInLinkEmail, type SystemEmailOverrides } from "@pubcommand/core";
 export const DEFAULT_EMAIL_FROM = "login@pubcommand.com";
 
 export type MagicLinkDelivery = "sent" | "logged" | "failed";
@@ -40,6 +40,8 @@ export async function deliverMagicLink(input: {
   kind: "login" | "invite";
   /** Invites: the organization they are joining, named in the subject and heading. */
   organizationName?: string | null;
+  /** Staff edits to the copy (Admin → Emails); callers load them with loadSystemEmailOverrides(). */
+  overrides?: SystemEmailOverrides | null;
   env?: MailEnv;
   fetchImpl?: (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<MailResponse>;
   log?: (line: string) => void;
@@ -61,7 +63,8 @@ export async function deliverMagicLink(input: {
     origin = null;
   }
   const { subject, ...body } =
-    input.kind === "invite" ? inviteEmail({ link: input.url, origin, organizationName: input.organizationName }) : signInLinkEmail({ link: input.url, origin });
+    input.kind === "invite" ? inviteEmail({ link: input.url, origin, organizationName: input.organizationName, overrides: input.overrides })
+      : signInLinkEmail({ link: input.url, origin, overrides: input.overrides });
   const response = await (input.fetchImpl ?? fetch)("https://api.resend.com/emails", {
     method: "POST",
     headers: {

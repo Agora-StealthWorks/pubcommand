@@ -9,6 +9,21 @@ export function BrandLogo({ on = "light", className = "h-8 w-auto" }: { on?: "li
   return <img src={on === "dark" ? "/brand/logo-dark.svg" : "/brand/logo-light.svg"} alt="PubCommand" className={className} width={130} height={32} />;
 }
 
+/** Who owns PubCommand. Its logo sits in the footer of PubCommand's own screens. */
+export const OWNER_NAME = "Agora StealthWorks";
+
+/**
+ * The footer on PubCommand's own screens (console, organization app, login, picker), never on
+ * customers' public sites: the black "By Agora StealthWorks" stacked logo, centred.
+ */
+export function OwnerFooter({ className = "" }: { className?: string }) {
+  return (
+    <footer data-surface="owner-footer" className={`flex justify-center border-t border-line px-4 py-5 ${className}`}>
+      <img src="/brand/agora-stealthworks-stacked-black.svg" alt={`By ${OWNER_NAME}`} width={88} height={40} className="h-10 w-auto" />
+    </footer>
+  );
+}
+
 /** Favicon, app icons, manifest and social card for PubCommand's own pages (never customers' public sites). */
 export const brandMetadata: Metadata = {
   title: { default: "PubCommand", template: "%s · PubCommand" },

@@ -53,6 +53,7 @@ import { clearCustomHostCache } from "@/features/domains/resolve";
 import { detachDomainsFromRailway } from "@/features/platform-admin/domains";
 import { createLoginLink, readSession, readStaff, rootDomain, secret, staffReady } from "@/lib/auth";
 import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
+import { loadSystemEmailOverrides } from "@/features/system-emails/store";
 import { currentRequest, siteUrl } from "@/lib/request";
 
 const ORGANIZATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -124,7 +125,7 @@ async function inviteNotice(userId: string, email: string, lead: string, organiz
   const organizationName = organizationId
     ? ((await rawPrisma().organization.findUnique({ where: { id: organizationId }, select: { name: true } }))?.name ?? null)
     : null;
-  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", organizationName });
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", organizationName, overrides: await loadSystemEmailOverrides() });
   return organizationInviteNotice({ lead, delivered, magicUrl, exposeOnPage: exposeMagicLinkOnPage() });
 }
 
@@ -339,7 +340,7 @@ export async function inviteStaff(formData: FormData) {
   const link = await createLoginLink(userId);
   const request = await currentRequest();
   const magicUrl = magicLinkUrl(request.origin, link.token);
-  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite" });
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", overrides: await loadSystemEmailOverrides() });
   const notice = exposeMagicLinkOnPage()
     ? `Staff member saved. Magic link: ${magicUrl}`
     : delivered === "sent"
