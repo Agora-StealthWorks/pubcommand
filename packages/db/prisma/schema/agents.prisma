@@ -1,0 +1,130 @@
+// AI Agents: Claude, Grok, OpenAI (and other) agents that work inside one organization
+// as members. Each agent has its own user row (no password, no email sign-in) and a
+// membership, so roles, per-app access, exclusions and the audit log apply to it like
+// to a person. It belongs to one person in the organization (its owner), and it signs
+// in to the MCP server (/api/mcp on the organization host) with a token.
+// Agents are shown inside PubCommand only; public pages never say a post came from one.
+
+/// An agent member of one organization.
+model AiAgent {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  /// The agent's own users row (email @agents.pubcommand.invalid, no password).
+  userId         String    @unique @map("user_id") @db.Uuid
+  /// The person whose agent this is.
+  ownerUserId    String    @map("owner_user_id") @db.Uuid
+  name           String
+  /// claude | grok | openai | other
+  platform       String
+  /// How it connects: "oauth" (signed in through the MCP connector by its owner) or "key" (an API key).
+  connection     String    @default("key")
+  /// "organization": a member of organizationId, on that organization's host.
+  /// "platform": a super admin's agent on the admin console host (admin.<root>/api/mcp). It is stored
+  /// under the console organization (pubcommand-console) but is no member of anything: it gets the
+  /// Master Brain, platform monitoring and, with allowAdminActions, a few audited admin actions.
+  scope          String    @default("organization")
+  /// Platform agents only: may make admin changes (suspend, plan, app access, invite, run jobs).
+  allowAdminActions Boolean @default(false) @map("allow_admin_actions")
+  /// Paused agents cannot call the MCP server; their tokens are kept.
+  pausedAt       DateTime? @map("paused_at")
+  /// Removed agents: membership disabled, tokens revoked. The row stays so authored content keeps its label.
+  removedAt      DateTime? @map("removed_at")
+  lastActiveAt   DateTime? @map("last_active_at")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  tokens AiAgentToken[]
+  calls  AiAgentCall[]
+
+  @@index([organizationId])
+  @@index([organizationId, ownerUserId])
+  @@map("ai_agents")
+}
+
+/// A credential of one agent. Only the SHA-256 is stored; the token is shown once.
+model AiAgentToken {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  agentId        String    @map("agent_id") @db.Uuid
+  /// key (API key, no expiry) | access (OAuth, short-lived) | refresh (OAuth)
+  kind           String
+  /// First characters of the token, for recognising it in the list.
+  prefix         String
+  tokenHash      String    @unique @map("token_hash")
+  /// The OAuth client (connector) that holds it. Null for API keys.
+  clientId       String?   @map("client_id")
+  expiresAt      DateTime? @map("expires_at")
+  lastUsedAt     DateTime? @map("last_used_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  agent          AiAgent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([agentId])
+  @@map("ai_agent_tokens")
+}
+
+/// One MCP tool call by an agent: the activity log and the rate-limit window.
+model AiAgentCall {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  agentId        String   @map("agent_id") @db.Uuid
+  tool           String
+  /// ok | error | denied | rate_limited
+  status         String
+  targetType     String?  @map("target_type")
+  targetId       String?  @map("target_id")
+  message        String?
+  durationMs     Int      @default(0) @map("duration_ms")
+  createdAt      DateTime @default(now()) @map("created_at")
+  agent          AiAgent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("ai_agent_calls")
+}
+
+/// Organization-wide agent settings. Missing row = defaults.
+model AiAgentSettings {
+  organizationId  String   @id @map("organization_id") @db.Uuid
+  /// On: agents with publish rights publish directly. Off: their posts wait in AI Agents → Approvals.
+  allowPublishing Boolean  @default(true) @map("allow_publishing")
+  updatedById     String?  @map("updated_by_id") @db.Uuid
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("ai_agent_settings")
+}
+
+/// A one-time OAuth authorization code (10 minutes), issued when an owner approves a connector.
+model AiAgentOauthCode {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  agentId        String    @map("agent_id") @db.Uuid
+  clientId       String    @map("client_id")
+  codeHash       String    @unique @map("code_hash")
+  redirectUri    String    @map("redirect_uri")
+  /// PKCE S256 challenge.
+  codeChallenge  String    @map("code_challenge")
+  expiresAt      DateTime  @map("expires_at")
+  consumedAt     DateTime? @map("consumed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([organizationId])
+  @@map("ai_agent_oauth_codes")
+}
+
+/// An OAuth client registered by an MCP connector (Claude, ChatGPT, …) through dynamic
+/// client registration. Platform-wide (no organization): a client is only a name and its
+/// redirect addresses; every token it gets is bound to one agent of one organization.
+model AgentOauthClient {
+  /// The client_id handed to the connector.
+  id           String    @id
+  name         String
+  redirectUris String[]  @map("redirect_uris")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+
+  @@map("agent_oauth_clients")
+}

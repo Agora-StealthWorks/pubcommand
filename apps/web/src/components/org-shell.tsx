@@ -45,6 +45,7 @@ export function OrgShell({
   const apps = visibleApps(subject, scope, brandProfile({ name: brand?.name ?? "", niche: brand?.niche }).niche);
   const current = appForPath(apps, pathname);
   const inSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const inAgents = pathname === "/agents" || pathname.startsWith("/agents/");
   const canSettings = can(subject, "settings.manage", scope);
   // Publication Setup lives under Settings; publication admins without settings.manage land straight on it.
   const canPublications = subject.entitledModuleIds.includes("pubsetup") && canManagePublications(subject, scope);
@@ -102,6 +103,13 @@ export function OrgShell({
         ))}
       </nav>
       <div className="border-t border-line px-2 py-3">
+        {/* Every member can connect their own AI agents; admins (agents.manage) see all of them. */}
+        <Link className={navClass(inAgents)} href="/agents">
+          <span aria-hidden className="w-5 text-center">
+            🤖
+          </span>
+          AI Agents
+        </Link>
         {showSettings ? (
           <Link className={navClass(inSettings)} href={settingsHref}>
             <span aria-hidden className="w-5 text-center">
@@ -131,7 +139,7 @@ export function OrgShell({
         header={
           <div className="flex min-w-0 items-center gap-2">
             <p className="truncate text-sm font-semibold">
-              {current ? current.name : inSettings ? "Settings" : pathname === "/account" ? "Your account" : "Dashboard"}
+              {current ? current.name : inSettings ? "Settings" : inAgents ? "AI Agents" : pathname === "/account" ? "Your account" : "Dashboard"}
             </p>
             <span className="ml-auto hidden text-xs text-muted sm:inline">⌘K to jump</span>
           </div>
@@ -143,6 +151,7 @@ export function OrgShell({
         items={[
           { label: "Dashboard", href: "/", group: "Apps" },
           ...apps.map((app) => ({ label: app.name, href: app.href, group: "Apps" })),
+          { label: "AI Agents", href: "/agents", group: "Apps" },
           ...(showSettings ? [{ label: "Settings", href: settingsHref, group: "Apps" }] : []),
           ...(canPublications ? [{ label: "Publication Setup", href: "/settings/publication-setup", group: "Apps" }] : []),
           ...switcherPaletteItems(switcher),

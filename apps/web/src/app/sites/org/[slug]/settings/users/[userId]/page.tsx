@@ -17,6 +17,7 @@ import { notFound } from "next/navigation";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { appCatalog } from "@/lib/apps";
 import { getOrgContext } from "@/lib/org";
+import { agentLabels } from "@/features/agents/data";
 import { changeMemberRole, setMemberAppAccess, setMemberPasswordAction } from "@/server/org-actions";
 
 const LEVEL_LABEL: Record<MemberAppLevel, string> = { NONE: "No access", VIEW: "View", EDIT: "Edit" };
@@ -60,13 +61,17 @@ export default async function MemberPage({
     impersonating: Boolean(ctx.impersonatingHere),
     ...(await memberPasswordFacts(ctx.resolved.id, userId)),
   });
+  const agent = (await agentLabels(ctx.resolved.id)).get(userId);
   const choiceFor = (moduleId: string): MemberAppChoice => overrides.find((row) => row.moduleId === moduleId)?.level ?? "ROLE";
   return (
     <div className="max-w-3xl space-y-4">
       <Link href="/settings/users" className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
         Users
       </Link>
-      <PageHeader title={member.user.name || member.user.email} description={member.user.email} />
+      <PageHeader
+        title={member.user.name || member.user.email}
+        description={agent ? `AI agent (${agent.platformLabel}) belonging to ${agent.ownerName}. It starts with its owner's access; narrow it here like anyone's.` : member.user.email}
+      />
       <Flash error={query.error} notice={query.notice} />
       <section className="rounded-xl border border-line bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Role</h2>
@@ -92,6 +97,17 @@ export default async function MemberPage({
           </form>
         )}
       </section>
+      {agent ? (
+      <section className="rounded-xl border border-line bg-white p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">AI agent</h2>
+        <p className="mt-2 text-sm">
+          It signs in with its own connection, never a password.{" "}
+          <Link href={`/agents/${agent.agentId}`} className="font-semibold text-accent">
+            Open it in AI Agents
+          </Link>
+        </p>
+      </section>
+      ) : (
       <section className="rounded-xl border border-line bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Password</h2>
         <p className="mt-2 text-sm">{member.user.passwordHash ? "They have a password." : "They have no password yet, so they cannot log in with one."}</p>
@@ -130,6 +146,7 @@ export default async function MemberPage({
           </form>
         )}
       </section>
+      )}
       <section className="rounded-xl border border-line bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">App access</h2>
         <p className="mt-2 text-sm text-muted">

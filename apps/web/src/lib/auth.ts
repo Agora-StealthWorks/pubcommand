@@ -15,7 +15,7 @@ import {
   verifyPassword,
   type MagicLinkStore,
 } from "@pubcommand/auth";
-import { buildSiteUrl, platformCan, PLATFORM_PERMISSIONS, safeNextUrl } from "@pubcommand/core";
+import { buildSiteUrl, isAgentEmail, platformCan, PLATFORM_PERMISSIONS, safeNextUrl } from "@pubcommand/core";
 import { activateInvitedMemberships, rawPrisma } from "@pubcommand/db";
 import { cookies } from "next/headers";
 
@@ -54,8 +54,9 @@ export async function readSession() {
   if (!sessionId) return { user: null, session: null };
   const auth = await lucia.validateSession(sessionId);
   if (!auth.user) return auth;
-  const account = await rawPrisma().user.findUnique({ where: { id: auth.user.id }, select: { disabledAt: true } });
-  if (account?.disabledAt) return { user: null, session: null };
+  const account = await rawPrisma().user.findUnique({ where: { id: auth.user.id }, select: { disabledAt: true, email: true } });
+  // AI agents work only through the MCP server with their tokens, never with a browser session.
+  if (account?.disabledAt || isAgentEmail(account?.email)) return { user: null, session: null };
   return auth;
 }
 
@@ -104,6 +105,9 @@ export function staffReady(
 }
 
 export async function establishSession(userId: string) {
+  // AI agents never get a browser session (every sign-in route funnels through here).
+  const account = await rawPrisma().user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (!account || isAgentEmail(account.email)) throw new Error("This account cannot sign in.");
   // Signing in by any method (password or magic link) accepts pending invites.
   await activateInvitedMemberships(userId);
   const mfaVerified = !staffTwoFactorRequired();
@@ -169,6 +173,7 @@ export async function createLoginLink(userId: string) {
 }
 
 export async function sendMagicLink(email: string) {
+  if (isAgentEmail(email)) return null;
   const user = await rawPrisma().user.findFirst({
     where: { email: { equals: normalizeEmail(email), mode: "insensitive" } },
   });
@@ -189,6 +194,7 @@ export async function verifyMagicLink(token: string) {
  * tokens of that person stop working, so only the newest email is good.
  */
 export async function issuePasswordReset(email: string): Promise<{ token: string; expiresAt: Date; userId: string; email: string } | null> {
+  if (isAgentEmail(email)) return null;
   const user = await rawPrisma().user.findFirst({
     where: { email: { equals: normalizeEmail(email), mode: "insensitive" }, disabledAt: null, deletedAt: null },
     select: { id: true, email: true },

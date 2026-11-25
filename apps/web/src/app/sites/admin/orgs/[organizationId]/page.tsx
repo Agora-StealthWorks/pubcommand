@@ -1,4 +1,4 @@
-import { buildSiteUrl, PLATFORM_PERMISSIONS, appAccessSummary, defaultMemberRoleId, organizationPurgeDate, platformCan } from "@pubcommand/core";
+import { buildSiteUrl, PLATFORM_PERMISSIONS, appAccessSummary, defaultMemberRoleId, isAgentEmail, organizationPurgeDate, platformCan } from "@pubcommand/core";
 import { loadEntitlementState, platformTx, rawPrisma } from "@pubcommand/db";
 import { moduleRegistry } from "@pubcommand/modules";
 import { OrgAppsSection, OrgDangerZone, OrgDomainsSection, type OrgAppRow } from "@/components/platform-admin";
@@ -83,7 +83,7 @@ export default async function OrganizationDetailPage({
   const canDelete = platformCan(staff.role, PLATFORM_PERMISSIONS.deleteData);
   // New members default to the read-only User role (first in the add-member list).
   const defaultRoleId = defaultMemberRoleId(roles);
-  const seatsUsed = organization.memberships.filter((member) => member.status === "ACTIVE" || member.status === "INVITED").length;
+  const seatsUsed = organization.memberships.filter((member) => (member.status === "ACTIVE" || member.status === "INVITED") && !isAgentEmail(member.user.email)).length;
   const self = auth.user
     ? organization.memberships.find((member) => member.userId === auth.user?.id && member.status === "ACTIVE")
     : undefined;

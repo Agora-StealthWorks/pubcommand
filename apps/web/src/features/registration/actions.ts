@@ -1,7 +1,7 @@
 "use server";
 
 import { hashPassword, normalizeEmail, verifyPassword } from "@pubcommand/auth";
-import { newPasswordProblem, parseEmailAddress } from "@pubcommand/core";
+import { isAgentEmail, newPasswordProblem, parseEmailAddress } from "@pubcommand/core";
 import { rawPrisma, registerOrganizationMember, resolveOrgBySlug } from "@pubcommand/db";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -26,7 +26,8 @@ export async function registerAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || null;
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
-  if (!email) back("Enter your email address.");
+  // The reserved AI-agent domain never registers (agents are added from AI Agents).
+  if (!email || isAgentEmail(email)) back("Enter your email address.");
   const head = await headers();
   const ip = head.get("x-forwarded-for")?.split(",")[0]?.trim() || head.get("x-real-ip") || "";
   const blocked = registrationBlocked(email, ip);

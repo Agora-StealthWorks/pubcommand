@@ -5,6 +5,7 @@ import {
   buildSiteUrl,
   can,
   classifyPermissions,
+  isAgentEmail,
   isAlwaysOnModule,
   isNiche,
   memberAccessChangeBlocked,
@@ -126,6 +127,7 @@ export async function inviteUser(formData: FormData) {
   const email = normalizeEmail(String(formData.get("email") ?? ""));
   const roleId = String(formData.get("roleId") ?? "");
   if (!email.includes("@")) redirect("/settings/users?error=Enter an email address.");
+  if (isAgentEmail(email)) redirect("/settings/users?error=Add AI agents from AI Agents, not by invite.");
   const role = await tenantDb(ctx.resolved.id).role.findFirst({ where: { id: roleId } });
   if (!role) redirect("/settings/users?error=Choose a role.");
   const existing = await rawPrisma().user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
@@ -349,6 +351,8 @@ export async function setMemberPasswordAction(formData: FormData) {
   const password = String(formData.get("newPassword") ?? "");
   const problem = newPasswordProblem(password, String(formData.get("confirmPassword") ?? ""));
   if (problem) redirect(`${href}?error=${encodeURIComponent(problem)}`);
+  const target = await rawPrisma().user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (isAgentEmail(target?.email)) redirect(`${href}?error=${encodeURIComponent("AI agents sign in with their own tokens, not a password.")}`);
   let notice = "";
   try {
     const result = await setMemberPassword({
