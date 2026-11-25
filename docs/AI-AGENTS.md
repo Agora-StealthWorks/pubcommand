@@ -121,8 +121,21 @@ with a `pca_` key.
     switched off per agent): `suspend_organization` (and resume), `change_organization_plan`,
     `set_organization_app_access`, `add_organization_member` and `run_job`. Each one needs a
     `reason` and is written to the platform audit log under the agent's name.
-  - Deliberately left out: deleting or purging anything, passwords, 2FA, impersonation, staff
-    changes and domains.
+  - Restructuring (`features/agents/platform-org-tools.ts`, also behind **Can make admin
+    changes**, each with a reason, in the platform audit log):
+    - `rename_organization`: name and/or slug (the old slug keeps redirecting).
+    - `create_brand`, `update_brand` (name, niche, audience), `delete_brand`: only for an empty
+      brand (no notes, sites, posts, Mini-Blogs, forms, funnels, publications, members or roles).
+    - `move_brain_notes`: notes from one brand to another, in the same or another organization
+      (up to 1000 per call, with `dry_run`). Their Master Brain copies are re-pointed and re-keyed
+      to the new organization and brand, so they keep feeding the Master Brain with no duplicates.
+    - `move_master_notes_to_brand`: Master Brain-only notes (imported or authored) become notes of
+      a brand (source ref `main:<id>`), and the Master Brain note becomes their learned copy.
+    - `delete_notes` (brand Brain or Master Brain, soft delete; pushed Master notes are withdrawn
+      from brands), `list_deleted_notes`, `restore_notes`. Staff can restore any agent's delete
+      batch from admin console → AI Agents → "Notes deleted by AI agents".
+  - Deliberately left out: deleting or purging organizations and users, deleting a brand that
+    has content, passwords, 2FA, impersonation, staff changes and domains.
   - Read anything (`features/agents/platform-audit-tools.ts`): `describe_data` lists every model and
     its fields, and `query_records` / `count_records` read any model, in any organization or across
     all of them, with a Prisma-style `where` that is checked field by field. Secrets are never

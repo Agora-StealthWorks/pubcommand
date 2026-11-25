@@ -1,6 +1,7 @@
 import { AGENT_PLATFORMS, agentPlatformLabel } from "@pubcommand/core";
-import { platformTx, rawPrisma } from "@pubcommand/db";
-import { Badge } from "@pubcommand/ui";
+import { platformTx, rawPrisma, tenantDb } from "@pubcommand/db";
+import { mainBrain } from "@/features/main-brain/db";
+import { Badge, Button } from "@pubcommand/ui";
 import Link from "next/link";
 import { TableScroll } from "@/components/table-scroll";
 import { Denied, Flash, PageHeader } from "@/components/ui";
@@ -8,7 +9,7 @@ import { AgentKeyForm } from "@/features/agents/key-form";
 import { cursorInstallLink } from "@/features/agents/cursor";
 import { when } from "@/features/agents/page-access";
 import { superAdminCtx } from "@/features/agents/platform-access";
-import { createPlatformAgentWithKey } from "@/features/agents/platform-actions";
+import { createPlatformAgentWithKey, restoreAgentDeletedNotes } from "@/features/agents/platform-actions";
 
 /** Admin console → AI Agents: super admins' platform agents, and every organization's agents. */
 export default async function PlatformAgentsPage({ searchParams }: { searchParams: Promise<{ error?: string; notice?: string }> }) {
@@ -30,6 +31,23 @@ export default async function PlatformAgentsPage({ searchParams }: { searchParam
   const ownerName = new Map(owners.map((owner) => [owner.id, owner.name || owner.email]));
   const count = (agentId: string, errors = false) => calls.filter((row) => row.agentId === agentId && (!errors || row.status !== "ok")).reduce((sum, row) => sum + row._count._all, 0);
   const platformAgents = agents.filter((agent) => agent.scope === "platform");
+  // Notes AI agents deleted in the last 30 days, each batch restorable here.
+  const deletions = await rawPrisma().platformAuditLog.findMany({ where: { action: "agents.notes.deleted", createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, orderBy: { createdAt: "desc" }, take: 30 });
+  // A batch counts as restored once none of its notes are still deleted (restored by staff or by an agent).
+  const restoredBatches = new Set<string>();
+  for (const row of deletions) {
+    const meta = (row.metadata ?? {}) as { kind?: string; organizationId?: string | null; noteIds?: unknown };
+    const noteIds = Array.isArray(meta.noteIds) ? meta.noteIds.filter((id): id is string => typeof id === "string") : [];
+    const stillDeleted =
+      meta.kind === "master"
+        ? await mainBrain((tx) => tx.mainBrainNote.count({ where: { id: { in: noteIds }, deletedAt: { not: null } } }))
+        : meta.organizationId
+          ? await tenantDb(meta.organizationId).knowledgePage.count({ where: { id: { in: noteIds }, deletedAt: { not: null } } })
+          : 0;
+    if (stillDeleted === 0) restoredBatches.add(row.id);
+  }
+  const deletionOrgIds = deletions.map((row) => (row.metadata as { organizationId?: string | null } | null)?.organizationId).filter((id): id is string => Boolean(id) && !orgName.has(id!));
+  if (deletionOrgIds.length) for (const org of await rawPrisma().organization.findMany({ where: { id: { in: deletionOrgIds } }, select: { id: true, name: true } })) orgName.set(org.id, org.name);
   const orgAgents = agents.filter((agent) => agent.scope !== "platform");
   const mcpUrl = `${ctx.request.origin}/api/mcp`;
 
@@ -100,6 +118,45 @@ export default async function PlatformAgentsPage({ searchParams }: { searchParam
           <p className="mb-3 mt-1 text-sm text-muted">Send the key as Authorization: Bearer pca_… to the address on the left.</p>
           <AgentKeyForm action={createPlatformAgentWithKey} mcpUrl={mcpUrl} platforms={AGENT_PLATFORMS.map((platform) => ({ id: platform.id, label: platform.label }))} adminToggle />
         </div>
+      </section>
+
+      <section className="rounded-xl border border-line bg-white p-4">
+        <h2 className="text-lg font-semibold">Notes deleted by AI agents</h2>
+        <p className="mt-1 text-sm text-muted">The last 30 days. Restore brings a whole batch back.</p>
+        {deletions.length ? (
+          <ul className="mt-2 divide-y divide-line text-sm">
+            {deletions.map((row) => {
+              const meta = (row.metadata ?? {}) as { kind?: string; organizationId?: string | null; count?: number; reason?: string; agent?: string };
+              return (
+                <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <span className="min-w-0">
+                    <span className="font-semibold">
+                      {meta.count ?? 0} {meta.kind === "master" ? "Master Brain" : "Brain"} note{meta.count === 1 ? "" : "s"}
+                    </span>
+                    {meta.kind !== "master" && meta.organizationId ? <span className="text-muted"> · {orgName.get(meta.organizationId) ?? "organization"}</span> : null}
+                    <span className="text-muted">
+                      {" "}
+                      · by {meta.agent ?? "an agent"} · {when(row.createdAt)}
+                      {meta.reason ? ` · “${meta.reason}”` : ""}
+                    </span>
+                  </span>
+                  {restoredBatches.has(row.id) ? (
+                    <Badge tone="ok">Restored</Badge>
+                  ) : (
+                    <form action={restoreAgentDeletedNotes}>
+                      <input type="hidden" name="auditId" value={row.id} />
+                      <Button type="submit" variant="secondary" size="sm">
+                        Restore
+                      </Button>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted">None.</p>
+        )}
       </section>
 
       <section className="rounded-xl border border-line bg-white p-4">

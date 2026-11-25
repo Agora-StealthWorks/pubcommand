@@ -4,6 +4,7 @@ import { agentCan, pickBrand, type AgentContext } from "./context";
 import { agentSettings } from "./data";
 import { PLATFORM_TOOLS } from "./platform-tools";
 import { PLATFORM_AUDIT_TOOLS } from "./platform-audit-tools";
+import { PLATFORM_ORG_TOOLS } from "./platform-org-tools";
 import { ToolError, UUID, date, limit, oneOf, str, strings, uuid, type Tool } from "./tool-kit";
 import { PostError, saveTextPostAsAgent, saveWebPostAsAgent } from "./posts";
 import { siteEditors } from "../websites/data";
@@ -624,7 +625,7 @@ const BRAIN_TOOLS: Tool[] = [
 const forOrganizations = (tool: Tool): Tool => (tool.name === "whoami" ? tool : { ...tool, available: (ctx) => ctx.scope === "organization" && tool.available(ctx) });
 
 function allTools(): Tool[] {
-  return [...ORG_TOOLS.map(forOrganizations), ...BRAIN_TOOLS, ...PLATFORM_TOOLS, ...PLATFORM_AUDIT_TOOLS];
+  return [...ORG_TOOLS.map(forOrganizations), ...BRAIN_TOOLS, ...PLATFORM_TOOLS, ...PLATFORM_AUDIT_TOOLS, ...PLATFORM_ORG_TOOLS];
 }
 
 export function toolsFor(ctx: AgentContext) {
