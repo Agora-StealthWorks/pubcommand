@@ -3,7 +3,7 @@ import { loadSiteForBrand } from "@/features/miniblog/data";
 import { miniblogAccess } from "@/features/miniblog/guard";
 import { toCsv } from "../../../../../../../../../../modules/miniblog/site";
 
-/** SMS opt-ins with their consent records, as CSV. PII: miniblog.manage only, and every download is audited. */
+/** Opt-ins (SMS numbers and email addresses) with their consent records, as CSV. PII: miniblog.manage only, and every download is audited. */
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string; siteId: string }> }) {
   const { slug, siteId } = await params;
   const access = await miniblogAccess(slug, "miniblog.manage");
@@ -14,13 +14,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const rows = await tenantDb(ctx.resolved.id).textOptin.findMany({ where: { siteId: site.id }, orderBy: { createdAt: "asc" } });
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "miniblog.optins.exported", targetType: "text_site", targetId: site.id, metadata: { rows: rows.length } });
   const csv = toCsv(
-    ["phone_e164", "opted_in_at_utc", "consent_text", "page_url", "ip_hash"],
-    rows.map((row) => [row.phone, row.createdAt, row.consentText, row.pageUrl ?? "", row.ipHash ?? ""]),
+    ["channel", "phone_e164", "email", "opted_in_at_utc", "consent_text", "page_url", "ip_hash"],
+    rows.map((row) => [row.channel, row.phone ?? "", row.email ?? "", row.createdAt, row.consentText, row.pageUrl ?? "", row.ipHash ?? ""]),
   );
   return new Response(csv, {
     headers: {
       "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="${site.slug}-sms-optins.csv"`,
+      "content-disposition": `attachment; filename="${site.slug}-optins.csv"`,
       "cache-control": "no-store",
     },
   });

@@ -29,6 +29,8 @@ export type RichTextEditorProps = {
   features?: { images?: boolean; embeds?: boolean; colors?: boolean; headings?: boolean };
   /** {tags} offered in an "Insert tag" menu (email templates). */
   mergeTags?: readonly { tag: string; description: string }[];
+  /** Toolbar buttons that insert a fixed block of text as its own paragraph (e.g. a [content ad] shortcode). */
+  inserts?: readonly { label: string; text: string; title: string }[];
   placeholder?: string;
   /** Editing area height in px (it grows with the content). */
   minHeight?: number;
@@ -113,6 +115,7 @@ export function RichTextEditor({
   onUploadImage,
   features = {},
   mergeTags,
+  inserts,
   placeholder = "Start writing…",
   minHeight = 160,
   disabled = false,
@@ -352,6 +355,9 @@ export function RichTextEditor({
               ))}
             </select>
           ) : null}
+          {inserts?.map((item) => (
+            <B key={item.text} label={item.label} title={item.title} onClick={() => editor?.chain().focus().insertContent([{ type: "paragraph", content: [{ type: "text", text: item.text }] }, { type: "paragraph" }]).run()} />
+          ))}
           <Sep />
           <B label="↶" title="Undo" disabled={!state?.canUndo} onClick={() => editor?.chain().focus().undo().run()} />
           <B label="↷" title="Redo" disabled={!state?.canRedo} onClick={() => editor?.chain().focus().redo().run()} />

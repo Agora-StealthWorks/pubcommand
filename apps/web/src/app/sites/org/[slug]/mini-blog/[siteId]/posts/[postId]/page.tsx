@@ -1,18 +1,22 @@
-import { postLinkStats } from "@/features/miniblog/links";
-import { MiniBlogRichText } from "@/features/miniblog/rich-text";
 import { TableScroll } from "@/components/table-scroll";
 import { tenantDb } from "@pubcommand/db";
-import { Badge, Button, Input, Textarea } from "@pubcommand/ui";
+import { Badge, Button } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
-import { UUID_RE, loadSiteForBrand, orgTimezone, statusBadge } from "@/features/miniblog/data";
-import { Field, LinkBox, Section } from "@/features/miniblog/fields";
+import { UUID_RE, loadSiteForBrand, orgTimezone, siteBranding, statusBadge } from "@/features/miniblog/data";
+import { LinkBox, Section } from "@/features/miniblog/fields";
 import { miniblogAccess, orgPublicUrl } from "@/features/miniblog/guard";
+import { PostEditorForm } from "@/features/miniblog/post-editor";
+import { loadOnePostStats } from "@/features/miniblog/stats";
 import { deletePost, savePost } from "@/features/miniblog/actions";
 import { miniBlogPath } from "../../../../../../../../../../../modules/miniblog/paths";
+import { parseAdCodes } from "../../../../../../../../../../../modules/miniblog/ads";
 import { postState } from "../../../../../../../../../../../modules/miniblog/site";
+import { LINK_KIND_LABEL, byKind, formatPct } from "../../../../../../../../../../../modules/miniblog/stats";
 import { utcToZonedLocal, zoneLabel } from "../../../../../../../../../../../modules/miniblog/time";
+
+const num = (value: number) => value.toLocaleString("en-US");
 
 export default async function MiniBlogPostEditor({ params, searchParams }: { params: Promise<{ slug: string; siteId: string; postId: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
   const { slug, siteId, postId } = await params;
@@ -28,9 +32,32 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
   const timeZone = await orgTimezone(ctx.resolved.id);
   const state = postState(post, new Date());
   const badge = statusBadge(state);
+  const siteUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug));
   const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug, post.slug));
-  const links = await postLinkStats(ctx.resolved.id, post.id);
-  const flagged = links.reduce((sum, link) => sum + link.flagged, 0);
+  const stats = await loadOnePostStats(ctx.resolved.id, post.id);
+  const kinds = byKind(stats.links);
+  const branding = siteBranding(site, ctx.brand.name, siteUrl);
+  const codes = parseAdCodes(site.adCodes).map(({ id, name, network }) => ({ id, name, network }));
+
+  const buttons = (
+    <div className="flex flex-wrap gap-2">
+      {canWrite ? (
+        <Button type="submit" name="intent" value="save" variant="secondary">
+          {state === "draft" ? "Save draft" : "Save changes"}
+        </Button>
+      ) : null}
+      {canPublish && state === "draft" ? (
+        <Button type="submit" name="intent" value="publish">
+          Publish (or schedule)
+        </Button>
+      ) : null}
+      {canPublish && state !== "draft" ? (
+        <Button type="submit" name="intent" value="unpublish" variant="secondary">
+          Back to draft
+        </Button>
+      ) : null}
+    </div>
+  );
 
   return (
     <div>
@@ -40,78 +67,90 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
       <h1 className="mb-1 mt-1 break-words text-2xl font-semibold tracking-tight">{post.title}</h1>
       <p className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted">
         <Badge tone={badge.tone}>{badge.label}</Badge>
-        {post.calendarIssueId ? <span>On the Calendar</span> : null}
+        <Badge tone="accent">{site.medium}</Badge>
+        {post.calendarIssueId ? (
+          <Link href={`/editorial/issues/${post.calendarIssueId}`} className="font-semibold text-accent">
+            On the Calendar →
+          </Link>
+        ) : null}
       </p>
       <Flash error={query.error} notice={query.notice} />
-      <form action={savePost} className="space-y-4">
-        <input type="hidden" name="siteId" value={site.id} />
-        <input type="hidden" name="postId" value={post.id} />
-        <fieldset disabled={!canWrite} className="space-y-4">
-          <Section title="Post">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Title" htmlFor="title" className="sm:col-span-2">
-                <Input id="title" name="title" defaultValue={post.title} maxLength={200} required />
-              </Field>
-              <Field label="Link name" htmlFor="slug" hint={`/b/${site.slug}/${post.slug}`}>
-                <Input id="slug" name="slug" defaultValue={post.slug} maxLength={80} pattern="[a-z0-9-]+" />
-              </Field>
-              <Field label={`Publish time (${zoneLabel(post.publishAt, timeZone)})`} htmlFor="publishAt" hint="A future time schedules the post; it stays hidden until then.">
-                <Input id="publishAt" name="publishAt" type="datetime-local" defaultValue={utcToZonedLocal(post.publishAt, timeZone)} required />
-              </Field>
-            </div>
-            <Field label="Body" htmlFor="bodyHtml" hint="Links are tracked: each one counts clicks for this post (see Link clicks below). Sanitized on save.">
-              <MiniBlogRichText siteId={site.id} id="bodyHtml" name="bodyHtml" defaultValue={post.bodyHtml} disabled={!canWrite} />
-            </Field>
-            <Field label="Action to take" htmlFor="actionToTake" hint="Optional highlighted box under the post.">
-              <Textarea id="actionToTake" name="actionToTake" defaultValue={post.actionToTake ?? ""} className="min-h-16" />
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Button text" htmlFor="buttonText" hint="Shown only with a link.">
-                <Input id="buttonText" name="buttonText" defaultValue={post.buttonText ?? ""} maxLength={60} />
-              </Field>
-              <Field label="Button link" htmlFor="buttonUrl">
-                <Input id="buttonUrl" name="buttonUrl" type="url" defaultValue={post.buttonUrl ?? ""} placeholder="https://" />
-              </Field>
-            </div>
-          </Section>
-          <div className="flex flex-wrap gap-2">
-            {canWrite ? (
-              <Button type="submit" name="intent" value="save" variant="secondary">
-                {state === "draft" ? "Save draft" : "Save changes"}
-              </Button>
-            ) : null}
-            {canPublish && state === "draft" ? (
-              <Button type="submit" name="intent" value="publish">
-                Publish (or schedule)
-              </Button>
-            ) : null}
-            {canPublish && state !== "draft" ? (
-              <Button type="submit" name="intent" value="unpublish" variant="secondary">
-                Back to draft
-              </Button>
-            ) : null}
-          </div>
-        </fieldset>
-      </form>
+      <PostEditorForm
+        action={savePost}
+        siteId={site.id}
+        postId={post.id}
+        siteSlug={site.slug}
+        initial={{
+          title: post.title,
+          slug: post.slug,
+          publishAt: utcToZonedLocal(post.publishAt, timeZone),
+          category: post.category ?? "",
+          tickers: post.tickers ?? "",
+          bodyHtml: post.bodyHtml,
+          topAd: post.topAd,
+          topAdText: post.topAdText ?? "",
+          topAdLink: post.topAdLink ?? "",
+          contentAd: post.contentAd,
+          contentAdText: post.contentAdText ?? "",
+          contentAdLink: post.contentAdLink ?? "",
+          actionToTake: post.actionToTake ?? "",
+          actionSecondary: post.actionSecondary ?? "",
+          buttonText: post.buttonText ?? "",
+          buttonUrl: post.buttonUrl ?? "",
+        }}
+        look={branding}
+        logoSrc={branding.logoSrc}
+        siteName={site.name}
+        categories={site.postCategories}
+        adCodes={codes}
+        zoneLabel={zoneLabel(post.publishAt, timeZone)}
+        canWrite={canWrite}
+        buttons={buttons}
+      />
       <div className="mt-6">
-        <Section title="Link clicks" description="Every link in the post (and its button) goes through a counting redirect. Clicks from bots, link scanners and cloud servers are left out.">
-          {links.length ? (
+        <Section title="Stats" description="Views come from a first-party pixel; links go through a counting redirect. Unique = distinct visitors. Bots, link scanners and data-center clicks are left out; previews never count.">
+          <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {[
+              ["Views", num(stats.views)],
+              ["Unique views", num(stats.uniqueViews)],
+              ["Clicks", num(stats.clicks)],
+              ["Unique clickers", num(stats.uniqueClickers)],
+              ["CTR", formatPct(stats.ctr)],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0 rounded-lg border border-line bg-white px-3 py-2">
+                <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</dt>
+                <dd className="mt-0.5 text-lg font-semibold tabular-nums">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-xs text-muted">
+            {(["ad", "cta", "content"] as const).map((kind) => `${LINK_KIND_LABEL[kind]}: ${num(kinds[kind].clicks)} clicks (${num(kinds[kind].unique)} unique)`).join(" · ")}
+          </p>
+          {stats.links.length ? (
             <TableScroll>
-              <table className="w-full table-fixed text-sm">
+              <table className="w-full min-w-[520px] text-sm">
                 <thead className="border-b border-line text-left text-xs uppercase tracking-wider text-muted">
                   <tr>
+                    <th className="w-20 py-2 pr-3">Type</th>
                     <th className="py-2 pr-3">Link</th>
-                    <th className="w-20 py-2 text-right">Clicks</th>
+                    <th className="w-16 py-2 text-right">Clicks</th>
+                    <th className="w-16 py-2 text-right">Unique</th>
+                    <th className="w-16 py-2 text-right">CTR</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {links.map((link) => (
+                  {stats.links.map((link) => (
                     <tr key={link.id} className="border-b border-line last:border-0">
                       <td className="py-2 pr-3">
+                        <Badge tone={link.kind === "ad" ? "accent" : link.kind === "cta" ? "ok" : "neutral"}>{LINK_KIND_LABEL[link.kind]}</Badge>
+                      </td>
+                      <td className="max-w-[360px] py-2 pr-3">
                         <span className="block truncate font-semibold">{link.label || link.url}</span>
                         <span className="block truncate font-mono text-xs text-muted">{link.url}</span>
                       </td>
-                      <td className="py-2 text-right tabular-nums">{link.clicks}</td>
+                      <td className="py-2 text-right tabular-nums">{num(link.clicks)}</td>
+                      <td className="py-2 text-right tabular-nums">{num(link.unique)}</td>
+                      <td className="py-2 text-right tabular-nums">{formatPct(link.ctr)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -120,7 +159,7 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
           ) : (
             <p className="text-sm text-muted">No links yet. Links are picked up when you save the post.</p>
           )}
-          {flagged ? <p className="text-xs text-muted">{flagged} automated click{flagged === 1 ? "" : "s"} (bots, link scanners, cloud servers) not counted.</p> : null}
+          {stats.flagged ? <p className="text-xs text-muted">{num(stats.flagged)} automated click{stats.flagged === 1 ? "" : "s"} (bots, link scanners, cloud servers) not counted.</p> : null}
         </Section>
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -139,7 +178,7 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
                 Delete post
               </Button>
             </form>
-            <p className="text-xs text-muted">Its Calendar issue, if any, stays on the calendar.</p>
+            <p className="text-xs text-muted">It goes to the Recycle bin and can be restored. Its Calendar issue is removed unless it was already Sent.</p>
           </Section>
         ) : null}
       </div>

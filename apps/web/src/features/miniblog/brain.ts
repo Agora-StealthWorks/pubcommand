@@ -1,3 +1,4 @@
+import { stripContentAd } from "../../../../../modules/miniblog/ads";
 import { tenantDb } from "@pubcommand/db";
 import { teachBrain } from "@/features/brain/teach";
 import { postBrainNote } from "../../../../../modules/miniblog/site";
@@ -30,7 +31,7 @@ export async function teachPost(input: { organizationId: string; postId: string;
       siteName: site.name,
       title: post.title,
       publishLabel: formatZoned(post.publishAt, timeZone, { year: true }),
-      bodyHtml: post.bodyHtml,
+      bodyHtml: stripContentAd(post.bodyHtml),
       actionToTake: post.actionToTake,
       siteOptins: optins,
       postViews: views,

@@ -1,3 +1,5 @@
+import { subscribeKind } from "./mediums";
+
 /**
  * Mini-Blog site rules: slugs, go-live checks, colours, CSV export, excerpts and
  * the Brain note for a post. Pure (no DB), unit tested.
@@ -19,7 +21,7 @@ export function isValidSlug(slug: string): boolean {
 }
 
 /** Post slugs that would collide with a Mini-Blog's own routes. */
-export const RESERVED_POST_SLUGS = ["subscribe", "asset", "logo", "feed", "archive", "go"] as const;
+export const RESERVED_POST_SLUGS = ["subscribe", "asset", "logo", "feed", "archive", "go", "px"] as const;
 
 export function isHttpUrl(value: string | null | undefined): boolean {
   if (!value) return false;
@@ -49,18 +51,29 @@ export function contrastText(hex: string): string {
 
 export type CheckResult = { errors: string[]; warnings: string[] };
 
-export type SiteCheckInput = { name: string; slug: string; privacyUrl: string | null; termsUrl: string | null; programName: string; helpContact: string };
+export type SiteCheckInput = { name: string; slug: string; privacyUrl: string | null; termsUrl: string | null; programName: string; helpContact: string; medium?: string | null };
 
-/** Go-live checks. Errors block going live (carriers need privacy and terms links on an SMS opt-in page). */
+/**
+ * Go-live checks. Errors block going live. An SMS Mini-Blog needs privacy and
+ * terms links and a program name (carriers require them on an opt-in page); an
+ * email one needs a privacy link; other mediums have no subscribe form.
+ */
 export function checkSite(input: SiteCheckInput): CheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const kind = subscribeKind(input.medium ?? "SMS");
   if (!input.name.trim()) errors.push("Give the Mini-Blog a name.");
   if (!isValidSlug(input.slug)) errors.push("The link name must be lowercase letters, numbers and dashes.");
-  if (!isHttpUrl(input.privacyUrl)) errors.push("Add a privacy-policy link. Carriers require it on every opt-in page.");
-  if (!isHttpUrl(input.termsUrl)) errors.push("Add a terms link (SMS terms of service).");
-  if (!input.programName.trim()) errors.push("Name the text program (for example the publication name).");
-  if (!input.helpContact.trim()) warnings.push("Add a HELP contact (email or phone) so subscribers know how to reach you.");
+  if (kind === "sms") {
+    if (!isHttpUrl(input.privacyUrl)) errors.push("Add a privacy-policy link. Carriers require it on every opt-in page.");
+    if (!isHttpUrl(input.termsUrl)) errors.push("Add a terms link (SMS terms of service).");
+    if (!input.programName.trim()) errors.push("Name the text program (for example the publication name).");
+    if (!input.helpContact.trim()) warnings.push("Add a HELP contact (email or phone) so subscribers know how to reach you.");
+  } else if (kind === "email") {
+    if (!isHttpUrl(input.privacyUrl)) errors.push("Add a privacy-policy link. It is shown on the email sign-up form.");
+  } else {
+    warnings.push(`${input.medium} Mini-Blogs have no subscribe form yet; readers reach posts by link.`);
+  }
   return { errors, warnings };
 }
 
@@ -135,7 +148,7 @@ export function postBrainNote(input: {
       "",
       "## Reach (aggregates)",
       `- Post page views: ${input.postViews}.`,
-      `- Mini-Blog SMS subscribers (all time): ${input.siteOptins}.`,
+      `- Mini-Blog subscribers (all time): ${input.siteOptins}.`,
     ]
       .filter((line, index, all) => line !== "" || all[index - 1] !== "")
       .join("\n"),
@@ -148,7 +161,8 @@ export function postBrainNote(input: {
  * scheduled post's time passes. Other statuses a person set by hand (anything
  * but Scheduled) are left alone.
  */
-export function calendarStatusFor(publishAt: Date, now: Date): "Scheduled" | "Sent" {
+export function calendarStatusFor(publishAt: Date, now: Date, status: string = "published"): "Drafting" | "Scheduled" | "Sent" {
+  if (status !== "published") return "Drafting";
   return publishAt > now ? "Scheduled" : "Sent";
 }
 

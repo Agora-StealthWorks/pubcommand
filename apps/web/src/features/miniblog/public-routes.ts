@@ -1,5 +1,6 @@
 import { tenantDb } from "@pubcommand/db";
-import { captureOptin, consentText } from "../../../../../modules/miniblog/sms";
+import { captureEmailOptin, captureOptin, consentText, emailConsentText } from "../../../../../modules/miniblog/sms";
+import { subscribeKind } from "../../../../../modules/miniblog/mediums";
 import { clientIp, hashIp, loadPublicSite, publicSiteMatches, safeBack, sameOrigin } from "./public";
 
 /** 303 back to a page on the same host (relative Location, so custom domains keep working). */
@@ -12,7 +13,7 @@ function withQuery(path: string, params: Record<string, string>): string {
   return `${path}${path.includes("?") ? "&" : "?"}${query}`;
 }
 
-/** POST /b/<site>/subscribe/submit (or /t/…): phone + consent checkbox, with the exact consent text stored. */
+/** POST /b/<site>/subscribe/submit (or /t/…): phone or email (by medium) + consent checkbox, with the exact consent text stored. */
 export async function handleSubscribe(request: Request, orgSlug: string, siteSlug: string): Promise<Response> {
   if (!(await publicSiteMatches(orgSlug)) || !sameOrigin(request)) return new Response("Not found", { status: 404 });
   const loaded = await loadPublicSite(orgSlug, siteSlug);
@@ -24,16 +25,13 @@ export async function handleSubscribe(request: Request, orgSlug: string, siteSlu
     return new Response("Bad request", { status: 400 });
   }
   const back = safeBack(form.get("back"), "/subscribe");
-  const current = consentText(loaded.site);
-  const result = captureOptin(
-    {
-      phone: String(form.get("phone") ?? ""),
-      consentChecked: form.get("consent") === "yes",
-      shownConsent: String(form.get("consentShown") ?? ""),
-      honeypot: String(form.get("website") ?? ""),
-    },
-    current,
-  );
+  const kind = subscribeKind(loaded.site.medium);
+  if (kind === "none") return new Response("Not found", { status: 404 });
+  const shared = { consentChecked: form.get("consent") === "yes", shownConsent: String(form.get("consentShown") ?? ""), honeypot: String(form.get("website") ?? "") };
+  const result =
+    kind === "sms"
+      ? captureOptin({ ...shared, phone: String(form.get("phone") ?? "") }, consentText(loaded.site))
+      : captureEmailOptin({ ...shared, email: String(form.get("email") ?? "") }, emailConsentText(loaded.site));
   if (!result.ok) return seeOther(withQuery(back, result.spam ? { done: "1" } : { error: result.error }));
   if (loaded.preview) return seeOther(withQuery(back, { done: "1" }));
   const db = tenantDb(loaded.organizationId);
@@ -46,7 +44,9 @@ export async function handleSubscribe(request: Request, orgSlug: string, siteSlu
     data: {
       organizationId: loaded.organizationId,
       siteId: loaded.site.id,
-      phone: result.record.phone,
+      channel: kind,
+      phone: "phone" in result.record ? result.record.phone : null,
+      email: "email" in result.record ? result.record.email : null,
       consentText: result.record.consentText,
       ipHash,
       pageUrl: (request.headers.get("referer") ?? "").slice(0, 500) || null,

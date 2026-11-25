@@ -107,3 +107,47 @@ export function complianceLines(site: ConsentSite): string[] {
     "Consent is not a condition of purchase.",
   ];
 }
+
+/** A lowercased email address, or null when it cannot be one. */
+export function normalizeEmail(input: string | null | undefined): string | null {
+  const text = (input ?? "").trim().toLowerCase();
+  if (!text || text.length > 254) return null;
+  return /^[^\s@<>()",;:]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(text) ? text : null;
+}
+
+/** "jane@example.com" → "j•••@example.com", for anything shown outside the export. */
+export function maskEmail(email: string): string {
+  const [user = "", domain = ""] = email.split("@");
+  return `${user.slice(0, 1)}•••@${domain}`;
+}
+
+/** The exact consent sentence on an email subscribe form (stored with every email opt-in). */
+export function emailConsentText(site: ConsentSite): string {
+  const program = site.programName.trim() || "our newsletter";
+  const company = site.companyName.trim() || "us";
+  const frequency = site.messageFrequency.trim() || "Message frequency varies";
+  const parts = [
+    `By checking this box, I agree to receive ${program} and related marketing emails from ${company} at the address provided.`,
+    `${frequency.replace(/\.$/, "")}.`,
+    "You can unsubscribe at any time with the link in every email.",
+  ];
+  if (site.privacyUrl) parts.push(`Privacy Policy: ${site.privacyUrl}.`);
+  return parts.join(" ");
+}
+
+export type EmailOptinInput = { email: string; consentChecked: boolean; shownConsent: string; honeypot: string };
+
+/** Validate an email subscribe submission against the CURRENT consent text (same rule as SMS). */
+export function captureEmailOptin(input: EmailOptinInput, currentConsent: string): { ok: true; record: { email: string; consentText: string } } | { ok: false; error: string; spam?: boolean } {
+  if (input.honeypot.trim()) return { ok: false, error: "Thanks!", spam: true };
+  const email = normalizeEmail(input.email);
+  if (!email) return { ok: false, error: "Enter a valid email address." };
+  if (!input.consentChecked) return { ok: false, error: "Check the box to agree to receive emails." };
+  if (input.shownConsent.trim() !== currentConsent.trim()) return { ok: false, error: "This page was updated. Please review the terms and try again." };
+  return { ok: true, record: { email, consentText: currentConsent } };
+}
+
+/** The compliance lines under an email subscribe form. */
+export function emailComplianceLines(site: ConsentSite): string[] {
+  return [`${site.messageFrequency.trim() || "Message frequency varies"}.`, "Unsubscribe at any time with the link in every email."];
+}

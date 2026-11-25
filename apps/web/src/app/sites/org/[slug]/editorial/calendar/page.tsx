@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { calendarPage } from "@/features/calendar/context";
 import { listChannels, listPublications, loadRange } from "@/features/calendar/data";
-import { PubChip, StageDot, StageLegend } from "@/features/calendar/ui";
+import { PostStatsChip, PubChip, StageDot, StageLegend } from "@/features/calendar/ui";
 import { fmtDay, isMonth, monthGrid, monthLabel, shiftMonth, todayIn } from "../../../../../../../../../modules/editorial/dates";
 import { contrastInk, STAGE_COLORS, stageOn, weekSegments, type WeekSegment } from "../../../../../../../../../modules/editorial/stages";
 
@@ -135,7 +135,7 @@ export default async function CalendarPage({ params, searchParams }: { params: P
               const color = pubColor.get(i.publicationCode) ?? STAGE_COLORS.issue;
               return {
                 key: i.id,
-                segs: [{ key: i.id, href: `/editorial/issues/${i.id}`, label: `${i.publicationCode} · ${i.title}`, seg: { start: col, end: col, bar: "issue" as const, continuesLeft: false, continuesRight: false }, color, ink: contrastInk(color) }],
+                segs: [{ key: i.id, href: `/editorial/issues/${i.id}`, label: `${i.publicationCode} · ${i.title}${i.post ? ` · ${i.post.views.toLocaleString("en-US")} views${i.post.ctr == null ? "" : ` · ${(i.post.ctr * 100).toFixed(1)}% CTR`}` : ""}`, seg: { start: col, end: col, bar: "issue" as const, continuesLeft: false, continuesRight: false }, color, ink: contrastInk(color) }],
               };
             });
           const rows = lanes([...eventItems, ...issueItems]);
@@ -207,6 +207,7 @@ export default async function CalendarPage({ params, searchParams }: { params: P
                       <Link href={`/editorial/issues/${i.id}`} className="flex min-h-9 items-center gap-2 text-sm">
                         <PubChip code={i.publicationCode} color={pubColor.get(i.publicationCode)} />
                         <span className="break-words [overflow-wrap:anywhere]">{i.title}</span>
+                        <PostStatsChip stats={i.post} />
                       </Link>
                     </li>
                   ))}

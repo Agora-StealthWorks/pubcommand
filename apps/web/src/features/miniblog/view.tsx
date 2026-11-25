@@ -1,94 +1,127 @@
 import type { ReactNode } from "react";
 import { RichContentStyles } from "@/components/rich-text-editor/content-css";
+import { parseAdCodes, resolveAd, splitAtContentAd, stripContentAd, type ResolvedAd } from "../../../../../modules/miniblog/ads";
 import { rewriteLinks } from "../../../../../modules/miniblog/links";
-import { complianceLines } from "../../../../../modules/miniblog/sms";
+import { subscribeKind } from "../../../../../modules/miniblog/mediums";
+import { complianceLines, emailComplianceLines } from "../../../../../modules/miniblog/sms";
 import { formatZonedDate } from "../../../../../modules/miniblog/time";
+import { AdCodeSlot, ArchiveCard, BlogHeader, LookRoot, PostArticle, SubscribeBox, TLetterFooter, TextAd, type ArchiveLink } from "./article";
 import type { Branding, PostRow, SiteRow } from "./data";
 import { sanitizeRich } from "./sanitize";
 
-/** Typography for sanitized rich text on public pages. */
+/** Typography for sanitized rich text on the subscribe page intro. */
 export const RICH =
   "[&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-lg [&_h3]:font-bold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_ul]:list-disc [&_ul]:pl-5 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0";
 
-/** The public page frame: header with the logo, content, SMS compliance footer. */
-export function BlogShell({ site, branding, base, children, preview }: { site: SiteRow; branding: Branding; base: string; children: ReactNode; preview?: boolean }) {
+/** The legal lines for the Mini-Blog's medium (none for mediums without a subscribe form). */
+function legalLines(site: SiteRow): string[] {
+  const kind = subscribeKind(site.medium);
+  return kind === "sms" ? complianceLines(site) : kind === "email" ? emailComplianceLines(site) : [];
+}
+
+/**
+ * The public page frame: centered logo header, content and the footer for the
+ * theme (T-Letter row with the archive folded under it, or the classic footer).
+ * `archives` only feeds the T-Letter footer; classic pages show <ArchiveCard> in the content.
+ */
+export function BlogShell({ site, branding, base, children, preview, archives = [], pixel }: { site: SiteRow; branding: Branding; base: string; children: ReactNode; preview?: boolean; archives?: ArchiveLink[]; pixel?: string | null }) {
+  const lines = legalLines(site);
+  const year = new Date().getFullYear();
+  const links = (
+    <>
+      {branding.privacyUrl ? (
+        <a href={branding.privacyUrl} target="_blank" rel="noopener noreferrer">
+          Privacy policy
+        </a>
+      ) : null}
+      {branding.termsUrl ? (
+        <a href={branding.termsUrl} target="_blank" rel="noopener noreferrer">
+          Terms
+        </a>
+      ) : null}
+    </>
+  );
   return (
-    <div className="flex min-h-screen flex-col bg-[#f5f6f8] text-[#1f2937]">
+    <LookRoot look={branding} className="min-h-screen">
       <RichContentStyles />
       {preview ? <div className="bg-[#fef0c7] px-4 py-2 text-center text-xs font-semibold text-[#93370d]">Preview. This Mini-Blog is {site.status === "live" ? "live" : "not live yet"}; visitors cannot see drafts or scheduled posts.</div> : null}
-      <header style={{ background: branding.headerBg, color: branding.headerText }}>
-        <div className="mx-auto flex max-w-2xl items-center justify-center px-4 py-3.5">
-          <a href={base || "/"} className="inline-flex max-w-full items-center" aria-label={site.name}>
-            {branding.logoSrc ? (
-              <img src={branding.logoSrc} alt={site.name} style={{ maxHeight: branding.logoHeight, maxWidth: "100%", width: "auto" }} />
-            ) : (
-              <span className="truncate text-lg font-bold tracking-tight">{site.name}</span>
-            )}
-          </a>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6">{children}</main>
-      <footer className="border-t border-black/10 bg-white px-4 py-6 text-center text-xs text-[#475467]">
-        <div className="mx-auto max-w-2xl space-y-1.5">
-          {complianceLines(site).map((line) => (
+      <BlogHeader look={branding} logoSrc={branding.logoSrc} name={site.name} href={base || "/"} />
+      <main className="mb-wrap">
+        <div className="mb-stack">{children}</div>
+        {branding.theme.footer === "tletter" ? (
+          <div style={{ marginTop: 26 }}>
+            <TLetterFooter siteName={site.name} companyName={branding.companyName} archives={site.archivesEnabled ? archives : []} />
+            {lines.length || branding.privacyUrl || branding.termsUrl ? (
+              <div className="mb-legal">
+                {lines.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+                {branding.privacyUrl || branding.termsUrl ? <p>{links}</p> : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </main>
+      {branding.theme.footer === "classic" ? (
+        <footer className="mb-classic-foot">
+          {lines.map((line) => (
             <p key={line}>{line}</p>
           ))}
-          <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-1">
-            <span>© {new Date().getFullYear()} {branding.companyName}</span>
-            {branding.privacyUrl ? (
-              <a href={branding.privacyUrl} className="underline" target="_blank" rel="noopener noreferrer">
-                Privacy policy
-              </a>
-            ) : null}
-            {branding.termsUrl ? (
-              <a href={branding.termsUrl} className="underline" target="_blank" rel="noopener noreferrer">
-                Terms
-              </a>
-            ) : null}
+          <p>
+            <span>
+              © {year} {branding.companyName}
+            </span>
+            {links}
           </p>
-        </div>
-      </footer>
-    </div>
+        </footer>
+      ) : null}
+      {/* First-party view pixel: counts views and unique visitors; previews never count. */}
+      {pixel && !preview ? (
+        <img src={pixel} alt="" width={1} height={1} style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }} />
+      ) : null}
+    </LookRoot>
   );
 }
 
-export function SubscribeCard({ site, branding, base }: { site: SiteRow; branding: Branding; base: string }) {
-  return (
-    <aside className="rounded-xl border border-black/10 bg-white p-5 text-center">
-      <p className="text-base font-bold">Get {site.programName || site.name} by text</p>
-      {site.tagline ? <p className="mt-1 text-sm text-[#475467]">{site.tagline}</p> : null}
-      <a href={`${base}/subscribe`} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg px-5 text-sm font-bold" style={{ background: branding.accentColor, color: branding.accentText }}>
-        Subscribe by text
-      </a>
-    </aside>
-  );
+/** The subscribe button card, per medium. Mediums without a form (Push, custom) show nothing. */
+export function SubscribeCard({ site, base }: { site: SiteRow; branding?: Branding; base: string }) {
+  const kind = subscribeKind(site.medium);
+  if (kind === "none") return null;
+  const program = site.programName || site.name;
+  return <SubscribeBox title={kind === "sms" ? `Get ${program} by text` : `Get ${program} by email`} tagline={site.tagline} href={`${base}/subscribe`} cta={kind === "sms" ? "Subscribe by text" : "Subscribe by email"} />;
+}
+
+function AdZone({ ad, hrefs, label }: { ad: ResolvedAd; hrefs?: Map<string, string>; label: string }) {
+  if (!ad) return null;
+  if (ad.kind === "text") return <TextAd text={ad.text} href={ad.link ? hrefs?.get(ad.link) ?? ad.link : null} />;
+  return <AdCodeSlot html={ad.code.code} label={`${label}:${ad.code.id}`} />;
+}
+
+/** The top ad for a post (above its card). */
+export function TopAd({ post, site, hrefs }: { post: PostRow; site: SiteRow; hrefs?: Map<string, string> }) {
+  return <AdZone ad={resolveAd(post.topAd, post.topAdText, post.topAdLink, parseAdCodes(site.adCodes))} hrefs={hrefs} label="top" />;
 }
 
 /** A post. `hrefs` (stored URL → tracked /go/ path) turns its links into counted links. */
-export function PostBody({ post, branding, timeZone, hrefs }: { post: PostRow; branding: Branding; timeZone: string; hrefs?: Map<string, string> }) {
+export function PostBody({ post, site, branding, timeZone, hrefs }: { post: PostRow; site: SiteRow; branding: Branding; timeZone: string; hrefs?: Map<string, string> }) {
   const clean = sanitizeRich(post.bodyHtml);
   const html = hrefs?.size ? rewriteLinks(clean, (url) => hrefs.get(url) ?? null) : clean;
+  const contentAd = resolveAd(post.contentAd, post.contentAdText, post.contentAdLink, parseAdCodes(site.adCodes));
+  const { before, after } = contentAd ? splitAtContentAd(html) : { before: stripContentAd(html), after: null };
   const buttonHref = post.buttonUrl ? hrefs?.get(post.buttonUrl.trim()) ?? post.buttonUrl : null;
   return (
-    <article className="rounded-xl border border-black/10 bg-white p-5 sm:p-7">
-      <p className="text-xs font-semibold uppercase tracking-wider text-[#475467]">{formatZonedDate(post.publishAt, timeZone)}</p>
-      <h1 className="mt-1 text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">{post.title}</h1>
-      {html ? <div className={`${RICH} rte-content mt-4 text-base leading-relaxed [overflow-wrap:anywhere]`} dangerouslySetInnerHTML={{ __html: html }} /> : null}
-      {post.actionToTake ? (
-        <div className="mt-6 rounded-lg border-2 p-4" style={{ borderColor: branding.accentColor }}>
-          <p className="text-xs font-bold uppercase tracking-wider" style={{ color: branding.accentColor }}>
-            Action to take
-          </p>
-          <p className="mt-1 whitespace-pre-line text-base font-semibold [overflow-wrap:anywhere]">{post.actionToTake}</p>
-        </div>
-      ) : null}
-      {post.buttonText && buttonHref ? (
-        <div className="mt-6 text-center">
-          <a href={buttonHref} rel="noopener" className="inline-flex min-h-12 max-w-full items-center justify-center rounded-lg px-6 text-base font-bold" style={{ background: branding.accentColor, color: branding.accentText }}>
-            {post.buttonText}
-          </a>
-        </div>
-      ) : null}
-    </article>
+    <PostArticle
+      look={branding}
+      date={formatZonedDate(post.publishAt, timeZone)}
+      title={post.title}
+      bodyBefore={before}
+      bodyAfter={after}
+      contentAd={<AdZone ad={contentAd} hrefs={hrefs} label="content" />}
+      actionToTake={post.actionToTake}
+      actionSecondary={post.actionSecondary}
+      button={post.buttonText && buttonHref ? { text: post.buttonText, href: buttonHref } : null}
+    />
   );
 }
+
+export { ArchiveCard };

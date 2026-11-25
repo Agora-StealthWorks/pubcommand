@@ -1,4 +1,5 @@
 import { tenantDb } from "@pubcommand/db";
+import { statsForCalendarIssues } from "../miniblog/stats";
 import { fromDay, toDay } from "../../../../../modules/editorial/dates";
 import { eventFeedItem, issueFeedItem, type FeedItem } from "../../../../../modules/editorial/stages";
 import { eventDates } from "./events";
@@ -71,6 +72,8 @@ export type IssueListRow = {
   subjectLines: string[];
   writer: string | null;
   hasStats: boolean;
+  /** Stats of the Mini-Blog post that created this issue (views, unique views, CTR). */
+  post: { views: number; uniqueViews: number; clicks: number; ctr: number | null } | null;
 };
 
 /** Events whose window overlaps [from, to], and issues mailed in it. Open-ended when bounds are null. */
@@ -99,9 +102,19 @@ export async function loadRange(organizationId: string, brandId: string, from: s
       take: 3000,
     }),
   ]);
+  const postStats = await statsForCalendarIssues(
+    organizationId,
+    issues.map((issue) => issue.id),
+  ).catch((error: unknown) => {
+    console.warn("[calendar] Mini-Blog stats not loaded", error);
+    return new Map<string, { views: number; uniqueViews: number; clicks: number; ctr: number | null }>();
+  });
   return {
     events: events.map(toEventListRow),
-    issues: issues.map(({ stat, mailDate, ...row }): IssueListRow => ({ ...row, mailDate: toDay(mailDate), hasStats: Boolean(stat) })),
+    issues: issues.map(({ stat, mailDate, ...row }): IssueListRow => {
+      const post = postStats.get(row.id);
+      return { ...row, mailDate: toDay(mailDate), hasStats: Boolean(stat), post: post ? { views: post.views, uniqueViews: post.uniqueViews, clicks: post.clicks, ctr: post.ctr } : null };
+    }),
   };
 }
 

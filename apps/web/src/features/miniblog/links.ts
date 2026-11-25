@@ -2,23 +2,31 @@ import { tenantDb } from "@pubcommand/db";
 import { LINK_ID_RE, postLinks, redirectTarget, trackedPath } from "../../../../../modules/miniblog/links";
 import { postState } from "../../../../../modules/miniblog/site";
 import { classifyTraffic, clientIpOf } from "../../../../../modules/funnels/traffic";
-import { loadPublicSite, publicSiteMatches } from "./public";
+import { loadPublicSite, publicSiteMatches, visitorCookie, visitorOf } from "./public";
 
 /**
  * Keep one TextLink row per link in the post (body links and the button).
  * Rows for links that were removed stay, so their past clicks still count.
  */
-export async function syncPostLinks(organizationId: string, post: { id: string; siteId: string; bodyHtml: string; buttonUrl: string | null; buttonText: string | null }): Promise<number> {
+export async function syncPostLinks(
+  organizationId: string,
+  post: { id: string; siteId: string; bodyHtml: string; buttonUrl: string | null; buttonText: string | null; adLinks?: { url: string | null; label: string }[] },
+): Promise<number> {
   const db = tenantDb(organizationId);
-  const links = postLinks(post.bodyHtml, post.buttonUrl, post.buttonText);
+  const links = postLinks(post.bodyHtml, post.buttonUrl, post.buttonText, post.adLinks ?? []);
   if (!links.length) return 0;
-  const existing = await db.textLink.findMany({ where: { postId: post.id }, select: { url: true } });
-  const known = new Set(existing.map((row) => row.url));
+  const existing = await db.textLink.findMany({ where: { postId: post.id }, select: { id: true, url: true, kind: true } });
+  const known = new Map(existing.map((row) => [row.url, row]));
   let created = 0;
   for (const link of links) {
-    if (known.has(link.url)) continue;
+    const row = known.get(link.url);
+    if (row) {
+      // A link that became the button or an ad is reported as such from now on.
+      if (link.kind && link.kind !== "content" && row.kind !== link.kind) await db.textLink.updateMany({ where: { id: row.id }, data: { kind: link.kind } });
+      continue;
+    }
     await db.textLink
-      .create({ data: { organizationId, siteId: post.siteId, postId: post.id, url: link.url, label: link.label } })
+      .create({ data: { organizationId, siteId: post.siteId, postId: post.id, url: link.url, label: link.label, kind: link.kind ?? "content" } })
       .then(() => (created += 1))
       .catch(() => undefined); // A concurrent save created it.
   }
@@ -79,13 +87,17 @@ export async function handleLinkClick(request: Request, orgSlug: string, siteSlu
   const live = Boolean(post && (loaded.preview || postState(post, loaded.now) === "published"));
   const target = redirectTarget(link, loaded.site, live);
   if (!link || !target) return notFound();
+  const response = new Response(null, { status: 302, headers: { location: target, "cache-control": "no-store", "referrer-policy": "strict-origin-when-cross-origin" } });
   if (!loaded.preview) {
+    // Same anonymous visitor id as the view pixel, so unique clicks and CTR line up.
+    const visitor = visitorOf(request);
+    if (visitor.fresh) response.headers.append("set-cookie", visitorCookie(visitor.id));
     const botReason = classifyTraffic({ userAgent: request.headers.get("user-agent"), ip: clientIpOf(request.headers) });
     await db.textLinkClick
-      .create({ data: { organizationId: loaded.organizationId, siteId: loaded.site.id, postId: link.postId, linkId: link.id, botReason } })
+      .create({ data: { organizationId: loaded.organizationId, siteId: loaded.site.id, postId: link.postId, linkId: link.id, botReason, visitorId: visitor.id } })
       .catch((error: unknown) => console.warn("[miniblog] click not recorded", error));
   }
-  return new Response(null, { status: 302, headers: { location: target, "cache-control": "no-store", "referrer-policy": "strict-origin-when-cross-origin" } });
+  return response;
 }
 
 /** GET /b/<site>/asset/<id>: an image uploaded into a post (public by nature). */

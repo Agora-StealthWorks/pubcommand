@@ -38,6 +38,19 @@ model TextSite {
   /// (Settings → Brands) and are re-copied whenever it is saved (syncBrandLook).
   followBrand      Boolean      @default(false) @map("follow_brand")
   archivesEnabled  Boolean      @default(true) @map("archives_enabled")
+  /// How readers get it: one of the organization's mediums (Mini-Blog settings;
+  /// Email, SMS, Push Notification by default). It picks the subscribe form and
+  /// is the issue type of the Calendar issues its posts create.
+  medium           String       @default("SMS")
+  /// Look preset (modules/miniblog/themes.ts). Header and button colors and the
+  /// logo size are customized on top of it.
+  theme            String       @default("classic")
+  /// Internal-only set of post categories (e.g. "Ticker Tuesday"). Never public.
+  postCategories   String[]     @default([]) @map("post_categories")
+  /// Ad network codes for this Mini-Blog (AdSense, Taboola, Kevel, custom), as
+  /// [{ id, name, network, code }]. Posts pick which one fills their top ad and
+  /// [content ad] slots. Edited with miniblog.manage only (it is raw HTML/script).
+  adCodes          Json         @default("[]") @map("ad_codes")
   /// Marketing Calendar publication code; when set, each published post adds a calendar issue.
   calendarCode     String?      @map("calendar_code")
   brainSyncEnabled Boolean      @default(true) @map("brain_sync_enabled")
@@ -68,6 +81,20 @@ model TextPost {
   /// Sanitized rich text.
   bodyHtml        String     @default("") @map("body_html")
   actionToTake    String?    @map("action_to_take")
+  /// Optional small italic line under "Action to take".
+  actionSecondary String?    @map("action_secondary")
+  /// Internal-only category (one of the site's postCategories). Never public.
+  category        String?
+  /// Internal-only ticker symbols as typed ("NVDA, AMD"). Copied to the Calendar issue.
+  tickers         String?
+  /// Top ad slot: none | text | code:<ad code id>.
+  topAd           String     @default("none") @map("top_ad")
+  topAdText       String?    @map("top_ad_text")
+  topAdLink       String?    @map("top_ad_link")
+  /// What fills the [content ad] shortcode in the body: none | text | code:<ad code id>.
+  contentAd       String     @default("none") @map("content_ad")
+  contentAdText   String?    @map("content_ad_text")
+  contentAdLink   String?    @map("content_ad_link")
   buttonText      String?    @map("button_text")
   buttonUrl       String?    @map("button_url")
   /// The Marketing Calendar issue this post created (idempotent re-saves).
@@ -90,8 +117,12 @@ model TextOptin {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   siteId         String   @map("site_id") @db.Uuid
-  /// E.164
-  phone          String
+  /// sms | email
+  channel        String   @default("sms")
+  /// E.164 (SMS opt-ins)
+  phone          String?
+  /// Lowercased (email opt-ins)
+  email          String?
   consentText    String   @map("consent_text")
   /// Salted SHA-256 of the IP. The raw IP is never stored.
   ipHash         String?  @map("ip_hash")
@@ -112,12 +143,15 @@ model TextView {
   siteId         String    @map("site_id") @db.Uuid
   /// Null = the site home / subscribe page.
   postId         String?   @map("post_id") @db.Uuid
+  /// Anonymous random id from the first-party `mb_vid` cookie (unique views). Null = counts on its own.
+  visitorId      String?   @map("visitor_id")
   createdAt      DateTime  @default(now()) @map("created_at")
   site           TextSite  @relation(fields: [siteId], references: [id], onDelete: Cascade)
   post           TextPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, siteId, createdAt])
   @@index([postId])
+  @@index([postId, visitorId])
   @@map("text_views")
 }
 
@@ -131,6 +165,8 @@ model TextLink {
   url            String
   /// The link text (or "Button") the first time it was seen.
   label          String          @default("")
+  /// content (in the body) | cta (the action button) | ad (a text ad)
+  kind           String          @default("content")
   createdAt      DateTime        @default(now()) @map("created_at")
   site           TextSite        @relation(fields: [siteId], references: [id], onDelete: Cascade)
   post           TextPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -150,10 +186,23 @@ model TextLinkClick {
   linkId         String   @map("link_id") @db.Uuid
   /// user_agent | datacenter when it looks automated; null = a person.
   botReason      String?  @map("bot_reason")
+  /// Same anonymous cookie as TextView, so unique clicks and CTR line up.
+  visitorId      String?  @map("visitor_id")
   createdAt      DateTime @default(now()) @map("created_at")
   link           TextLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, postId, createdAt])
   @@index([linkId])
   @@map("text_link_clicks")
+}
+
+/// Organization-wide Mini-Blog settings (Mini-Blog → App settings, miniblog.manage).
+model MiniblogSettings {
+  organizationId String   @id @map("organization_id") @db.Uuid
+  /// The mediums a Mini-Blog can be (its subscribe form and Calendar issue type).
+  mediums        String[] @default(["Email", "SMS", "Push Notification"])
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("miniblog_settings")
 }

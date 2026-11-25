@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { siteBranding } from "@/features/miniblog/data";
-import { loadPublicSite, publicBase, publicSiteMatches, recordSiteView } from "@/features/miniblog/public";
+import { loadPublicSite, publicBase, publicSiteMatches } from "@/features/miniblog/public";
 import { trackedHrefs } from "@/features/miniblog/links";
-import { PostBody, SubscribeCard, BlogShell } from "@/features/miniblog/view";
+import { ArchiveCard, BlogShell, PostBody, SubscribeCard, TopAd } from "@/features/miniblog/view";
+import { stripContentAd } from "../../../../../../../../../modules/miniblog/ads";
 import { tenantDb } from "@pubcommand/db";
 import { excerpt, postState } from "../../../../../../../../../modules/miniblog/site";
 import { formatZonedDate } from "../../../../../../../../../modules/miniblog/time";
@@ -32,41 +33,26 @@ export default async function MiniBlogHome({ params, searchParams }: { params: P
     orderBy: { publishAt: "desc" },
     take: 60,
   });
-  await recordSiteView(loaded, null);
   const [latest, ...older] = posts;
   const hrefs = latest ? (await trackedHrefs(loaded.organizationId, [latest.id], base, loaded.preview)).get(latest.id) : undefined;
+  const archives = older.map((post) => ({ href: `${base}/${post.slug}`, title: post.title, date: formatZonedDate(post.publishAt, timeZone), excerpt: excerpt(stripContentAd(post.bodyHtml), 120) }));
+  const tletter = branding.theme.footer === "tletter";
   return (
-    <BlogShell site={site} branding={branding} base={base} preview={loaded.preview}>
-      <div className="space-y-5">
-        {latest ? (
-          <>
-            {loaded.preview && postState(latest, now) === "scheduled" ? <p className="text-xs font-semibold text-[#b54708]">Scheduled: visitors see this from its publish time.</p> : null}
-            <PostBody post={latest} branding={branding} timeZone={timeZone} hrefs={hrefs} />
-          </>
-        ) : (
-          <div className="rounded-xl border border-black/10 bg-white p-6 text-center">
-            <h1 className="text-xl font-bold">{site.name}</h1>
-            <p className="mt-2 text-sm text-[#475467]">No posts yet. Subscribe to get the first one.</p>
-          </div>
-        )}
-        <SubscribeCard site={site} branding={branding} base={base} />
-        {site.archivesEnabled && older.length ? (
-          <section className="rounded-xl border border-black/10 bg-white">
-            <h2 className="border-b border-black/10 px-5 py-3 text-sm font-bold uppercase tracking-wider text-[#475467]">Archive</h2>
-            <ul>
-              {older.map((post) => (
-                <li key={post.id} className="border-b border-black/5 last:border-0">
-                  <a href={`${base}/${post.slug}`} className="block px-5 py-3 hover:bg-[#f9fafb]">
-                    <span className="block text-xs text-[#475467]">{formatZonedDate(post.publishAt, timeZone)}</span>
-                    <span className="block font-semibold [overflow-wrap:anywhere]">{post.title}</span>
-                    <span className="block text-sm text-[#475467] [overflow-wrap:anywhere]">{excerpt(post.bodyHtml, 120)}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </div>
+    <BlogShell site={site} branding={branding} base={base} preview={loaded.preview} archives={archives} pixel={`${base}/px${latest ? `?p=${latest.id}` : ""}`}>
+      {latest ? (
+        <>
+          {loaded.preview && postState(latest, now) === "scheduled" ? <p className="text-xs font-semibold text-[#b54708]">Scheduled: visitors see this from its publish time.</p> : null}
+          <TopAd post={latest} site={site} hrefs={hrefs} />
+          <PostBody post={latest} site={site} branding={branding} timeZone={timeZone} hrefs={hrefs} />
+        </>
+      ) : (
+        <div className="mb-card" style={{ textAlign: "center" }}>
+          <h1 className="mb-title">{site.name}</h1>
+          <p className="mb-date">No posts yet.</p>
+        </div>
+      )}
+      <SubscribeCard site={site} base={base} />
+      {!tletter && site.archivesEnabled ? <ArchiveCard archives={archives} /> : null}
     </BlogShell>
   );
 }
