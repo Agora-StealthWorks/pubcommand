@@ -41,7 +41,7 @@ export default async function OrgPickerPage() {
   const switcher = await loadSwitcher({ userId: auth.user.id, session: auth.session, here: { kind: "app" } });
 
   return (
-    <main data-surface="app" className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+    <main data-surface="app" className="mx-auto w-full max-w-3xl flex-1 px-4 py-12 sm:px-6 sm:py-16">
       <BrandLogo className="h-9 w-auto" />
       <div className="mt-4 max-w-xs">
         <SiteSwitcher model={switcher} />

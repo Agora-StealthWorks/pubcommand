@@ -32,6 +32,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createLoginLink, normalizeEmail } from "@/lib/auth";
 import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
+import { loadSystemEmailOverrides } from "@/features/system-emails/store";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { roleAccessSections } from "@/lib/role-access";
@@ -143,7 +144,7 @@ export async function inviteUser(formData: FormData) {
   await audit(ctx, "user.invited", "user", user.id, { email });
   const request = await currentRequest();
   const magicUrl = magicLinkUrl(request.origin, link.token);
-  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", organizationName: ctx.resolved.name });
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", organizationName: ctx.resolved.name, overrides: await loadSystemEmailOverrides() });
   const notice = exposeMagicLinkOnPage()
     ? `Invite created. Magic link: ${magicUrl}`
     : delivered === "sent"
