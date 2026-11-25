@@ -235,6 +235,8 @@ export function NavStrip({
           if (entry.kind === "day") {
             const { day } = entry;
             const state = states[entry.index]!;
+            // A module that has passed (a later one is open) can leave the strip altogether.
+            if (funnel.hidePassedModules && state.kind === "locked" && state.reason === "passed") return null;
             const open = state.kind !== "locked" && state.kind !== "closed";
             return (
               <Tile

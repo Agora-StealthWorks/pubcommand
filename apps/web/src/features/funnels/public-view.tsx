@@ -546,7 +546,9 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
   } else if (state.kind === "locked") {
     const template =
       day.lockedMessage?.trim() ||
-      (state.reason === "watch"
+      (state.reason === "passed"
+        ? funnel.lockedPassedMsg
+        : state.reason === "watch"
         ? funnel.lockedWatchMsg
         : state.reason === "key"
           ? funnel.lockedKeyMsg
@@ -554,7 +556,9 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
             ? funnel.lockedLiveMsg
             : funnel.lockedScheduledMsg);
     const prev = state.prevPosition ? days.find((item) => item.position === state.prevPosition) : undefined;
-    const message = fillLockMessage(template, { day: label, prevDay: prev ? dayLabel(prev) : undefined, percent: funnel.watchPercent, unlockDate: state.unlockAt ? formatZoned(state.unlockAt, timeZone) : undefined });
+    // Passed: a later module is open now, and this page points to it.
+    const newest = state.nextPosition ? days.find((item) => item.position === state.nextPosition) : undefined;
+    const message = fillLockMessage(template, { day: label, prevDay: prev ? dayLabel(prev) : undefined, nextDay: newest ? dayLabel(newest) : undefined, percent: funnel.watchPercent, unlockDate: state.unlockAt ? formatZoned(state.unlockAt, timeZone) : undefined });
     const rules = rulesOf(loaded);
     const dayRule = dayRulesOf(loaded)[loaded.days.findIndex((item) => item.id === day.id)]!;
     // An EARLIER session not over yet: this one waits its turn (no countdown); if that session is today, point to it.
@@ -603,9 +607,17 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
             </a>
           </div>
         ) : null;
+      const toNewest = newest ? (
+        <div className="mb-4">
+          <a href={`${base}/day-${newest.position}${carry}`} className="pcf-btn text-base" data-track="next" data-track-target={dayLabel(newest)} style={{ background: branding.accentColor, color: branding.accentText, borderColor: branding.accentColor }}>
+            {`Watch ${newest.title ? `${dayLabel(newest)}: ${newest.title}` : dayLabel(newest)} »`}
+          </a>
+        </div>
+      ) : null;
       box = (
         <Placeholder title={funnel.lockedTitle} message={message} lock>
           {pointer}
+          {toNewest}
           <div className="flex justify-center">{calendar}</div>
         </Placeholder>
       );
