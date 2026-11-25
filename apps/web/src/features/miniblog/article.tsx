@@ -65,7 +65,7 @@ const CSS = `
 .mb-root{background:var(--mb-page);color:var(--mb-ink);font-family:var(--mb-font);min-height:100%;display:flex;flex-direction:column}
 .mb-header{background:var(--mb-header);color:var(--mb-header-ink);padding:14px 18px;display:flex;justify-content:center;align-items:center}
 .mb-header a{display:inline-flex;align-items:center;max-width:100%;color:inherit;text-decoration:none}
-.mb-header img{max-width:100%;width:auto;display:block}
+.mb-header img{max-width:100%;width:auto;display:block;flex:none;object-fit:contain}
 .mb-header .mb-name{font-weight:700;font-size:18px;letter-spacing:-.01em;overflow-wrap:anywhere;text-align:center}
 .mb-header.mb-light{border-bottom:1px solid var(--mb-line)}
 .mb-wrap{width:100%;max-width:680px;margin:0 auto;padding:18px 16px 40px;flex:1}
@@ -159,7 +159,9 @@ export function LookRoot({ look, children, className = "" }: { look: Look; child
 /** Header bar with the logo centered (the brand name only when there is no logo). */
 export function BlogHeader({ look, logoSrc, name, href }: { look: Look; logoSrc: string | null; name: string; href: string | null }) {
   const inner = logoSrc ? (
-    <img src={logoSrc} alt={name} style={{ maxHeight: look.logoHeight }} />
+    // An explicit height (not max-height): an SVG logo with only a viewBox has no
+    // intrinsic size and would collapse to 0×0 inside the shrink-to-fit link.
+    <img src={logoSrc} alt={name} style={{ height: look.logoHeight }} />
   ) : (
     <span className="mb-name">{name}</span>
   );
