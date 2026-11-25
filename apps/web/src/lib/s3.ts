@@ -36,10 +36,33 @@ export function signS3Request(config: S3Config, input: { method: "GET" | "PUT" |
   return { url: `${endpoint.origin}${path}`, headers };
 }
 
+/** Statuses the bucket returns for a passing hiccup (e.g. 408 RequestCanceled); worth trying again. */
+const TRANSIENT = new Set([408, 429, 500, 502, 503, 504]);
+const ATTEMPTS = 4;
+
 async function send(config: S3Config, method: "GET" | "PUT" | "DELETE" | "HEAD", key: string, body?: Uint8Array, contentType?: string): Promise<Response> {
-  const signed = signS3Request(config, { method, key, body, contentType });
-  const { host: _host, ...headers } = signed.headers;
-  return fetch(signed.url, { method, headers, ...(body ? { body: Buffer.from(body) } : {}) });
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+    // Sign each attempt afresh: the signature carries a timestamp.
+    const signed = signS3Request(config, { method, key, body, contentType });
+    const { host: _host, ...headers } = signed.headers;
+    try {
+      const response = await fetch(signed.url, {
+        method,
+        headers,
+        ...(body ? { body: Buffer.from(body) } : {}),
+        signal: AbortSignal.timeout(body && body.length > 5_000_000 ? 300_000 : 60_000),
+      });
+      if (!TRANSIENT.has(response.status) || attempt === ATTEMPTS) return response;
+      await response.body?.cancel();
+    } catch (error) {
+      // Network drop or timeout: retry, and rethrow after the last attempt.
+      lastError = error;
+      if (attempt === ATTEMPTS) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
+  }
+  throw lastError;
 }
 
 export async function s3Put(config: S3Config, key: string, body: Uint8Array, contentType = "application/octet-stream"): Promise<void> {
