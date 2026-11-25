@@ -20,8 +20,11 @@ An organization agent needs the same right as a person (`pubsetup.manage`) in th
 platform agent works in any organization, and changes need its "Can make admin changes" switch.
 Saves use the same rules as the settings pages (`apps/web/src/features/pubsetup/records.ts`:
 required fields, unique codes and URL names, category checks, issue codes following a code
-change, audit entries, Brain and website refresh). Logos, covers and photos are set on the
-settings pages only.
+change, audit entries, Brain and website refresh). A guru's photo can come from `photo_url`:
+PubCommand downloads it (public https addresses only; private and internal networks are refused,
+redirects re-checked; PNG, JPG, GIF, WebP or SVG recognized by their bytes; up to 3 MB) and keeps
+a copy (`features/agents/remote-image.ts`). Publication logos and covers are set on the settings
+pages.
 
 ## Data (models in `packages/db/prisma/schema/pubsetup.prisma`)
 

@@ -4,6 +4,7 @@ import { EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, type FieldDef } from "
 import { CONSOLE_ORG_SLUG } from "@/lib/console-workspace";
 import { formFrom, linkEditorRecord, linkedEditorIds, roleOrLead, saveEditorRecord, savePublicationRecord, scheduleRefresh, unlinkEditorRecord, type PubsetupScope } from "../pubsetup/records";
 import { pickBrand, scopeFor, type AgentContext } from "./context";
+import { fetchRemoteImage } from "./remote-image";
 import { ToolError, UUID, str, type Tool } from "./tool-kit";
 
 /**
@@ -88,6 +89,17 @@ async function findGuru(t: Target, value: unknown) {
   if (!guru) throw new ToolError(`No guru "${wanted}" in ${t.brandName}. Call list_gurus.`);
   return guru;
 }
+
+/** A guru photo from photo_url (fetched safely), or nothing. "" removes the photo. */
+async function photoColumns(args: Record<string, unknown>): Promise<Record<string, string | Uint8Array | null>> {
+  if (args.photo_url === undefined) return {};
+  const address = str(args, "photo_url", 2000)?.trim() ?? "";
+  if (!address) return { photoFilename: null, photoMime: null, photoData: null };
+  const image = await fetchRemoteImage(address, 3);
+  return { photoFilename: image.filename, photoMime: image.mime, photoData: image.data };
+}
+
+const photoArg = { photo_url: { type: "string", description: "Public https address of the guru's photo (PNG, JPG, GIF, WebP or SVG, up to 3 MB). PubCommand downloads and keeps a copy. An empty string removes the photo." } };
 
 const fieldsArg = { fields: { type: "object", description: "Field keys and values (see publication_fields). Lists take an array of strings; rows (offers, FAQ, links…) an array of objects." } };
 
@@ -233,14 +245,14 @@ export const PUBLICATION_TOOLS: Tool[] = [
   {
     name: "create_guru",
     title: "Create a guru",
-    description: "Add a guru (editor / expert) to a brand. Required: name and status (active or inactive). Then link_guru to put them on publications.",
-    inputSchema: { type: "object", properties: { ...where, ...fieldsArg }, required: ["fields"], additionalProperties: false },
+    description: "Add a guru (editor / expert) to a brand, with an optional photo_url. Required fields: name and status (active or inactive). Then link_guru to put them on publications.",
+    inputSchema: { type: "object", properties: { ...where, ...fieldsArg, ...photoArg }, required: ["fields"], additionalProperties: false },
     readOnly: false,
     available,
     run: async (ctx, args) => {
       const t = await target(ctx, args, true);
       const sent = sentFields(args, EDITOR_FIELDS);
-      const result = await saveEditorRecord(t.scope, formFrom(EDITOR_FIELDS, { status: "active" }, sent), null);
+      const result = await saveEditorRecord(t.scope, formFrom(EDITOR_FIELDS, { status: "active" }, sent), null, await photoColumns(args));
       if (!result.ok) throw new ToolError(result.error);
       return { data: { id: result.id, name: result.name, brand: `${t.organizationName} · ${t.brandName}`, message: "Guru created." }, targetType: "pubsetup_editor", targetId: result.id };
     },
@@ -248,15 +260,15 @@ export const PUBLICATION_TOOLS: Tool[] = [
   {
     name: "update_guru",
     title: "Update a guru",
-    description: "Change a guru. Send only the fields to change; the rest keep their values.",
-    inputSchema: { type: "object", properties: { ...where, guru: { type: "string" }, ...fieldsArg }, required: ["guru", "fields"], additionalProperties: false },
+    description: "Change a guru: send only the fields to change (the rest keep their values), and/or photo_url to set the photo.",
+    inputSchema: { type: "object", properties: { ...where, guru: { type: "string" }, ...fieldsArg, ...photoArg }, required: ["guru"], additionalProperties: false },
     readOnly: false,
     available,
     run: async (ctx, args) => {
       const t = await target(ctx, args, true);
       const guru = await findGuru(t, args.guru);
-      const sent = sentFields(args, EDITOR_FIELDS);
-      const result = await saveEditorRecord(t.scope, formFrom(EDITOR_FIELDS, guru as unknown as Record<string, unknown>, sent), guru.id);
+      const sent = args.fields === undefined ? {} : sentFields(args, EDITOR_FIELDS);
+      const result = await saveEditorRecord(t.scope, formFrom(EDITOR_FIELDS, guru as unknown as Record<string, unknown>, sent), guru.id, await photoColumns(args));
       if (!result.ok) throw new ToolError(result.error);
       return { data: { id: result.id, name: result.name, message: "Guru saved." }, targetType: "pubsetup_editor", targetId: result.id };
     },

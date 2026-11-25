@@ -162,7 +162,7 @@ const ORG_TOOLS: Tool[] = [
           ...(ctx.scope === "platform"
             ? {
                 kind: "Platform agent (PubCommand staff). You see the whole platform: Master Brain, organizations, users, audit logs, jobs, AI usage. You can read any organization's Brain (organization argument).",
-                admin_changes: ctx.allowAdminActions ? "Allowed: suspend/resume, plan, app access, invite, run jobs. Each needs a reason and is audited." : "Not allowed for this agent (read-only).",
+                admin_changes: ctx.allowAdminActions ? "Allowed (each needs a reason and is audited): suspend/resume organizations, plans, app access, invite people, run jobs; rename organizations; add, change and remove empty brands; move Brain and Master Brain notes; delete and restore notes; create and update publications and gurus (with photos) and link them." : "Not allowed for this agent (read-only).",
               }
             : {}),
           organization: ctx.scope === "platform" ? "PubCommand platform" : ctx.organization.name,
