@@ -82,7 +82,7 @@ export default async function SubscribePage({ params, searchParams }: { params: 
               <input type="checkbox" name="consent" value="yes" required className="mt-0.5 h-5 w-5 shrink-0" />
               <span className="[overflow-wrap:anywhere]">{consent}</span>
             </label>
-            <button type="submit" className="h-12 w-full rounded-lg text-base font-bold" style={{ background: branding.accentColor, color: branding.accentText }}>
+            <button type="submit" className="h-12 w-full rounded-lg text-base font-bold" style={{ background: branding.buttonColor, color: branding.buttonText }}>
               Subscribe
             </button>
             <div className="space-y-1 text-xs" style={{ color: "var(--mb-muted)" }}>

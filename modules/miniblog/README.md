@@ -12,7 +12,7 @@ Mini-Blog → App settings (`/mini-blog/settings`, `miniblog.manage`) holds the 
 
 ## Themes (`themes.ts`) and the shared renderer
 
-T-Letter (new Mini-Blogs), Classic (every Mini-Blog made before themes), Newsprint, Minimal, Midnight. Settings → Look shows each theme as a preview, then header color, button color and logo size with a live preview (`features/miniblog/look-editor.tsx`). `features/miniblog/article.tsx` renders the page parts from CSS variables; the public pages, the Look preview and the post editor's live preview all use it, so previews match. "Use the brand look" still overrides colors and logo; the theme keeps the page style. Logos are centered.
+T-Letter (new Mini-Blogs), Classic (every Mini-Blog made before themes), Newsprint, Minimal, Midnight. Settings → Look shows each theme as a preview, then header color, link color, button color, page background (the color around the content box) and logo size, with a live preview (`features/miniblog/look-editor.tsx`). Button color and page background are optional (`text_sites.button_color`, `page_bg`): empty means buttons use the link color and the page uses the theme's background. Footer text and links on the page switch to a readable light or dark color when the chosen colors would not show on that background. `features/miniblog/article.tsx` renders the page parts from CSS variables; the public pages, the Look preview and the post editor's live preview all use it, so previews match. "Use the brand look" sets the header and link colors, logo and logo size from the brand; the theme, button color and page background stay the Mini-Blog's own. Logos are centered.
 
 ## Posts (T-Letter fields)
 

@@ -50,7 +50,7 @@ export default async function MiniBlogPostPage({ params, searchParams }: { param
       <PostBody post={post} site={site} branding={branding} timeZone={timeZone} hrefs={hrefs} />
       <SubscribeCard site={site} base={base} />
       <p style={{ textAlign: "center", fontSize: 14 }}>
-        <a href={base || "/"} style={{ fontWeight: 600, textDecoration: "underline", color: "inherit" }}>
+        <a href={base || "/"} style={{ fontWeight: 600, textDecoration: "underline", color: "var(--mb-page-muted)" }}>
           ← All posts
         </a>
       </p>
