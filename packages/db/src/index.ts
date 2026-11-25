@@ -20,6 +20,7 @@ export {
 export {
   resetUserTwoFactor,
   revokeUserSessions,
+  setUserIdleTimeout,
   setPlatformStaffAccess,
   setUserDisabled,
   setUserPasswordHash,

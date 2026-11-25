@@ -15,8 +15,11 @@ import {
   saveUserProfile,
   saveUserStaff,
   setUserAccess,
+  setUserIdleTimeoutAction,
   signOutUserSessions,
 } from "@/server/platform-actions";
+import { userUsage } from "@/features/usage/stats";
+import { UserUsageSection } from "@/features/usage/user-section";
 
 const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -73,6 +76,7 @@ export default async function UserDetailPage({
     );
   const canDelete = platformCan(staff.role, PLATFORM_PERMISSIONS.deleteData);
   const deleteBlocked = canDelete && !user.deletedAt ? await userDeleteCheck(viewer.id, user.id) : null;
+  const usage = await userUsage(user.id, 30);
   return (
     <div className="space-y-4">
       <Flash error={query.error} notice={query.notice} />
@@ -109,6 +113,7 @@ export default async function UserDetailPage({
           saveStaff: saveUserStaff,
         }}
       />
+      <UserUsageSection userId={user.id} usage={usage} days={30} canEdit={platformCan(staff.role, PLATFORM_PERMISSIONS.manageUsers)} action={setUserIdleTimeoutAction} />
       {canDelete ? (
         <UserDeleteSection
           user={{ id: user.id, email: user.email, deleted: Boolean(user.deletedAt) }}

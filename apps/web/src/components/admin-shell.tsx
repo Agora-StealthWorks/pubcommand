@@ -17,8 +17,8 @@ const links: { href: string; label: string; permissions: string[]; superAdminOnl
   { href: "/brain/chat", label: "BrainChat", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
   { href: "/promo-studio", label: "Promo Analyzer", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
   { href: "/intel/videos", label: "VidRipper", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
-  { href: "/jobs", label: "Jobs", permissions: [PLATFORM_PERMISSIONS.manageJobs] },
-  { href: "/audit", label: "Audit", permissions: [PLATFORM_PERMISSIONS.viewAudit] },
+  // Usage holds the dashboard plus Activity, Audit and Jobs (tabs on the Usage page).
+  { href: "/usage", label: "Usage", permissions: [PLATFORM_PERMISSIONS.viewAudit, PLATFORM_PERMISSIONS.manageJobs] },
   { href: "/agents", label: "AI Agents", permissions: [PLATFORM_PERMISSIONS.manageStaff], superAdminOnly: true },
 ];
 
@@ -83,6 +83,7 @@ function isCurrent(pathname: string, href: string) {
   // BrainChat has its own entry; the Master Brain entry covers the rest of /brain.
   if (href === "/brain" && pathname.startsWith("/brain/chat")) return false;
   if (href === "/intel/videos") return pathname.startsWith("/intel");
+  if (href === "/usage") return pathname.startsWith("/usage") || pathname === "/audit" || pathname === "/jobs";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

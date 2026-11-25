@@ -65,6 +65,8 @@ Impersonation is a signed cookie plus a banner. It uses the target member's perm
 
 Lucia sessions. Magic link and optional password. SSO is an interface (`SsoHooks`) with no provider. The seeded super admin has no password.
 
+Sessions end after a period without activity: 12 hours by default, set per person in the console (Users → a person → Sign-ins and usage, `users.idle_timeout_minutes`). `readSession()` checks `sessions.last_active_at` and ends an idle session; every request counts as activity (written at most once a minute), and the in-app heartbeat counts only when the person touched the page. The 30-day Lucia expiry still caps a session. See `docs/USAGE.md`.
+
 ## AI
 
 `AnthropicProvider` matches a completion-shaped interface and does not call the network.

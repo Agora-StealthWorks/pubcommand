@@ -31,6 +31,9 @@ import { promoSheetsSync } from "./promo-sheets-sync";
 import { supportPlatformSync } from "./support-platform-sync";
 import { supportPubsetupSync } from "./support-pubsetup-sync";
 import { supportWebsiteSheet } from "./support-website-sheet";
+import { usageCapture } from "./usage-capture";
+import { usageCleanup } from "./usage-cleanup";
+import { usageInsights } from "./usage-insights";
 
 /**
  * Every scheduled job. Apps add theirs here (one import + one entry each).
@@ -71,4 +74,7 @@ export const JOBS: JobDefinition[] = [
   supportPlatformSync,
   supportPubsetupSync,
   supportWebsiteSheet,
+  usageCapture,
+  usageCleanup,
+  usageInsights,
 ];

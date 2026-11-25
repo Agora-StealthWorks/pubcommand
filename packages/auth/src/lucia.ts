@@ -19,11 +19,11 @@ export function createLucia(db: AuthDatabase) {
             id: row.id,
             userId: row.userId,
             expiresAt: row.expiresAt,
-            attributes: { mfaVerified: row.mfaVerified },
+            attributes: { mfaVerified: row.mfaVerified, lastActiveAt: row.lastActiveAt },
           },
           {
             id: row.user.id,
-            attributes: { email: row.user.email, name: row.user.name },
+            attributes: { email: row.user.email, name: row.user.name, idleTimeoutMinutes: row.user.idleTimeoutMinutes },
           },
         ];
       },
@@ -33,7 +33,7 @@ export function createLucia(db: AuthDatabase) {
           id: row.id,
           userId: row.userId,
           expiresAt: row.expiresAt,
-          attributes: { mfaVerified: row.mfaVerified },
+          attributes: { mfaVerified: row.mfaVerified, lastActiveAt: row.lastActiveAt },
         }));
       },
       async setSession(session) {
@@ -69,9 +69,11 @@ export function createLucia(db: AuthDatabase) {
       getUserAttributes: (attributes) => ({
         email: attributes.email,
         name: attributes.name,
+        idleTimeoutMinutes: attributes.idleTimeoutMinutes ?? null,
       }),
       getSessionAttributes: (attributes) => ({
         mfaVerified: attributes.mfaVerified,
+        lastActiveAt: attributes.lastActiveAt ?? null,
       }),
     },
   );
@@ -85,9 +87,13 @@ declare module "lucia" {
     DatabaseUserAttributes: {
       email: string;
       name: string | null;
+      /** Null = the default idle timeout (12 hours). */
+      idleTimeoutMinutes?: number | null;
     };
     DatabaseSessionAttributes: {
       mfaVerified: boolean;
+      /** Set by the database; absent on a session that is being created. */
+      lastActiveAt?: Date | null;
     };
   }
 }

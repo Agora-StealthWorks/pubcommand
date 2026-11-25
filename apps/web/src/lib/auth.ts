@@ -15,9 +15,10 @@ import {
   verifyPassword,
   type MagicLinkStore,
 } from "@pubcommand/auth";
-import { buildSiteUrl, isAgentEmail, platformCan, PLATFORM_PERMISSIONS, safeNextUrl } from "@pubcommand/core";
+import { buildSiteUrl, isAgentEmail, platformCan, PLATFORM_PERMISSIONS, safeNextUrl, sessionIdleExpired, sessionNeedsTouch } from "@pubcommand/core";
 import { activateInvitedMemberships, rawPrisma } from "@pubcommand/db";
 import { cookies } from "next/headers";
+import { recordLogin, type LoginMethod } from "@/features/usage/record";
 
 const lucia = createLucia(rawPrisma());
 
@@ -48,15 +49,32 @@ const magicLinks: MagicLinkStore = {
   },
 };
 
-export async function readSession() {
+/**
+ * The signed-in user and session, or nulls. A session that has been idle longer than the
+ * person's timeout (default 12 hours, set per user in the console) is ended here. Every
+ * request counts as activity (written at most once a minute) unless `touch` is false, which
+ * the usage heartbeat uses when the person has not touched the page.
+ */
+export async function readSession(options: { touch?: boolean } = {}) {
   const jar = await cookies();
   const sessionId = jar.get(SESSION_COOKIE)?.value ?? null;
   if (!sessionId) return { user: null, session: null };
   const auth = await lucia.validateSession(sessionId);
-  if (!auth.user) return auth;
+  if (!auth.user || !auth.session) return auth;
   const account = await rawPrisma().user.findUnique({ where: { id: auth.user.id }, select: { disabledAt: true, email: true } });
   // AI agents work only through the MCP server with their tokens, never with a browser session.
   if (account?.disabledAt || isAgentEmail(account?.email)) return { user: null, session: null };
+  const now = new Date();
+  const lastActiveAt = auth.session.lastActiveAt ?? now;
+  if (sessionIdleExpired(lastActiveAt, auth.user.idleTimeoutMinutes, now)) {
+    await lucia.invalidateSession(auth.session.id).catch(() => undefined);
+    return { user: null, session: null };
+  }
+  if (options.touch !== false && sessionNeedsTouch(lastActiveAt, now)) {
+    await rawPrisma()
+      .session.updateMany({ where: { id: auth.session.id, lastActiveAt: { lt: new Date(now.getTime() - 30_000) } }, data: { lastActiveAt: now } })
+      .catch(() => undefined);
+  }
   return auth;
 }
 
@@ -104,7 +122,7 @@ export function staffReady(
   return Boolean(staff.totpConfirmedAt) && session.mfaVerified;
 }
 
-export async function establishSession(userId: string) {
+export async function establishSession(userId: string, method: LoginMethod = "magic_link") {
   // AI agents never get a browser session (every sign-in route funnels through here).
   const account = await rawPrisma().user.findUnique({ where: { id: userId }, select: { email: true } });
   if (!account || isAgentEmail(account.email)) throw new Error("This account cannot sign in.");
@@ -112,6 +130,7 @@ export async function establishSession(userId: string) {
   await activateInvitedMemberships(userId);
   const mfaVerified = !staffTwoFactorRequired();
   const session = await lucia.createSession(userId, { mfaVerified });
+  await recordLogin(userId, method);
   const cookie = lucia.createSessionCookie(session.id);
   const jar = await cookies();
   jar.set(cookie.name, cookie.value, cookie.attributes);
