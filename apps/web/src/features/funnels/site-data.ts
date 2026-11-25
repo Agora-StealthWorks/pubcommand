@@ -140,6 +140,8 @@ export function funnelCheckInput(funnel: FunnelRow, days: DayRow[], navItems: Na
     closeRedirectUrl: funnel.closeRedirectUrl,
     progression: rules.progression,
     keyForceUnlock: funnel.keyForceUnlock,
+    lockPassedModules: funnel.lockPassedModules,
+    hidePassedModules: funnel.hidePassedModules,
     buildMode: funnel.buildMode === "prebuilt" ? "prebuilt" : "as_you_go",
     livestreamUrl: funnel.livestreamUrl,
     privacyUrl: themePrivacyUrl ?? funnel.privacyUrl,

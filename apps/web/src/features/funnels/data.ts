@@ -34,6 +34,7 @@ export function funnelRules(funnel: FunnelRow, timeZone?: string): FunnelRules {
   return {
     lockFirstModule: funnel.lockFirstModule && (funnel.progression === "scheduled" || funnel.progression === "url_key"),
     keyForceUnlock: funnel.keyForceUnlock,
+    lockPassedModules: funnel.lockPassedModules && funnel.progression !== "all_open",
     betweenSessions: pick(funnel.betweenSessions, BETWEEN_SESSIONS, "hybrid"),
     ...(timeZone ? { timeZone } : {}),
     mode: pick(funnel.mode, FUNNEL_MODES, "evergreen"),
