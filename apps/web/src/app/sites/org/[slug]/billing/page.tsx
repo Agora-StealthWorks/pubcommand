@@ -1,4 +1,4 @@
-import { can } from "@pubcommand/core";
+import { AGENT_EMAIL_DOMAIN, can } from "@pubcommand/core";
 import { rawPrisma, tenantDb, appendOrgAudit } from "@pubcommand/db";
 import { Button } from "@pubcommand/ui";
 import { notFound, redirect } from "next/navigation";
@@ -14,7 +14,9 @@ async function loadBilling(organizationId: string, includeCatalog: boolean) {
     include: { plan: { include: { modules: true } }, modules: true },
   });
   if (!organization) return null;
+  // AI agents never take a seat.
   const memberships = await db.membership.findMany({
+    where: { user: { email: { not: { endsWith: `@${AGENT_EMAIL_DOMAIN}` } } } },
     include: { user: true },
     orderBy: { createdAt: "asc" },
   });

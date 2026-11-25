@@ -1,4 +1,5 @@
 import { can, defaultMemberRoleId } from "@pubcommand/core";
+import { agentLabels } from "@/features/agents/data";
 import Link from "next/link";
 import { Button, Input } from "@pubcommand/ui";
 import { moduleRegistry } from "@pubcommand/modules";
@@ -26,6 +27,8 @@ export default async function UsersPage({
     tenantDb(ctx.resolved.id).role.findMany({ orderBy: { name: "asc" } }),
   ]);
   const permissions = moduleRegistry.all().flatMap((manifest) => manifest.permissions);
+  // AI agents are members too (role, app access, exclusions); they are labelled here and managed in AI Agents.
+  const agents = await agentLabels(ctx.resolved.id);
   return (
     <div>
       <PageHeader title="Users" description="Invites send a sign-in link; the first time they use it, they set their own password. New people start as User (read-only) unless you pick another role. Open someone to change their role, app access or password." />
@@ -47,8 +50,13 @@ export default async function UsersPage({
             <tr key={membership.id} className="border-t border-line">
               <td className="pc-break px-3 py-2">
                 <Link href={`/settings/users/${membership.userId}`} className="inline-flex min-h-11 items-center font-semibold text-accent">
-                  {membership.user.email}
+                  {agents.get(membership.userId)?.name ?? membership.user.email}
                 </Link>
+                {agents.has(membership.userId) ? (
+                  <span className="ml-2 inline-flex items-center rounded-full bg-[#dbe7ff] px-2 py-0.5 text-xs font-semibold text-[#1e3a8a]">
+                    AI agent · {agents.get(membership.userId)!.platformLabel} · {agents.get(membership.userId)!.ownerName}
+                  </span>
+                ) : null}
               </td>
               <td>{membership.role.name}</td>
               <td>{membership.status}</td>

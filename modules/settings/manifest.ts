@@ -28,6 +28,11 @@ export const manifest = defineModule({
     { key: "settings.modules.manage", description: "Turn the organization's apps on and off", access: "admin" },
     { key: "settings.audit.read", description: "See the activity log", access: "admin" },
     {
+      key: "agents.manage",
+      description: "Manage every AI agent (Claude, Grok, OpenAI), approve their posts, and allow or stop publishing by AI agents",
+      access: "admin",
+    },
+    {
       key: "domains.manage",
       description: "Buy domains (non-refundable charges), connect custom domains to public pages, and remove them",
       access: "admin",

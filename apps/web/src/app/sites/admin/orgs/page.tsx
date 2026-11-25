@@ -1,4 +1,4 @@
-import { PLATFORM_PERMISSIONS, platformCan } from "@pubcommand/core";
+import { AGENT_EMAIL_DOMAIN, PLATFORM_PERMISSIONS, platformCan } from "@pubcommand/core";
 import { rawPrisma } from "@pubcommand/db";
 import { OrganizationsList, type OrganizationListItem } from "@/components/organizations-console";
 import Link from "next/link";
@@ -15,7 +15,7 @@ export default async function OrgsPage({ searchParams }: { searchParams: Promise
     where: { deletedAt: showDeleted ? { not: null } : null },
     include: {
       plan: true,
-      memberships: { select: { status: true } },
+      memberships: { select: { status: true }, where: { user: { email: { not: { endsWith: `@${AGENT_EMAIL_DOMAIN}` } } } } },
       _count: { select: { brands: true, workspaces: true } },
     },
     orderBy: { name: "asc" },

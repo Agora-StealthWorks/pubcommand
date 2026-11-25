@@ -3,6 +3,7 @@ import Link from "next/link";
 import { contentTypeLabel, CONTENT_TYPES, ACCESS_LEVELS } from "../../../../../modules/websites/content";
 import { TableScroll } from "@/components/table-scroll";
 import { trashPost } from "./actions";
+import { agentLabels } from "../agents/data";
 import { AccessBadge, PostStatusBadge, PubChip, formatDate } from "./admin-ui";
 import { orgTimezone, postWhere, sitePublications, siteTerms, statusCounts, type SiteRow } from "./data";
 
@@ -28,19 +29,20 @@ export async function PostList({ organizationId, brandId, site, kind, query, can
   const page = Math.max(1, Number(query.page) || 1);
   const db = tenantDb(organizationId);
   const where = postWhere(site.id, filters, now);
-  const [posts, total, counts, pubs, terms, timeZone] = await Promise.all([
+  const [posts, total, counts, pubs, terms, timeZone, agents] = await Promise.all([
     db.webPost.findMany({
       where,
       orderBy: [{ publishedAt: { sort: "desc", nulls: "first" } }, { updatedAt: "desc" }],
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
-      select: { id: true, title: true, slug: true, status: true, publishedAt: true, deletedAt: true, publicationId: true, contentType: true, access: true, authorName: true, updatedAt: true, featuredAssetId: true, terms: { select: { term: { select: { name: true, kind: true } } } } },
+      select: { id: true, title: true, slug: true, status: true, publishedAt: true, deletedAt: true, publicationId: true, contentType: true, access: true, authorName: true, createdById: true, updatedAt: true, featuredAssetId: true, terms: { select: { term: { select: { name: true, kind: true } } } } },
     }),
     db.webPost.count({ where }),
     statusCounts(organizationId, site.id, kind, now),
     sitePublications(organizationId, brandId),
     siteTerms(organizationId, site.id),
     orgTimezone(organizationId),
+    agentLabels(organizationId),
   ]);
   const pubById = new Map(pubs.all.map((pub) => [pub.id, pub]));
   const link = (patch: Partial<ListQuery>) => {
@@ -175,7 +177,15 @@ export async function PostList({ organizationId, brandId, site, kind, query, can
                   <td className="px-3 py-3">
                     <AccessBadge access={post.access} />
                   </td>
-                  <td className="px-3 py-3">{post.authorName || <span className="text-muted">—</span>}</td>
+                  <td className="px-3 py-3">
+                    {post.authorName || <span className="text-muted">—</span>}
+                    {/* Internal only: which posts an AI agent wrote. */}
+                    {post.createdById && agents.has(post.createdById) ? (
+                      <span className="ml-1 inline-flex items-center whitespace-nowrap rounded-full bg-[#dbe7ff] px-2 py-0.5 text-xs font-semibold text-[#1e3a8a]" title={agents.get(post.createdById)!.name}>
+                        AI · {agents.get(post.createdById)!.platformLabel}
+                      </span>
+                    ) : null}
+                  </td>
                   {kind === "post" ? (
                     <td className="max-w-[200px] px-3 py-3 text-xs text-muted">
                       {post.terms

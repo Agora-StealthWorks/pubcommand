@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import {
+  AGENT_EMAIL_DOMAIN,
   defaultOrganizationPlaces,
   firstAdminMembershipStatus,
   organizationAdminRoleGrants,
@@ -53,9 +54,10 @@ function rethrow(error: unknown, fallback: string): never {
   throw new Error(fallback);
 }
 
+/** People holding a seat. AI agents (AI Agents) never take one. */
 async function occupyingSeats(tx: Prisma.TransactionClient, organizationId: string) {
   return tx.membership.count({
-    where: { organizationId, status: { in: ["ACTIVE", "INVITED"] } },
+    where: { organizationId, status: { in: ["ACTIVE", "INVITED"] }, user: { email: { not: { endsWith: `@${AGENT_EMAIL_DOMAIN}` } } } },
   });
 }
 

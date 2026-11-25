@@ -3,6 +3,7 @@ import { MiniBlogRichText } from "@/features/miniblog/rich-text";
 import { tenantDb } from "@pubcommand/db";
 import { Badge, Button, Input } from "@pubcommand/ui";
 import Link from "next/link";
+import { agentLabels } from "@/features/agents/data";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { TableScroll } from "@/components/table-scroll";
@@ -32,13 +33,14 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
   if (!site) notFound();
   const db = tenantDb(ctx.resolved.id);
   const tab = query.tab === "settings" || query.tab === "subscribers" ? query.tab : "posts";
-  const [timeZone, posts, optinCount, recentOptins, publications, clicks] = await Promise.all([
+  const [timeZone, posts, optinCount, recentOptins, publications, clicks, agents] = await Promise.all([
     orgTimezone(ctx.resolved.id),
     db.textPost.findMany({ where: { siteId: site.id, deletedAt: null }, orderBy: { publishAt: "desc" }, take: 200 }),
     db.textOptin.count({ where: { siteId: site.id } }),
     tab === "subscribers" ? db.textOptin.findMany({ where: { siteId: site.id }, orderBy: { createdAt: "desc" }, take: 20, select: { id: true, phone: true, createdAt: true } }) : [],
     ctx.subject.entitledModuleIds.includes("editorial") ? db.calendarPublication.findMany({ where: { brandId: ctx.brand.id, active: true }, orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }) : [],
     tab === "posts" ? clickTotals(ctx.resolved.id, site.id) : new Map<string, number>(),
+    agentLabels(ctx.resolved.id),
   ]);
   const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug));
   const badge = statusBadge(site.status);
@@ -102,6 +104,17 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                             /b/{site.slug}/{post.slug}
                             {post.calendarIssueId ? " · on the Calendar" : ""}
                           </span>
+                          {/* Internal only: posts an AI agent wrote, and posts waiting in AI Agents → Approvals. */}
+                          {post.createdById && agents.has(post.createdById) ? (
+                            <span className="mt-1 inline-flex items-center rounded-full bg-[#dbe7ff] px-2 py-0.5 text-xs font-semibold text-[#1e3a8a]" title={agents.get(post.createdById)!.name}>
+                              AI · {agents.get(post.createdById)!.platformLabel}
+                            </span>
+                          ) : null}
+                          {post.status === "pending" ? (
+                            <Link href="/agents/approvals" className="ml-1 mt-1 inline-flex items-center rounded-full bg-[#fef0c7] px-2 py-0.5 text-xs font-semibold text-[#b54708]">
+                              Waiting for approval
+                            </Link>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">
                           <Badge tone={state.tone}>{state.label}</Badge>

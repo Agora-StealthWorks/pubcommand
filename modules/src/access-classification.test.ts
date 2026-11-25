@@ -12,7 +12,7 @@ const READ = [
   "performance.read", "promo.read", "research.read", "support.read", "testimonials.read", "websites.read", "wiki.read",
 ];
 const ADMIN = [
-  "domains.manage", "miniblog.manage", "pubsetup.manage", "settings.audit.read", "settings.manage", "settings.modules.manage", "settings.roles.manage", "settings.users.manage", "websites.settings",
+  "agents.manage", "domains.manage", "miniblog.manage", "pubsetup.manage", "settings.audit.read", "settings.manage", "settings.modules.manage", "settings.roles.manage", "settings.users.manage", "websites.settings",
 ];
 
 describe("permission classification of the real manifests", () => {

@@ -144,3 +144,15 @@ export {
   type EmailRoute,
   type SenderFields,
 } from "./email-sending";
+export {
+  AGENT_EMAIL_DOMAIN,
+  AGENT_PLATFORMS,
+  agentEmail,
+  agentPlatformLabel,
+  agentPublishOutcome,
+  defaultAgentName,
+  isAgentEmail,
+  isAgentPlatform,
+  platformFromClientName,
+  type AgentPlatform,
+} from "./agents";

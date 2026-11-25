@@ -70,6 +70,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
+  // OAuth discovery for AI agent connectors (MCP server at /api/mcp on organization hosts).
+  const discoveryPath =
+    site.kind !== "org"
+      ? null
+      : pathname === "/.well-known/oauth-protected-resource" || pathname.startsWith("/.well-known/oauth-protected-resource/")
+        ? "/api/oauth/protected-resource"
+        : pathname === "/.well-known/oauth-authorization-server" || pathname.startsWith("/.well-known/oauth-authorization-server/") || pathname === "/.well-known/openid-configuration"
+          ? "/api/oauth/metadata"
+          : null;
+  if (discoveryPath) {
+    const discovery = request.nextUrl.clone();
+    discovery.pathname = discoveryPath;
+    return NextResponse.rewrite(discovery, { request: { headers: requestHeaders } });
+  }
+
   const url = request.nextUrl.clone();
   const suffix = pathname === "/" ? "" : pathname;
   // Sign-in pages work on every host (org, app, admin): /login and the "Forgot your password?" reset page.
