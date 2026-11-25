@@ -1,6 +1,6 @@
 # PubCommand
 
-Multi-tenant publishing command hub for One Nation Financial. This repository is Phase 1: the foundation. Product modules are manifests and empty routes. Knowledge, editorial, promo, forms, and the rest are not implemented yet.
+Multi-tenant publishing command hub for Agora StealthWorks. This repository is Phase 1: the foundation. Product modules are manifests and empty routes. Knowledge, editorial, promo, forms, and the rest are not implemented yet.
 
 Owner: Stephen Prior. The seeded super admin is `Stephen@onenationfinancial.com`. The account has no password. The first login is a magic link, then staff must enroll an authenticator before the platform console opens.
 
