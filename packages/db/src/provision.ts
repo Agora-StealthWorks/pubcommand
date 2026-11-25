@@ -453,3 +453,59 @@ export async function activateInvitedMemberships(userId: string): Promise<string
   }
   return pending.map((row) => row.organizationId);
 }
+
+export type SelfRegistration =
+  | { ok: true; userId: string; joined: "new-account" | "existing-account" | "already-member" }
+  | { ok: false; reason: "closed" | "no-seats" | "disabled-account" };
+
+/**
+ * Someone signs up on an organization's public registration page (<org>.<root>/register).
+ * Only when the organization turned registration on. A new account (with its password hash) is
+ * created, or an existing one (password already checked by the caller) is used, and the person
+ * joins as the built-in basic "User" role, ACTIVE, within the seat limit. Never changes the role
+ * of someone who is already a member.
+ */
+export async function registerOrganizationMember(input: {
+  organizationId: string;
+  email: string;
+  name: string | null;
+  /** For a new account. */
+  passwordHash: string | null;
+  /** An existing account whose password the caller verified. */
+  existingUserId: string | null;
+}): Promise<SelfRegistration> {
+  const email = parseEmailAddress(input.email);
+  if (!email) throw new Error("Enter an email address.");
+  return rawPrisma().$transaction(async (tx) => {
+    const organization = await tx.organization.findUnique({ where: { id: input.organizationId }, include: { settings: true } });
+    if (!organization || organization.deletedAt || organization.suspendedAt || !organization.settings?.registrationEnabled) return { ok: false, reason: "closed" } as const;
+    let user = input.existingUserId ? await tx.user.findUnique({ where: { id: input.existingUserId } }) : null;
+    if (user && (user.disabledAt || user.deletedAt)) return { ok: false, reason: "disabled-account" } as const;
+    const membership = user ? await tx.membership.findUnique({ where: { organizationId_userId: { organizationId: organization.id, userId: user.id } } }) : null;
+    if (membership?.status === "ACTIVE") return { ok: true, userId: user!.id, joined: "already-member" } as const;
+    if (membership?.status === "DISABLED") return { ok: false, reason: "disabled-account" } as const;
+    if (!membership && (await occupyingSeats(tx, organization.id)) >= organization.seatLimit) return { ok: false, reason: "no-seats" } as const;
+    if (!user) {
+      if (!input.passwordHash) throw new Error("Choose a password.");
+      user = await tx.user.create({ data: { email, name: input.name, passwordHash: input.passwordHash } });
+    }
+    await ensureBuiltInMemberRoles(tx, organization.id);
+    const basic = await tx.role.findUnique({ where: { organizationId_slug: { organizationId: organization.id, slug: "user" } } });
+    if (!basic) throw new Error("Could not find the User role.");
+    if (membership) {
+      // An open invite: accept it with the role it was sent with.
+      await tx.membership.update({ where: { id: membership.id }, data: { status: "ACTIVE" } });
+    } else {
+      await tx.membership.create({ data: { organizationId: organization.id, userId: user.id, roleId: basic.id, status: "ACTIVE" } });
+    }
+    await writeAudits(tx, {
+      organizationId: organization.id,
+      actorId: user.id,
+      action: "org.member.registered",
+      targetType: "user",
+      targetId: user.id,
+      metadata: { email: user.email, role: membership ? "invited" : "user", via: "registration-page" },
+    });
+    return { ok: true, userId: user.id, joined: input.existingUserId ? "existing-account" : "new-account" } as const;
+  });
+}

@@ -12,6 +12,8 @@ export {
   assignOrganizationPlan,
   changeOrganizationMemberRole,
   provisionOrganization,
+  registerOrganizationMember,
+  type SelfRegistration,
   removeOrganizationMember,
   setOrganizationSuspended,
 } from "./provision";

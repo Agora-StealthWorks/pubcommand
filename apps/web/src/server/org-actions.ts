@@ -268,6 +268,18 @@ export async function deleteBrand(formData: FormData) {
   redirect(`/settings/brands?notice=${encodeURIComponent(`${brand.name} removed, with all of its app data.`)}`);
 }
 
+/** Settings → Users → Registration page: open or close <org>.<root>/register. */
+export async function setRegistration(formData: FormData) {
+  const ctx = await orgMutation("settings.users.manage");
+  const enabled = String(formData.get("enabled") ?? "") === "1";
+  const updated = await tenantDb(ctx.resolved.id).orgSettings.updateMany({ data: { registrationEnabled: enabled } });
+  if (updated.count === 0) {
+    await tenantDb(ctx.resolved.id).orgSettings.create({ data: { organizationId: ctx.resolved.id, displayName: ctx.resolved.name, registrationEnabled: enabled } });
+  }
+  await audit(ctx, "org.registration.changed", "organization", ctx.resolved.id, { enabled: String(enabled) });
+  redirect(`/settings/users?notice=${encodeURIComponent(enabled ? "Registration page is open. New people join as User (read-only)." : "Registration page is closed.")}`);
+}
+
 // ── Member profile: role and per-app access (Settings → Users → member) ─────────
 
 function memberHref(userId: string): string {
