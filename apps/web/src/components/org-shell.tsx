@@ -37,8 +37,8 @@ export function OrgShell({
   email: string;
   impersonating: { targetEmail: string } | null;
   switcher: SwitcherModel;
-  /** Brand id → logo URL, for brands that uploaded one. */
-  brandLogos?: Record<string, string>;
+  /** Brand id → logo URL (and a tile color when the logo is made for dark backgrounds), for brands that uploaded one. */
+  brandLogos?: Record<string, { src: string; background: string | null }>;
   children: React.ReactNode;
 }) {
   const scope = { organizationId: organization.id, brandId: subject.membershipBrandId ?? brand?.id ?? null };
@@ -67,7 +67,9 @@ export function OrgShell({
           {/* Second line: the brand's logo on the left (40% of the box), its name or picker beside it. */}
           <div className="flex min-w-0 items-center gap-2">
             {brand && brandLogos[brand.id] ? (
-              <img src={brandLogos[brand.id]} alt={`${brand.name} logo`} className="h-auto max-h-12 w-[40%] shrink-0 object-contain object-left px-1" />
+              <span className="flex w-[40%] shrink-0 items-center rounded px-1 py-1" style={brandLogos[brand.id]!.background ? { background: brandLogos[brand.id]!.background! } : undefined}>
+                <img src={brandLogos[brand.id]!.src} alt={`${brand.name} logo`} className="h-auto max-h-10 w-full object-contain object-left" />
+              </span>
             ) : null}
             <div className="min-w-0 flex-1">
               <BrandSwitcher brands={brands} current={brand?.id ?? null} />

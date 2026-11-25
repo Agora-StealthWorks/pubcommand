@@ -70,10 +70,16 @@ export default async function OrgLayout({
     // Brands with a logo (Settings → Brands → Brand defaults), shown in the sidebar.
     tenantDb(ctx.resolved.id).pubBrandBranding.findMany({
       where: { OR: [{ logoMime: { not: null } }, { logoOnDarkMime: { not: null } }] },
-      select: { brandId: true, updatedAt: true },
+      select: { brandId: true, updatedAt: true, logoMime: true, primaryColor: true },
     }),
   ]);
-  const brandLogos = Object.fromEntries(logos.map((row) => [row.brandId, `/brand-logo/${row.brandId}?v=${row.updatedAt.getTime()}`]));
+  // Only a logo for dark backgrounds (light artwork): the sidebar shows it on the brand's header color.
+  const brandLogos = Object.fromEntries(
+    logos.map((row) => [
+      row.brandId,
+      { src: `/brand-logo/${row.brandId}?v=${row.updatedAt.getTime()}`, background: row.logoMime ? null : /^#[0-9a-f]{6}$/i.test(row.primaryColor ?? "") ? row.primaryColor! : "#1f2a44" },
+    ]),
+  );
   return (
     <OrgShell
       organization={ctx.resolved}

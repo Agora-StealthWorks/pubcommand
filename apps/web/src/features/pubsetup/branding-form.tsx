@@ -103,6 +103,13 @@ export function BrandingForm(props: {
                           <option key={font}>{font}</option>
                         ))}
                       </select>
+                    ) : def.kind === "select" ? (
+                      <select id={id} name={def.key} value={off ? "" : own[def.key]} onChange={(e) => { setOwn((o) => ({ ...o, [def.key]: e.target.value })); setUseDefault((u) => ({ ...u, [def.key]: !e.target.value })); }} className="pc-control w-full">
+                        <option value="">{`Use ${inherited?.from ?? "default"}: ${inherited?.value ?? ""}`}</option>
+                        {(def.options ?? []).map((option) => (
+                          <option key={option}>{option}</option>
+                        ))}
+                      </select>
                     ) : def.kind === "textarea" ? (
                       <Textarea id={id} name={def.key} rows={def.rows ?? 3} maxLength={def.max} value={own[def.key]} placeholder={inherited?.value ? `${inherited.from}: ${inherited.value}` : ""} onChange={(e) => { setOwn((o) => ({ ...o, [def.key]: e.target.value })); setUseDefault((u) => ({ ...u, [def.key]: !e.target.value })); }} />
                     ) : (
