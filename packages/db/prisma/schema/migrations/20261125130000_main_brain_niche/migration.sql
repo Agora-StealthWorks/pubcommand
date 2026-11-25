@@ -3,6 +3,10 @@ ALTER TABLE "main_brain_notes" ADD COLUMN "niche" TEXT NOT NULL DEFAULT 'general
 CREATE INDEX "main_brain_notes_niche_idx" ON "main_brain_notes"("niche");
 ALTER TABLE "main_brain_imports" ADD COLUMN "niche" TEXT NOT NULL DEFAULT 'general';
 
+-- Every note that exists today is finance knowledge (the platform's vaults so far are finance).
+-- New notes default to general; the updates below keep a note's own brand or frontmatter niche.
+UPDATE "main_brain_notes" SET "niche" = 'finance';
+
 -- Existing notes take the niche of the brand they came from.
 UPDATE "main_brain_notes" n
 SET "niche" = b."niche"
