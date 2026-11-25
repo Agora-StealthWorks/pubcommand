@@ -24,6 +24,7 @@ import type { EndRule, FieldDef } from "../../../../../modules/forms/types";
 import { UUID_RE, asLayout, loadForm } from "./data";
 import { mirrorResponse } from "./mirror";
 import { runFormSummary } from "./server";
+import { brandLook } from "../pubsetup/brand-look";
 
 type Permission = "forms.read" | "forms.write" | "forms.export";
 
@@ -101,6 +102,33 @@ async function writeFields(organizationId: string, formId: string, fields: Field
   }
 }
 
+/**
+ * The brand's first form gets a default theme in the brand's look (logo, header and button
+ * colors from Settings → Brands). It is an ordinary theme: edit it in Forms → Themes.
+ */
+async function createBrandTheme(ctx: Ctx): Promise<string> {
+  const db = tenantDb(ctx.resolved.id);
+  const look = await brandLook(ctx.resolved.id, ctx.brand, { headerColor: "#0b1220", accentColor: "#1d4ed8" });
+  const logo = look.logo && look.logo.data.length <= MAX_LOGO_BYTES
+    ? await db.formFile.create({ data: { organizationId: ctx.resolved.id, kind: "logo", filename: look.logo.filename.slice(0, 200), mimeType: look.logo.mime, size: look.logo.data.length, data: look.logo.data } })
+    : null;
+  const theme = await db.formTheme.create({
+    data: {
+      organizationId: ctx.resolved.id,
+      brandId: ctx.brand.id,
+      name: `${ctx.brand.name} default`.slice(0, 120),
+      barColor: look.headerColor,
+      accentColor: look.accentColor,
+      companyName: look.companyName,
+      logoFileId: logo?.id ?? null,
+      privacyPolicyUrl: "",
+      isDefault: true,
+    },
+  });
+  await audit(ctx, "forms.theme.created", "form_theme", theme.id);
+  return theme.id;
+}
+
 export async function createForm(formData: FormData) {
   const ctx = await formsContext("forms.write");
   const db = tenantDb(ctx.resolved.id);
@@ -108,7 +136,7 @@ export async function createForm(formData: FormData) {
   const folderIdRaw = text(formData, "folderId", 40);
   const folder = UUID_RE.test(folderIdRaw) ? await db.formFolder.findFirst({ where: { id: folderIdRaw, brandId: ctx.brand.id } }) : null;
   const themes = await db.formTheme.findMany({ where: { brandId: ctx.brand.id, deletedAt: null }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }], select: { id: true } });
-  const themeId = folder?.defaultThemeId ?? themes[0]?.id ?? null;
+  const themeId = folder?.defaultThemeId ?? themes[0]?.id ?? (await createBrandTheme(ctx));
   const form = await db.form.create({
     data: {
       organizationId: ctx.resolved.id,
@@ -295,7 +323,7 @@ export async function duplicateForm(formData: FormData) {
 
 // Themes -----------------------------------------------------------------
 
-const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"]);
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
 export async function saveTheme(formData: FormData) {
@@ -326,7 +354,7 @@ export async function saveTheme(formData: FormData) {
   const file = formData.get("logo");
   let logoFileId: string | null | undefined;
   if (file instanceof File && file.size > 0) {
-    if (!LOGO_TYPES.has(file.type)) redirect(back("error=Upload the logo as PNG, JPG, WebP or GIF."));
+    if (!LOGO_TYPES.has(file.type)) redirect(back("error=Upload the logo as PNG, JPG, WebP, GIF or SVG."));
     if (file.size > MAX_LOGO_BYTES) redirect(back("error=Logos must be under 2 MB."));
     const stored = await db.formFile.create({
       data: { organizationId: ctx.resolved.id, kind: "logo", filename: file.name.slice(0, 200), mimeType: file.type, size: file.size, data: new Uint8Array(await file.arrayBuffer()) },

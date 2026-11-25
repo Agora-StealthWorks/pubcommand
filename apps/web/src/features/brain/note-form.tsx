@@ -1,3 +1,4 @@
+import { NICHE_LABELS, NICHES } from "@pubcommand/core";
 import { Button, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 
@@ -8,12 +9,15 @@ export function NoteForm({
   note,
   folder,
   targetLabel,
+  niche,
 }: {
   action: (formData: FormData) => Promise<void>;
   cancelHref: string;
   note?: { id: string; title: string; body: string; folder: string | null };
   folder?: string | null;
   targetLabel: string;
+  /** Master Brain only: show the niche picker with this value. */
+  niche?: string;
 }) {
   return (
     <form action={action} className="space-y-4 rounded-xl border border-line bg-white p-5">
@@ -30,6 +34,19 @@ export function NoteForm({
         <Label htmlFor="note-folder">Folder</Label>
         <Input id="note-folder" name="folder" maxLength={300} defaultValue={note?.folder ?? folder ?? ""} placeholder="e.g. Copy/Headlines (blank = top level)" />
       </div>
+      {niche !== undefined ? (
+        <div>
+          <Label htmlFor="note-niche">Niche</Label>
+          <select id="note-niche" name="niche" defaultValue={niche} className="pc-control mt-1 w-full">
+            {NICHES.map((value) => (
+              <option key={value} value={value}>
+                {value === "general" ? "General: every niche" : `${NICHE_LABELS[value]} only`}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted">Finance and health notes only reach brands of the same niche. Saved into the note&apos;s markdown as a <code>niche:</code> line.</p>
+        </div>
+      ) : null}
       <div>
         <Label htmlFor="note-body">Markdown</Label>
         <Textarea id="note-body" name="body" required rows={18} defaultValue={note?.body ?? ""} className="font-mono text-sm" />

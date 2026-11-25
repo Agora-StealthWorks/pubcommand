@@ -1,3 +1,4 @@
+import { isNiche, NICHE_LABELS, NICHES } from "@pubcommand/core";
 import { Button, Input } from "@pubcommand/ui";
 import Link from "next/link";
 import { Denied, Flash, PageHeader } from "@/components/ui";
@@ -8,7 +9,7 @@ import { brainStaff } from "@/features/main-brain/staff";
 import { buildFolderTree, normalizeFolder } from "../../../../../../../modules/knowledge/folders";
 import { sourceLabel } from "../../../../../../../modules/knowledge/visibility";
 
-type Query = { q?: string; folder?: string; org?: string; brand?: string; app?: string; origin?: string; pushed?: string; error?: string; notice?: string };
+type Query = { q?: string; folder?: string; org?: string; brand?: string; app?: string; origin?: string; pushed?: string; niche?: string; error?: string; notice?: string };
 
 const ORIGINS = ["LEARNED", "IMPORTED", "AUTHORED", "MIGRATED"] as const;
 
@@ -34,9 +35,9 @@ export default async function MainBrainHome({ searchParams }: { searchParams: Pr
   const q = (query.q ?? "").trim().slice(0, 300);
   const folder = normalizeFolder(query.folder);
   const origin = (ORIGINS as readonly string[]).includes(query.origin ?? "") ? (query.origin as MainFilter["origin"]) : null;
-  const filter: MainFilter = { folder, organizationId: query.org ?? null, brandId: query.brand ?? null, source: query.app ?? null, origin, pushed: query.pushed === "1" };
-  const filtered = Boolean(folder || query.org || query.brand || query.app || origin || filter.pushed);
-  const [stats, names, provenance, counts] = await Promise.all([mainStats(), provenanceNames(), provenanceCounts(), mainFolderCounts({ organizationId: filter.organizationId, brandId: filter.brandId, source: filter.source, origin: filter.origin, pushed: filter.pushed })]);
+  const filter: MainFilter = { folder, organizationId: query.org ?? null, brandId: query.brand ?? null, source: query.app ?? null, origin, pushed: query.pushed === "1", niche: isNiche(query.niche) ? query.niche : null };
+  const filtered = Boolean(folder || query.org || query.brand || query.app || origin || filter.pushed || filter.niche);
+  const [stats, names, provenance, counts] = await Promise.all([mainStats(), provenanceNames(), provenanceCounts(), mainFolderCounts({ organizationId: filter.organizationId, brandId: filter.brandId, source: filter.source, origin: filter.origin, pushed: filter.pushed, niche: filter.niche })]);
   const hits = q ? await searchMainNotes({ query: q, filter, limit: 60 }) : [];
   const notes = q ? hits : await listMainNotes(filter, { take: filtered ? 300 : 40, orderBy: folder ? "title" : "updated" });
   const tree = buildFolderTree(counts);
@@ -94,6 +95,14 @@ export default async function MainBrainHome({ searchParams }: { searchParams: Pr
             {stats.sources.map((row) => (
               <option key={row.source} value={row.source}>
                 {sourceLabel(row.source)} ({row.count})
+              </option>
+            ))}
+          </select>
+          <select name="niche" defaultValue={filter.niche ?? ""} className="pc-control" aria-label="Niche">
+            <option value="">Every niche</option>
+            {NICHES.map((value) => (
+              <option key={value} value={value}>
+                {value === "general" ? "General (every niche)" : NICHE_LABELS[value]}
               </option>
             ))}
           </select>

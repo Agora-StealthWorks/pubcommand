@@ -103,6 +103,8 @@ export async function middleware(request: NextRequest) {
   else if (site.kind === "admin") url.pathname = `/sites/admin${suffix}`;
   // Public pages on an org host work without sign-in, so they live outside the org
   // layout that sends anonymous visitors to the login page.
+  // /register is an organization's public sign-up page (off unless the org turns it on).
+  else if (pathname === "/register") url.pathname = `/sites/public/${site.slug}/register`;
   // /p/... are token-gated pages (e.g. CUB review links) → /sites/public/<slug>/...
   else if (pathname === "/p" || pathname.startsWith("/p/")) url.pathname = `/sites/public/${site.slug}${pathname.slice(2)}`;
   // /f/<form> and /embed/<form> are public form links.

@@ -2,6 +2,8 @@ import { Prisma } from "@prisma/client";
 import {
   AGENT_EMAIL_DOMAIN,
   defaultOrganizationPlaces,
+  isAlwaysOnModule,
+  isNiche,
   firstAdminMembershipStatus,
   organizationAdminRoleGrants,
   parseEmailAddress,
@@ -9,6 +11,7 @@ import {
 } from "@pubcommand/core";
 import { rawPrisma } from "./client";
 import { slugAvailability } from "./platform";
+import { readDefaultAppIds } from "./platform-settings";
 import { ensureBuiltInMemberRoles, ensureOwnerPermissions } from "./roles";
 
 type AuditInput = {
@@ -78,6 +81,10 @@ export async function provisionOrganization(input: {
   actorId: string;
   actorEmail: string;
   permissionKeys: readonly string[];
+  /** The first brand's niche (finance, health, general). Picks the niche's default apps. */
+  niche?: string | null;
+  /** Every app id in the catalog. With a saved default-apps setting, apps outside it start switched off. */
+  catalogModuleIds?: readonly string[];
 }): Promise<ProvisionedOrganization> {
   const draft = validateOrganizationDraft(input);
   if (!draft.ok) throw new Error(draft.message);
@@ -88,6 +95,7 @@ export async function provisionOrganization(input: {
     throw new Error("Use 3-40 lowercase letters, numbers, or hyphens.");
   }
   const status = firstAdminMembershipStatus(draft.adminEmail, input.actorEmail);
+  const niche = isNiche(input.niche) ? input.niche : "general";
   try {
     return await rawPrisma().$transaction(async (tx) => {
       const plan = await tx.plan.findUnique({ where: { id: draft.planId }, include: { modules: true } });
@@ -115,7 +123,7 @@ export async function provisionOrganization(input: {
         },
       });
       const brand = await tx.brand.create({
-        data: { organizationId: organization.id, name: places.brand.name, slug: places.brand.slug },
+        data: { organizationId: organization.id, name: places.brand.name, slug: places.brand.slug, niche },
       });
       await tx.workspace.create({
         data: {
@@ -127,8 +135,14 @@ export async function provisionOrganization(input: {
       });
       const moduleIds = new Set(plan.modules.map((row) => row.moduleId));
       moduleIds.add("settings");
+      // Admin → Plans → Default apps: apps outside the list start switched off (the org can turn
+      // them on if its plan allows). Writing an "off" row for every catalog app also keeps them
+      // off for the super admin, who otherwise sees every app.
+      const defaults = await readDefaultAppIds(tx, niche);
+      if (defaults) for (const moduleId of input.catalogModuleIds ?? []) moduleIds.add(moduleId);
+      const defaultOn = defaults ? new Set([...defaults, "settings"]) : null;
       await tx.organizationModule.createMany({
-        data: [...moduleIds].map((moduleId) => ({ organizationId: organization.id, moduleId, enabled: true })),
+        data: [...moduleIds].map((moduleId) => ({ organizationId: organization.id, moduleId, enabled: defaultOn ? defaultOn.has(moduleId) || isAlwaysOnModule(moduleId) : true })),
       });
       const roles = new Map<string, string>();
       for (const role of organizationAdminRoleGrants(input.permissionKeys)) {
@@ -440,4 +454,60 @@ export async function activateInvitedMemberships(userId: string): Promise<string
     });
   }
   return pending.map((row) => row.organizationId);
+}
+
+export type SelfRegistration =
+  | { ok: true; userId: string; joined: "new-account" | "existing-account" | "already-member" }
+  | { ok: false; reason: "closed" | "no-seats" | "disabled-account" };
+
+/**
+ * Someone signs up on an organization's public registration page (<org>.<root>/register).
+ * Only when the organization turned registration on. A new account (with its password hash) is
+ * created, or an existing one (password already checked by the caller) is used, and the person
+ * joins as the built-in basic "User" role, ACTIVE, within the seat limit. Never changes the role
+ * of someone who is already a member.
+ */
+export async function registerOrganizationMember(input: {
+  organizationId: string;
+  email: string;
+  name: string | null;
+  /** For a new account. */
+  passwordHash: string | null;
+  /** An existing account whose password the caller verified. */
+  existingUserId: string | null;
+}): Promise<SelfRegistration> {
+  const email = parseEmailAddress(input.email);
+  if (!email) throw new Error("Enter an email address.");
+  return rawPrisma().$transaction(async (tx) => {
+    const organization = await tx.organization.findUnique({ where: { id: input.organizationId }, include: { settings: true } });
+    if (!organization || organization.deletedAt || organization.suspendedAt || !organization.settings?.registrationEnabled) return { ok: false, reason: "closed" } as const;
+    let user = input.existingUserId ? await tx.user.findUnique({ where: { id: input.existingUserId } }) : null;
+    if (user && (user.disabledAt || user.deletedAt)) return { ok: false, reason: "disabled-account" } as const;
+    const membership = user ? await tx.membership.findUnique({ where: { organizationId_userId: { organizationId: organization.id, userId: user.id } } }) : null;
+    if (membership?.status === "ACTIVE") return { ok: true, userId: user!.id, joined: "already-member" } as const;
+    if (membership?.status === "DISABLED") return { ok: false, reason: "disabled-account" } as const;
+    if (!membership && (await occupyingSeats(tx, organization.id)) >= organization.seatLimit) return { ok: false, reason: "no-seats" } as const;
+    if (!user) {
+      if (!input.passwordHash) throw new Error("Choose a password.");
+      user = await tx.user.create({ data: { email, name: input.name, passwordHash: input.passwordHash } });
+    }
+    await ensureBuiltInMemberRoles(tx, organization.id);
+    const basic = await tx.role.findUnique({ where: { organizationId_slug: { organizationId: organization.id, slug: "user" } } });
+    if (!basic) throw new Error("Could not find the User role.");
+    if (membership) {
+      // An open invite: accept it with the role it was sent with.
+      await tx.membership.update({ where: { id: membership.id }, data: { status: "ACTIVE" } });
+    } else {
+      await tx.membership.create({ data: { organizationId: organization.id, userId: user.id, roleId: basic.id, status: "ACTIVE" } });
+    }
+    await writeAudits(tx, {
+      organizationId: organization.id,
+      actorId: user.id,
+      action: "org.member.registered",
+      targetType: "user",
+      targetId: user.id,
+      metadata: { email: user.email, role: membership ? "invited" : "user", via: "registration-page" },
+    });
+    return { ok: true, userId: user.id, joined: input.existingUserId ? "existing-account" : "new-account" } as const;
+  });
 }

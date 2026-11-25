@@ -168,6 +168,7 @@ export async function shareLesson(formData: FormData) {
   await teachBrain({
     organizationId: ctx.resolved.id,
     brandId: null,
+    niche: ctx.brand?.niche ?? null,
     visibility: "SHARED",
     sourceRef: `promo-lesson:${lesson.id}`,
     title: `Copy lesson: ${lesson.title}`,

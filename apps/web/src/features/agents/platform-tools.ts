@@ -14,6 +14,7 @@ import { moduleRegistry } from "@pubcommand/modules";
 import { JOBS } from "@/jobs";
 import { runJobNow } from "@/lib/jobs/runner";
 import { CONSOLE_ORG_SLUG } from "@/lib/console-workspace";
+import { frontmatterNiche, withNicheFrontmatter, type NoteNiche } from "../../../../../modules/knowledge/main-brain";
 import { mainBrain } from "../main-brain/db";
 import { uniqueMainSlug } from "../main-brain/learn";
 import { getMainNote, mainFolderCounts, mainStats, provenanceNames, searchMainNotes } from "../main-brain/notes";
@@ -30,6 +31,7 @@ import { ToolError, UUID, limit, oneOf, str, uuid, type Tool } from "./tool-kit"
  *   (no deletes or purges, passwords, 2FA, impersonation, staff changes, domains).
  */
 
+const NOTE_NICHES: readonly NoteNiche[] = ["finance", "health", "general"];
 const platform = (ctx: AgentContext) => ctx.scope === "platform";
 const admin = (ctx: AgentContext) => ctx.scope === "platform" && ctx.allowAdminActions;
 const DAY = 86_400_000;
@@ -159,7 +161,13 @@ export const PLATFORM_TOOLS: Tool[] = [
     description: "Add a note to the Master Brain, or update one (note_id). Updating a note that is pushed down to brands also updates their copies.",
     inputSchema: {
       type: "object",
-      properties: { title: { type: "string" }, body: { type: "string", description: "Markdown." }, folder: { type: "string" }, note_id: { type: "string" } },
+      properties: {
+        title: { type: "string" },
+        body: { type: "string", description: "Markdown." },
+        folder: { type: "string" },
+        niche: { type: "string", enum: [...NOTE_NICHES], description: "Which brands may receive it: finance, health, or general (all). Default: the body's niche: line, else the note's current niche, else general." },
+        note_id: { type: "string" },
+      },
       required: ["title", "body"],
       additionalProperties: false,
     },
@@ -171,17 +179,30 @@ export const PLATFORM_TOOLS: Tool[] = [
       if (!title || !body) throw new ToolError("title and body are required.");
       const folder = str(args, "folder", 200)?.trim() || null;
       const noteId = uuid(args, "note_id", false);
+      // Health and finance never mix: every note carries its niche, like BrainChat's.
+      const picked = oneOf(args, "niche", NOTE_NICHES) as NoteNiche | undefined;
       if (noteId) {
         const existing = await getMainNote(noteId);
         if (!existing) throw new ToolError("No Master Brain note with that id; leave note_id out to add a new one.");
-        await mainBrain((tx) => tx.mainBrainNote.update({ where: { id: existing.id }, data: { title, body, folder, updatedById: ctx.agent.userId, editedAt: new Date() } }));
+        const niche = picked ?? frontmatterNiche(body) ?? (existing.niche as NoteNiche);
+        await mainBrain((tx) => tx.mainBrainNote.update({ where: { id: existing.id }, data: { title, body: withNicheFrontmatter(body, niche), niche, folder, updatedById: ctx.agent.userId, editedAt: new Date() } }));
         await appendPlatformAudit({ actorId: ctx.agent.userId, action: "main_brain.note.updated", targetType: "main_brain_note", targetId: existing.id, metadata: { via: "ai_agent" } });
         if (existing.pushScope !== "NONE") await syncPushDown({ noteIds: [existing.id] }).catch((error: unknown) => console.error("[agents] push-down failed", error));
         return { data: { id: existing.id, message: "Updated." }, targetType: "main_brain_note", targetId: existing.id };
       }
       const note = await mainBrain(async (tx) =>
         tx.mainBrainNote.create({
-          data: { key: `note:${crypto.randomUUID()}`, title, slug: await uniqueMainSlug(tx, title), body, folder, origin: "AUTHORED", source: "ai-agent", createdById: ctx.agent.userId },
+          data: {
+            key: `note:${crypto.randomUUID()}`,
+            title,
+            slug: await uniqueMainSlug(tx, title),
+            body: withNicheFrontmatter(body, picked ?? frontmatterNiche(body) ?? "general"),
+            niche: picked ?? frontmatterNiche(body) ?? "general",
+            folder,
+            origin: "AUTHORED",
+            source: "ai-agent",
+            createdById: ctx.agent.userId,
+          },
           select: { id: true },
         }),
       );

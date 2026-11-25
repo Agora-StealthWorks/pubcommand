@@ -74,7 +74,7 @@ export default async function PublicTestimonialPage({ params, searchParams }: { 
           <Textarea id="p-body" name="body" rows={5} maxLength={LIMITS.body} />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="p-result">What changed for you? (optional)</Label>
+          <Label htmlFor="p-result">{brand.niche === "health" ? "How do you feel now? (optional)" : "What changed for you? (optional)"}</Label>
           <Input id="p-result" name="resultClaimed" maxLength={LIMITS.resultClaimed} />
         </div>
         <div className="space-y-1.5">

@@ -29,6 +29,8 @@ export async function teachBrain(input: {
   source: string;
   visibility?: "PRIVATE" | "SHARED";
   actorId: string | null;
+  /** For brandId null: the niche of the brand it came from, so the main Brain files it in the right niche. */
+  niche?: string | null;
 }): Promise<void> {
   try {
     if (input.brandId === null) {

@@ -134,7 +134,16 @@ export {
   type RoleAppLevel,
   type RoleAppLevelState,
 } from "./role-access";
-export { escapeEmailHtml, passwordResetEmail, renderEmailLayout, type EmailLayoutInput } from "./email-layout";
+export {
+  escapeEmailHtml,
+  inviteEmail,
+  passwordResetEmail,
+  PUBCOMMAND_EMAIL_BRAND,
+  pubcommandSystemEmail,
+  renderEmailLayout,
+  signInLinkEmail,
+  type EmailLayoutInput,
+} from "./email-layout";
 export {
   addressOf,
   chooseEmailRoute,

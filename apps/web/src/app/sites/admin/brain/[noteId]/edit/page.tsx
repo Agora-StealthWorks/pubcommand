@@ -19,7 +19,7 @@ export default async function EditMainNotePage({ params, searchParams }: { param
         {note.pushScope !== "NONE" ? "Brands that have this note get the new version." : ""}
       </p>
       <Flash error={query.error} />
-      <NoteForm action={updateMainNote} cancelHref={`/brain/${note.id}`} note={note} targetLabel="the main Brain" />
+      <NoteForm action={updateMainNote} cancelHref={`/brain/${note.id}`} note={note} targetLabel="the main Brain" niche={note.niche} />
     </div>
   );
 }

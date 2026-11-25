@@ -71,7 +71,9 @@ describe("learning up (teach → brand Brain + main Brain)", () => {
       originBrandId: ids.a,
       originSourceRef: `promo:${suffix}`,
       originNoteId: mini!.id,
-      body: `The ${word} lead worked.`,
+      niche: "general",
+      // The niche is written into the note's own markdown.
+      body: `---\nniche: general\n---\n\nThe ${word} lead worked.`,
     });
   });
 
@@ -83,7 +85,18 @@ describe("learning up (teach → brand Brain + main Brain)", () => {
     expect(await tenantDb(ids.org).knowledgePage.count({ where: { sourceRef: `calendar-issue:${suffix}` } })).toBe(1);
     const main = await mainBrain((tx) => tx.mainBrainNote.findMany({ where: { key: learnedKey(ids.org, `calendar-issue:${suffix}`) } }));
     expect(main).toHaveLength(1);
-    expect(main[0]).toMatchObject({ body: "second", originBrandId: ids.b, source: "marketing-calendar" });
+    expect(main[0]).toMatchObject({ body: "---\nniche: general\n---\n\nsecond", originBrandId: ids.b, source: "marketing-calendar" });
+  });
+
+  it("a note learned from a health brand is filed as health, in its column and its markdown", async () => {
+    await rawPrisma().brand.update({ where: { id: ids.b }, data: { niche: "health" } });
+    try {
+      await teachBrain({ organizationId: ids.org, brandId: ids.b, sourceRef: `health:${suffix}`, title: `Sleep ${suffix}`, body: "Magnesium copy angle.", folder: "Lessons", source: "promo-analyzer", actorId: null });
+      const main = await mainByKey(learnedKey(ids.org, `health:${suffix}`));
+      expect(main).toMatchObject({ niche: "health", body: "---\nniche: health\n---\n\nMagnesium copy angle." });
+    } finally {
+      await rawPrisma().brand.update({ where: { id: ids.b }, data: { niche: "general" } });
+    }
   });
 
   it("a staff edit wins over later app writes", async () => {

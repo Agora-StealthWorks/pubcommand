@@ -115,3 +115,16 @@ describe("filters, views and export", () => {
     expect(isPublishable({ status: "approved", deletedAt: new Date() })).toBe(false);
   });
 });
+
+describe("health testimonials never claim financial gains", () => {
+  it("flags money talk for health brands and blocks approval until it is edited out", async () => {
+    const { complianceFlags, approvalBlockers } = await import("./testimonials");
+    const flags = complianceFlags({ quote: "I sleep better and my portfolio profits paid for itself, $5,000!" }, "health");
+    expect(flags.map((f) => f.code)).toContain("financial-gain");
+    const blockers = approvalBlockers({ consentGiven: true, disclosure: "Results not typical.", flags, acknowledged: true }, "health");
+    expect(blockers.join(" ")).toMatch(/never claim financial gains/);
+    expect(complianceFlags({ quote: "I sleep through the night now." }, "health").map((f) => f.code)).not.toContain("financial-gain");
+    // Finance keeps its own gain check, not the health block.
+    expect(complianceFlags({ quote: "Made $5,000 in a month" }, "finance").map((f) => f.code)).not.toContain("financial-gain");
+  });
+});

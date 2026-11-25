@@ -5,11 +5,11 @@ import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { BRANDING_FIELDS, EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, firstError, parseFields, uniqueSlug, type FieldValues } from "../../../../../modules/pubsetup/fields";
 import { UUID, brandDefaultsAction, pubsetupAction, withMessage, type PubsetupCtx } from "./guard";
+import { uploadedImageType } from "./image-type";
 import { logoColumns, storedLogos } from "./logo-upload";
 import { notifyBrandSites } from "../websites/api";
 import { refreshAllPublications, refreshEditor, refreshPublication } from "./teach";
 
-const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp|svg\+xml)$/;
 const PUB_BRANDING_FIELDS = BRANDING_FIELDS.filter((def) => def.key !== "tagline");
 const LOGO_SELECT = { logoData: true, logoMime: true, logoFilename: true, logoOnDarkData: true, logoOnDarkMime: true, logoOnDarkFilename: true } as const;
 
@@ -31,8 +31,10 @@ async function imageColumns(formData: FormData, input: string, prefix: string, b
   const file = formData.get(input);
   if (file instanceof File && file.size > 0) {
     if (file.size > maxMb * 1024 * 1024) redirect(withMessage(back, "error", `Images must be under ${maxMb} MB.`));
-    if (!IMAGE_TYPES.test(file.type)) redirect(withMessage(back, "error", "Upload a PNG, JPG, GIF, WebP or SVG image."));
-    return { [`${prefix}Filename`]: file.name.slice(0, 200), [`${prefix}Mime`]: file.type, [`${prefix}Data`]: new Uint8Array(await file.arrayBuffer()) };
+    const data = new Uint8Array(await file.arrayBuffer());
+    const mime = uploadedImageType(file, data);
+    if (!mime) redirect(withMessage(back, "error", "Upload a PNG, JPG, GIF, WebP or SVG image."));
+    return { [`${prefix}Filename`]: file.name.slice(0, 200), [`${prefix}Mime`]: mime, [`${prefix}Data`]: data };
   }
   if (formData.get(`remove-${input}`) === "on") return { [`${prefix}Filename`]: null, [`${prefix}Mime`]: null, [`${prefix}Data`]: null };
   return {};

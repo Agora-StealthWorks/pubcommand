@@ -153,6 +153,9 @@ const DISEASE =
   /\b(cure[sd]?|curing|treat(?:s|ed|ing|ment)?|heal(?:s|ed|ing)?|revers(?:e|ed|es|ing)|prevent(?:s|ed)?|diabetes|cancer|tumou?r|arthritis|alzheimer'?s?|dementia|heart disease|blood pressure|hypertension|cholesterol|depression|anxiety disorder|insomnia|off (?:my|her|his) (?:meds|medication)|stopp?ed (?:my|taking) (?:meds|medication|insulin)|prescription|disease)\b/gi;
 const BODY_RESULT = /\b(?:lost|dropped|shed)\s+\d+(?:\.\d+)?\s?(?:lbs?|pounds|kg|kilos|inches|sizes)\b|\b\d+(?:\.\d+)?\s?(?:lbs?|pounds|kg)\s+(?:lighter|down|gone)\b/gi;
 
+/** Money-making language that has no place in a health testimonial. */
+const MONEY_WORDS = /\b(?:profits?|profited|returns? on|roi|made (?:me )?(?:money|a fortune|\$)|earn(?:ed|ings)|gains? of|my (?:portfolio|stocks?|investments?)|paid for itself|income)\b/gi;
+
 function found(pattern: RegExp, text: string): string[] {
   const out = new Set<string>();
   for (const match of text.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`))) {
@@ -180,6 +183,9 @@ export function complianceFlags(input: { quote: string; body?: string | null; re
       if (!TIMEFRAME.test(text)) flags.push({ code: "gain-no-timeframe", label: "A gain with no timeframe", matches: [] });
     }
   } else if (niche === "health") {
+    // Health testimonials are about how people feel, never about money: no gains, returns or profits.
+    const money = [...found(DOLLARS, text), ...found(MONEY_WORDS, text)];
+    if (money.length) flags.push({ code: "financial-gain", label: "Talks about money made: health testimonials never claim financial gains", matches: money.slice(0, 6) });
     const disease = found(DISEASE, text);
     if (disease.length) flags.push({ code: "disease-claim", label: "Disease or treatment claim", matches: disease });
     const body = found(BODY_RESULT, text);
@@ -210,6 +216,9 @@ export function approvalBlockers(input: ApprovalInput, niche: Niche): string[] {
   const out: string[] = [];
   if (!input.consentGiven) out.push("There is no consent on record. Get the person's permission before approving.");
   if (niche === "health" && !input.disclosure?.trim()) out.push("Health brands need a \"results not typical\" note before a testimonial is approved.");
+  if (niche === "health" && input.flags.some((f) => f.code === "financial-gain")) {
+    out.push("Health testimonials never claim financial gains. Edit out the money claim before approving.");
+  }
   if (input.flags.length && !input.acknowledged) {
     const gain = input.flags.some((f) => f.code === "specific-gain");
     out.push(

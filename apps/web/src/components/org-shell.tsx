@@ -26,6 +26,7 @@ export function OrgShell({
   pathname,
   impersonating,
   switcher,
+  brandLogos = {},
   children,
 }: {
   organization: { id: string; name: string; slug: string };
@@ -36,6 +37,8 @@ export function OrgShell({
   email: string;
   impersonating: { targetEmail: string } | null;
   switcher: SwitcherModel;
+  /** Brand id → logo URL, for brands that uploaded one. */
+  brandLogos?: Record<string, string>;
   children: React.ReactNode;
 }) {
   const scope = { organizationId: organization.id, brandId: subject.membershipBrandId ?? brand?.id ?? null };
@@ -60,6 +63,9 @@ export function OrgShell({
         </Link>
         <SiteSwitcher model={switcher} />
         <div className="rounded-lg border border-line px-2 py-1.5">
+          {brand && brandLogos[brand.id] ? (
+            <img src={brandLogos[brand.id]} alt={`${brand.name} logo`} className="mb-1 h-9 w-auto max-w-full object-contain object-left px-1 pt-1" />
+          ) : null}
           <p className="px-1 text-[11px] font-medium text-muted">Brand</p>
           <BrandSwitcher brands={brands} current={brand?.id ?? null} />
         </div>

@@ -34,3 +34,19 @@ export function allowResetRequest(email: string, ip: string): boolean {
   byIp.fail(ipKey);
   return allowed;
 }
+
+const registration = globalThis as typeof globalThis & { __pcRegisterIpLimiter?: AttemptLimiter; __pcRegisterEmailLimiter?: AttemptLimiter };
+
+/** Registration page attempts: 10 per IP address and 5 per email in 15 minutes. Null = allowed. */
+export function registrationBlocked(email: string, ip: string): string | null {
+  registration.__pcRegisterIpLimiter ??= createAttemptLimiter({ max: 10, windowMs: 15 * 60_000 });
+  registration.__pcRegisterEmailLimiter ??= createAttemptLimiter({ max: 5, windowMs: 15 * 60_000 });
+  const byIp = registration.__pcRegisterIpLimiter;
+  const byEmail = registration.__pcRegisterEmailLimiter;
+  const ipKey = ip || "unknown";
+  const emailKey = email.trim().toLowerCase();
+  const blocked = byIp.blocked(ipKey) ?? byEmail.blocked(emailKey);
+  byIp.fail(ipKey);
+  byEmail.fail(emailKey);
+  return blocked;
+}

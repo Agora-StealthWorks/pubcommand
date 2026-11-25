@@ -148,6 +148,9 @@ model MainBrainNote {
   body                 String
   folder               String?
   origin               MainBrainOrigin
+  /// "finance" | "health" | "general". Finance and health notes only ever reach brands of
+  /// the same niche; general notes reach every niche. From the source brand, the import, or staff.
+  niche                String                   @default("general")
   /// The app that taught it ("promo-analyzer"), "vault-import" or "staff".
   source               String
   originOrganizationId String?                  @map("origin_organization_id") @db.Uuid
@@ -174,6 +177,7 @@ model MainBrainNote {
 
   @@index([originOrganizationId, originBrandId])
   @@index([origin])
+  @@index([niche])
   @@index([pushScope])
   @@index([searchVector], type: Gin)
   @@map("main_brain_notes")
@@ -232,6 +236,8 @@ model MainBrainImport {
   filename    String
   size        Int
   data        Bytes
+  /// Niche for notes in this vault without a `niche:` line in their frontmatter.
+  niche       String             @default("general")
   status      KnowledgeRunStatus @default(DRY_RUN)
   report      Json?
   error       String?

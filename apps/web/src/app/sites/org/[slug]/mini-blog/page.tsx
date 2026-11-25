@@ -19,9 +19,6 @@ export default async function MiniBlogsPage({ params, searchParams }: { params: 
     <div>
       <PageHeader title="Mini-Blogs" description={`Small public blogs for ${ctx.brand.name}: the latest post, an archive, and a subscribe page with SMS consent.`} />
       <Flash error={query.error} notice={query.notice} />
-      <p className="mb-4 rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">
-        No text messages are sent from PubCommand yet: there is no SMS provider connected. Mini-Blogs collect SMS opt-ins (with the exact consent text) for you to export.
-      </p>
       <div className="space-y-4">
         {canWrite ? (
           <details className="rounded-xl border border-line bg-white" open={sites.length === 0}>

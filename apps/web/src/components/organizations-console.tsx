@@ -1,4 +1,4 @@
-import { defaultPlanChoice, organizationPublicUrl } from "@pubcommand/core";
+import { defaultPlanChoice, NICHE_LABELS, NICHES, organizationPublicUrl } from "@pubcommand/core";
 import { Button, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
 import { OrgSlugField } from "./org-slug-field";
@@ -159,6 +159,17 @@ export function NewOrganizationForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <Label htmlFor="org-niche">Niche</Label>
+            <select id="org-niche" name="niche" required className="pc-control mt-1 w-full" defaultValue="finance">
+              {NICHES.map((niche) => (
+                <option key={niche} value={niche}>
+                  {NICHE_LABELS[niche]}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-muted">Sets the first brand&apos;s niche: its default apps, AI compliance rules and which Master Brain knowledge it gets. Health and finance knowledge never mix.</p>
           </div>
           <div>
             <Label htmlFor="org-admin-email">First admin email</Label>

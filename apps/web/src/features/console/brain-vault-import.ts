@@ -5,8 +5,10 @@ import { rawPrisma, tenantDb, type Prisma } from "@pubcommand/db";
 import splitRules from "../../../../../scripts/brain-split.mta.json";
 import { classifyNote, compileRules, publicationsFromTable, type ClassifierRules } from "../../../../../modules/knowledge/classify";
 import { frameNote } from "../../../../../modules/knowledge/industry-lens";
+import { frontmatterNiche, withNicheFrontmatter } from "../../../../../modules/knowledge/main-brain";
 import { decodeText, exportDecision, MTA_EXPORT_RULES, planVaultImport, type ExistingNote, type VaultDecision } from "../../../../../modules/knowledge/vault";
 import { cleanPromoTitle, codeFromFileName, isOrderForm, parseVaultPromoPath, pptxText, promoFieldsFromVault } from "../../../../../modules/promo-studio/vault-promos";
+import { asNiche } from "../main-brain/import";
 import { reframeMainBrainNotes } from "../main-brain/lens";
 import { copyPackagerIntoConsole, copyPromosIntoConsole, copyVideosIntoConsole, syncPromosToMasterBrain } from "./past-data";
 
@@ -140,7 +142,13 @@ export async function importBrainVault(input: { dir: string; orgSlug?: string | 
       { timeout: 120_000, maxWait: 20_000 },
     );
   }
-  const framedGeneral = generalDecisions.map((d) => (d.ok ? { ...d, note: frameNote(d.note) } : d));
+  // Master Brain notes take the publisher's niche (or their own `niche:` line), written into the markdown.
+  const vaultNiche = asNiche(brand.niche);
+  const framedGeneral = generalDecisions.map((d) => {
+    if (!d.ok) return d;
+    const note = frameNote(d.note);
+    return { ...d, note: { ...note, body: withNicheFrontmatter(note.body, frontmatterNiche(note.body) ?? vaultNiche) } };
+  });
   const mainKeys = framedGeneral.flatMap((d) => (d.ok ? [d.note.sourceRef] : []));
   const mainExisting = new Map<string, ExistingNote>();
   for (const row of await mainTx((tx) => tx.mainBrainNote.findMany({ where: { key: { in: mainKeys } }, select: { id: true, key: true, title: true, body: true, folder: true, deletedAt: true } })))
@@ -200,10 +208,10 @@ export async function importBrainVault(input: { dir: string; orgSlug?: string | 
       await mainTx(async (tx) => {
         for (const row of rows.slice(i, i + 50)) {
           if (row.action === "create") {
-            await tx.mainBrainNote.create({ data: { key: row.note.sourceRef, title: row.note.title, slug: nextSlug(row.note.title), body: row.note.body, folder: row.note.folder, origin: "IMPORTED", source: "vault-import", originSourceRef: row.note.sourceRef } });
+            await tx.mainBrainNote.create({ data: { key: row.note.sourceRef, title: row.note.title, slug: nextSlug(row.note.title), body: row.note.body, folder: row.note.folder, origin: "IMPORTED", niche: frontmatterNiche(row.note.body) ?? vaultNiche, source: "vault-import", originSourceRef: row.note.sourceRef } });
             created += 1;
           } else if (row.existingId) {
-            await tx.mainBrainNote.updateMany({ where: { id: row.existingId, deletedAt: null }, data: { title: row.note.title, body: row.note.body, folder: row.note.folder } });
+            await tx.mainBrainNote.updateMany({ where: { id: row.existingId, deletedAt: null }, data: { title: row.note.title, body: row.note.body, folder: row.note.folder, niche: frontmatterNiche(row.note.body) ?? vaultNiche } });
             updated += 1;
           }
         }

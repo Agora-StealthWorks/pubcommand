@@ -35,6 +35,7 @@ export function MainNoteList({ notes, names, empty, snippets }: { notes: MainNot
               <span className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 break-words text-sm font-semibold text-ink">{note.title}</span>
                 <OriginBadge origin={note.origin} />
+                <Badge>{note.niche === "general" ? "General" : note.niche === "health" ? "Health" : "Finance"}</Badge>
                 {note.pushScope !== "NONE" ? <Badge tone="ok">{note.pushScope === "ALL" ? "Pushed to all brands" : "Pushed to chosen brands"}</Badge> : null}
               </span>
               {snippets?.get(note.id) ? <Snippet text={snippets.get(note.id)!} /> : null}

@@ -1,3 +1,4 @@
+import type { Niche } from "@pubcommand/core";
 import { Badge, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { TableScroll } from "@/components/table-scroll";
@@ -42,7 +43,15 @@ export type FieldDefaults = Partial<{
 }>;
 
 /** The shared manual-entry / edit fields. */
-export function TestimonialFields({ values = {}, publications, editors }: { values?: FieldDefaults; publications: Option[]; editors: Option[] }) {
+/** What the "result" field asks for, per niche. Health testimonials never talk about money. */
+const RESULT_FIELD: Record<Niche, { label: string; placeholder: string; hint: string }> = {
+  finance: { label: "Result claimed", placeholder: "As they said it, e.g. \"Made back the subscription in a month\"", hint: "Any gain or return is checked against the track record before approval." },
+  health: { label: "How they feel now", placeholder: "As they said it, e.g. \"Sleeping through the night after 3 weeks\"", hint: "How the reader feels or what changed for them. Never money made: health testimonials claim no financial gains." },
+  general: { label: "Result claimed", placeholder: "As they said it", hint: "" },
+};
+
+export function TestimonialFields({ values = {}, publications, editors, niche = "general" }: { values?: FieldDefaults; publications: Option[]; editors: Option[]; niche?: Niche }) {
+  const result = RESULT_FIELD[niche];
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-1.5">
@@ -63,8 +72,9 @@ export function TestimonialFields({ values = {}, publications, editors }: { valu
         <Textarea id="t-body" name="body" rows={5} maxLength={LIMITS.body} defaultValue={values.body ?? ""} />
       </div>
       <div className="space-y-1.5 sm:col-span-2">
-        <Label htmlFor="t-result">Result claimed</Label>
-        <Input id="t-result" name="resultClaimed" maxLength={LIMITS.resultClaimed} defaultValue={values.resultClaimed ?? ""} placeholder="As they said it" />
+        <Label htmlFor="t-result">{result.label}</Label>
+        <Input id="t-result" name="resultClaimed" maxLength={LIMITS.resultClaimed} defaultValue={values.resultClaimed ?? ""} placeholder={result.placeholder} />
+        {result.hint ? <p className="text-xs text-muted">{result.hint}</p> : null}
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="t-pub">Publication</Label>

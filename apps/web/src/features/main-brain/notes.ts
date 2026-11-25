@@ -11,6 +11,7 @@ export const MAIN_LIST_SELECT = {
   title: true,
   folder: true,
   origin: true,
+  niche: true,
   source: true,
   originOrganizationId: true,
   originBrandId: true,
@@ -27,6 +28,8 @@ export type MainFilter = {
   source?: string | null;
   origin?: "LEARNED" | "IMPORTED" | "AUTHORED" | "MIGRATED" | null;
   pushed?: boolean;
+  /** Exactly this niche ("finance" | "health" | "general"). */
+  niche?: string | null;
 };
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -39,6 +42,7 @@ export function filterWhere(filter: MainFilter): Prisma.MainBrainNoteWhereInput 
   if (filter.source) where.push({ source: filter.source });
   if (filter.origin) where.push({ origin: filter.origin });
   if (filter.pushed) where.push({ pushScope: { not: "NONE" } });
+  if (filter.niche === "finance" || filter.niche === "health" || filter.niche === "general") where.push({ niche: filter.niche });
   return { AND: where };
 }
 
@@ -101,6 +105,8 @@ export async function searchMainNotes(input: { query: string; mode?: "all" | "an
     return `$${values.length}${cast}`;
   };
   const tsquery = param(text);
+  const niche = input.filter?.niche;
+  const nicheSql = niche === "finance" || niche === "health" || niche === "general" ? ` AND n.niche = ${param(niche)}` : "";
   const titleMatch = input.mode === "any" ? "FALSE" : `n.title ILIKE ${param(`%${raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)}`;
   const headline = param(`StartSel=${HIT_OPEN}, StopSel=${HIT_CLOSE}, MaxWords=28, MinWords=12, MaxFragments=2, FragmentDelimiter=" … "`);
   const rows = await mainBrain((tx) =>
@@ -109,7 +115,7 @@ export async function searchMainNotes(input: { query: string; mode?: "all" | "an
               (ts_rank_cd(n.search_vector, w.query, 32) + CASE WHEN ${titleMatch} THEN 1 ELSE 0 END)::float8 AS rank,
               ts_headline('english', left(n.body, 40000), w.query, ${headline}) AS snippet
        FROM main_brain_notes n, websearch_to_tsquery('english', ${tsquery}) AS w(query)
-       WHERE n.deleted_at IS NULL AND (n.search_vector @@ w.query OR ${titleMatch})
+       WHERE n.deleted_at IS NULL${nicheSql} AND (n.search_vector @@ w.query OR ${titleMatch})
        ORDER BY rank DESC, n.updated_at DESC
        LIMIT ${param(Math.min(limit * 4, 400), "::int")}`,
       ...values,

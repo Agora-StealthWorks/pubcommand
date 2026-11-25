@@ -1,3 +1,4 @@
+import { brandProfile } from "@pubcommand/core";
 import { Button } from "@pubcommand/ui";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
@@ -23,6 +24,7 @@ export default async function NewTestimonialPage({ params, searchParams }: { par
           values={{ publicationId: query.pub ?? null, editorId: query.editor ?? null }}
           publications={look.publications.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name, code: p.code }))}
           editors={look.editorList.filter((e) => !e.archived).map((e) => ({ id: e.id, name: e.name }))}
+          niche={brandProfile(ctx.brand).niche}
         />
         <ConsentFields />
         <p className="text-xs text-muted">New testimonials start as pending review. The brand&apos;s compliance rules are checked on save.</p>

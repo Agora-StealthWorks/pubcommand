@@ -9,6 +9,7 @@
  *   note (source BEST_PRACTICE_SOURCE, folder "Best practices"), so the brand
  *   never learns where it came from.
  */
+import { parseFrontmatter } from "./vault";
 import { BEST_PRACTICE_FOLDER, BEST_PRACTICE_SOURCE } from "./visibility";
 
 export const MAIN_BRAIN_MANAGE = "platform.brain.manage";
@@ -78,14 +79,27 @@ export function learnAction(existing: LearnedRow | null, input: LearnInput): "cr
   return "refresh";
 }
 
-export type BrandRef = { id: string; organizationId: string };
+export type BrandRef = { id: string; organizationId: string; niche?: string | null };
 
-/** The brands a note is pushed to. ALL = every brand on the platform (suspended orgs excluded by the caller). */
-export function pushTargets(scope: PushScope, selected: readonly BrandRef[], allBrands: readonly BrandRef[]): BrandRef[] {
+/**
+ * Niche separation: a finance or health note only reaches brands of that same niche, so health
+ * and finance knowledge never mix. A general note (craft that fits any publisher) reaches every brand.
+ */
+export function noteFitsBrand(noteNiche: string | null | undefined, brandNiche: string | null | undefined): boolean {
+  const note = noteNiche || "general";
+  return note === "general" || note === (brandNiche || "general");
+}
+
+/**
+ * The brands a note is pushed to. ALL = every brand on the platform (suspended orgs excluded by
+ * the caller) of a fitting niche. SELECTED = the chosen brands that still exist and fit the niche.
+ */
+export function pushTargets(scope: PushScope, selected: readonly BrandRef[], allBrands: readonly BrandRef[], noteNiche: string | null = "general"): BrandRef[] {
   if (scope === "NONE") return [];
-  if (scope === "ALL") return [...allBrands];
-  const known = new Set(allBrands.map((brand) => brand.id));
-  return selected.filter((brand) => known.has(brand.id));
+  const fits = allBrands.filter((brand) => noteFitsBrand(noteNiche, brand.niche));
+  if (scope === "ALL") return fits;
+  const chosen = new Set(selected.map((brand) => brand.id));
+  return fits.filter((brand) => chosen.has(brand.id));
 }
 
 export type PushedCopy = { id: string; brandId: string | null; mainNoteId: string; title: string; body: string; folder: string | null; deletedAt: Date | string | null };
@@ -164,4 +178,30 @@ export function entityMatchStrength(note: { title: string; body: string }, name:
   if (title.startsWith(`${target} `) || title.startsWith(`${target}—`) || title.startsWith(`${target} —`) || title.startsWith(`${target}:`)) return 2;
   if (patterns.word.test(note.title) || patterns.word.test(note.body)) return 1;
   return 0;
+}
+
+// Niche in the markdown -----------------------------------------------------------
+
+const NOTE_NICHES = ["finance", "health", "general"] as const;
+export type NoteNiche = (typeof NOTE_NICHES)[number];
+
+/** The `niche:` value in a note's frontmatter, when it is a known niche. */
+export function frontmatterNiche(body: string): NoteNiche | null {
+  const value = parseFrontmatter(body).data.niche;
+  const text = (Array.isArray(value) ? value[0] : value)?.trim().toLowerCase();
+  return (NOTE_NICHES as readonly string[]).includes(text ?? "") ? (text as NoteNiche) : null;
+}
+
+/**
+ * Every Master Brain note carries its niche in its own markdown frontmatter (`niche: finance`),
+ * kept equal to the niche column: sets the line, adding a frontmatter block when there is none.
+ */
+export function withNicheFrontmatter(body: string, niche: NoteNiche): string {
+  const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n?---[ \t]*(\r?\n|$)/.exec(body);
+  if (!match) return `---\nniche: ${niche}\n---\n\n${body}`;
+  const lines = (match[1] ?? "").split(/\r?\n/).filter((line, i, all) => !(all.length === 1 && i === 0 && line.trim() === ""));
+  const at = lines.findIndex((line) => /^niche\s*:/i.test(line));
+  if (at >= 0) lines[at] = `niche: ${niche}`;
+  else lines.unshift(`niche: ${niche}`);
+  return `---\n${lines.join("\n")}\n---${match[2] || "\n"}${body.slice(match[0].length)}`;
 }

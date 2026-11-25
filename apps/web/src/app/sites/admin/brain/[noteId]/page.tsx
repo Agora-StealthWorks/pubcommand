@@ -1,3 +1,4 @@
+import { NICHE_LABELS } from "@pubcommand/core";
 import { rawPrisma } from "@pubcommand/db";
 import { Badge, Button } from "@pubcommand/ui";
 import Link from "next/link";
@@ -13,7 +14,7 @@ import { pushedCopies } from "@/features/main-brain/push";
 import { brainStaff } from "@/features/main-brain/staff";
 import { findAttachment, isInlineImage } from "../../../../../../../../modules/knowledge/attachments";
 import { folderAncestors } from "../../../../../../../../modules/knowledge/folders";
-import { originText } from "../../../../../../../../modules/knowledge/main-brain";
+import { noteFitsBrand, originText } from "../../../../../../../../modules/knowledge/main-brain";
 import { sourceLabel } from "../../../../../../../../modules/knowledge/visibility";
 
 function size(bytes: number) {
@@ -40,7 +41,7 @@ export default async function MainNotePage({ params, searchParams }: { params: P
     provenanceNames(),
     mainBacklinks(note),
     pushedCopies(note.id),
-    rawPrisma().organization.findMany({ select: { id: true, name: true, suspendedAt: true, brands: { select: { id: true, name: true }, orderBy: { name: "asc" } } }, orderBy: { name: "asc" } }),
+    rawPrisma().organization.findMany({ select: { id: true, name: true, suspendedAt: true, brands: { select: { id: true, name: true, niche: true }, orderBy: { name: "asc" } } }, orderBy: { name: "asc" } }),
     noteFlag(note.id),
   ]);
   const { html, properties } = renderNote(
@@ -140,6 +141,7 @@ export default async function MainNotePage({ params, searchParams }: { params: P
               <Row label="Organization">Deleted</Row>
             ) : null}
             {note.originBrandId ? <Row label="Brand">{names.brands.get(note.originBrandId)?.name ?? "Deleted brand"}</Row> : note.origin === "LEARNED" ? <Row label="Brand">None (organization level)</Row> : null}
+            <Row label="Niche">{note.niche === "general" ? "General (every niche)" : `${NICHE_LABELS[note.niche as "finance" | "health"] ?? note.niche} only`}</Row>
             <Row label="App / source">{sourceLabel(note.source)}</Row>
             {note.originSourceRef ? (
               <div>
@@ -170,7 +172,7 @@ export default async function MainNotePage({ params, searchParams }: { params: P
               {(
                 [
                   ["NONE", "Not pushed"],
-                  ["ALL", "All brands (including new ones)"],
+                  ["ALL", note.niche === "general" ? "All brands (including new ones)" : `All ${note.niche} brands (including new ones)`],
                   ["SELECTED", "Only the brands ticked below"],
                 ] as const
               ).map(([value, label]) => (
@@ -180,7 +182,11 @@ export default async function MainNotePage({ params, searchParams }: { params: P
               ))}
             </fieldset>
             <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-line p-2">
-              {orgs.map((item) => (
+              {note.niche !== "general" ? <p className="text-xs text-muted">Only {note.niche} brands are listed: this note never reaches another niche.</p> : null}
+              {orgs
+                .map((item) => ({ ...item, brands: item.brands.filter((brand) => noteFitsBrand(note.niche, brand.niche)) }))
+                .filter((item) => item.brands.length > 0)
+                .map((item) => (
                 <fieldset key={item.id}>
                   <legend className="text-xs font-semibold text-muted">
                     {item.name}

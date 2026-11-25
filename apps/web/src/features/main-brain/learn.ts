@@ -1,7 +1,7 @@
-import { slugifyName } from "@pubcommand/core";
+import { isNiche, slugifyName, type Niche } from "@pubcommand/core";
 import { rawPrisma, tenantDb, type Prisma } from "@pubcommand/db";
 import { frameNote } from "../../../../../modules/knowledge/industry-lens";
-import { learnAction, learnedKey, shouldLearnUp } from "../../../../../modules/knowledge/main-brain";
+import { learnAction, learnedKey, shouldLearnUp, withNicheFrontmatter } from "../../../../../modules/knowledge/main-brain";
 import { mainBrain } from "./db";
 
 /**
@@ -21,7 +21,23 @@ export type LearnUpInput = {
   source: string;
   /** The brand note it was learned from, when there is one. */
   noteId?: string | null;
+  /** The niche, when the caller knows it. Otherwise it comes from the brand (or the org's only niche). */
+  niche?: string | null;
 };
+
+/**
+ * The niche a learned note belongs to: given, else its brand's, else the organization's when all
+ * its brands share one niche, else "general".
+ */
+export async function learnedNiche(tx: Prisma.TransactionClient, input: { organizationId: string; brandId: string | null; niche?: string | null }): Promise<Niche> {
+  if (isNiche(input.niche)) return input.niche;
+  if (input.brandId) {
+    const brand = await tx.brand.findUnique({ where: { id: input.brandId }, select: { niche: true } });
+    if (isNiche(brand?.niche)) return brand.niche;
+  }
+  const niches = await tx.brand.findMany({ where: { organizationId: input.organizationId }, select: { niche: true }, distinct: ["niche"] });
+  return niches.length === 1 && isNiche(niches[0]!.niche) ? niches[0]!.niche : "general";
+}
 
 export type LearnUpResult = "created" | "refreshed" | "unchanged" | "skipped" | "failed";
 
@@ -34,10 +50,13 @@ export async function uniqueMainSlug(tx: Prisma.TransactionClient, title: string
 
 export async function learnUp(raw: LearnUpInput): Promise<LearnUpResult> {
   // The Master Brain speaks for the industry, not for one organization: no "competitors".
-  const input = frameNote(raw);
+  const framed = frameNote(raw);
   try {
-    const key = learnedKey(input.organizationId, input.sourceRef);
+    const key = learnedKey(framed.organizationId, framed.sourceRef);
     return await mainBrain(async (tx) => {
+      // The niche goes into the note's own markdown (frontmatter) as well as its column.
+      const niche = await learnedNiche(tx, framed);
+      const input = { ...framed, body: withNicheFrontmatter(framed.body, niche) };
       const existing = await tx.mainBrainNote.findUnique({ where: { key } });
       const action = learnAction(existing, input);
       const now = new Date();
@@ -51,6 +70,7 @@ export async function learnUp(raw: LearnUpInput): Promise<LearnUpResult> {
             body: input.body,
             folder: input.folder,
             origin: "LEARNED",
+            niche,
             source: input.source,
             originOrganizationId: input.organizationId,
             originBrandId: input.brandId,
@@ -74,12 +94,12 @@ export async function learnUp(raw: LearnUpInput): Promise<LearnUpResult> {
       }
       await tx.mainBrainNote.update({
         where: { id: existing!.id },
-        data: { ...provenance, title: input.title, body: input.body, folder: input.folder, source: input.source },
+        data: { ...provenance, niche, title: input.title, body: input.body, folder: input.folder, source: input.source },
       });
       return "refreshed";
     });
   } catch (error) {
-    console.error("[main-brain] learn-up failed", input.sourceRef, error);
+    console.error("[main-brain] learn-up failed", framed.sourceRef, error);
     return "failed";
   }
 }

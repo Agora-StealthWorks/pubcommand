@@ -53,6 +53,19 @@ describe("push down", () => {
     expect(pushTargets("NONE", all, all)).toEqual([]);
   });
 
+  it("keeps finance and health notes inside their niche; general notes reach every brand", () => {
+    const brands = [
+      { id: "fin", organizationId: ORG, niche: "finance" },
+      { id: "hea", organizationId: ORG, niche: "health" },
+      { id: "gen", organizationId: ORG, niche: "general" },
+    ];
+    expect(pushTargets("ALL", [], brands, "finance").map((b) => b.id)).toEqual(["fin"]);
+    expect(pushTargets("ALL", [], brands, "health").map((b) => b.id)).toEqual(["hea"]);
+    expect(pushTargets("ALL", [], brands, "general").map((b) => b.id)).toEqual(["fin", "hea", "gen"]);
+    // A health brand chosen by hand for a finance note is still left out.
+    expect(pushTargets("SELECTED", [{ id: "hea", organizationId: ORG }, { id: "fin", organizationId: ORG }], brands, "finance").map((b) => b.id)).toEqual(["fin"]);
+  });
+
   it("round-trips the copy's sourceRef", () => {
     expect(parsePushedSourceRef(pushedSourceRef(NOTE, BRAND_A))).toEqual({ mainNoteId: NOTE, brandId: BRAND_A });
     expect(parsePushedSourceRef("promo:1")).toBeNull();
@@ -144,5 +157,20 @@ describe("graph", () => {
     const graph = buildGraph(notes, { preferBrandId: null, limit: 10 });
     expect(graph.nodes).toHaveLength(10);
     expect(graph.truncated).toBe(true);
+  });
+});
+
+describe("niche frontmatter", () => {
+  it("reads the niche line and writes it into every note", async () => {
+    const { frontmatterNiche, withNicheFrontmatter } = await import("./main-brain");
+    expect(frontmatterNiche("---\nniche: Health\ntags: [a]\n---\nBody")).toBe("health");
+    expect(frontmatterNiche("---\nniche: crypto\n---\nBody")).toBeNull();
+    expect(frontmatterNiche("No frontmatter")).toBeNull();
+    expect(withNicheFrontmatter("Body", "finance")).toBe("---\nniche: finance\n---\n\nBody");
+    expect(withNicheFrontmatter("---\ntags: [a]\n---\nBody", "health")).toBe("---\nniche: health\ntags: [a]\n---\nBody");
+    expect(withNicheFrontmatter("---\ntags: [a]\nniche: finance\n---\nBody", "general")).toBe("---\ntags: [a]\nniche: general\n---\nBody");
+    const once = withNicheFrontmatter("# T\n\nText", "health");
+    expect(withNicheFrontmatter(once, "health")).toBe(once);
+    expect(frontmatterNiche(once)).toBe("health");
   });
 });

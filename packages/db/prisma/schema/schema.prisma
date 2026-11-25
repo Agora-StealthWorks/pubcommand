@@ -275,6 +275,8 @@ model OrgSettings {
   displayName    String       @map("display_name")
   timezone       String       @default("America/New_York")
   supportEmail   String?      @map("support_email")
+  /// Public sign-up page at <org>.<root>/register. New people join as a basic User.
+  registrationEnabled Boolean @default(false) @map("registration_enabled")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("org_settings")

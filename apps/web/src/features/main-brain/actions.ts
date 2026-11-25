@@ -10,7 +10,8 @@ import { describeSecrets, findSecrets } from "../../../../../modules/knowledge/s
 import { MAX_VAULT_ZIP_BYTES } from "../brain/vault-import";
 import { runMainAsk } from "./ask";
 import { mainBrain } from "./db";
-import { planMainFromZip, runMainVaultImport } from "./import";
+import { frontmatterNiche, noteFitsBrand, withNicheFrontmatter } from "../../../../../modules/knowledge/main-brain";
+import { asNiche, planMainFromZip, runMainVaultImport } from "./import";
 import { uniqueMainSlug } from "./learn";
 import { syncPushDown } from "./push";
 import { requireBrainStaff } from "./staff";
@@ -39,6 +40,17 @@ function noteInput(formData: FormData, back: string) {
   return { title, body, folder: normalizeFolder(field(formData, "folder", 400)) };
 }
 
+/**
+ * The note's niche: the picker, unless the markdown's own `niche:` line was changed while the
+ * picker was left as it was. The body is rewritten so its frontmatter always matches.
+ */
+function nicheInput(formData: FormData, body: string, previous: string | null) {
+  const picked = asNiche(String(formData.get("niche") ?? previous ?? "general"));
+  const written = frontmatterNiche(body);
+  const niche = written && written !== previous && picked === (previous ?? "general") ? written : picked;
+  return { niche, body: withNicheFrontmatter(body, niche) };
+}
+
 async function liveNote(formData: FormData) {
   const id = field(formData, "noteId", 40);
   const note = UUID.test(id) ? await mainBrain((tx) => tx.mainBrainNote.findFirst({ where: { id, deletedAt: null } })) : null;
@@ -54,13 +66,15 @@ function resyncAfter(noteId: string) {
 export async function createMainNote(formData: FormData) {
   const staff = await requireBrainStaff();
   const input = noteInput(formData, "/brain/new");
+  const { niche, body } = nicheInput(formData, input.body, null);
   const note = await mainBrain(async (tx) =>
     tx.mainBrainNote.create({
       data: {
         key: `note:${crypto.randomUUID()}`,
         title: input.title,
         slug: await uniqueMainSlug(tx, input.title),
-        body: input.body,
+        body,
+        niche,
         folder: input.folder,
         origin: "AUTHORED",
         source: "staff",
@@ -80,7 +94,7 @@ export async function updateMainNote(formData: FormData) {
     tx.mainBrainNote.update({
       where: { id: note.id },
       // editedAt: from now on an app's later write does not overwrite this version.
-      data: { ...input, updatedById: staff.userId, editedAt: new Date() },
+      data: { ...input, ...nicheInput(formData, input.body, note.niche), updatedById: staff.userId, editedAt: new Date() },
     }),
   );
   await appendPlatformAudit({ actorId: staff.userId, action: "main_brain.note.updated", targetType: "main_brain_note", targetId: note.id });
@@ -106,7 +120,10 @@ export async function setPushDown(formData: FormData) {
   const scopeValue = field(formData, "pushScope", 10);
   if (scopeValue !== "NONE" && scopeValue !== "ALL" && scopeValue !== "SELECTED") go(back, "error", "Choose who gets this note.");
   const brandIds = [...new Set(formData.getAll("brandId").map(String).filter((id) => UUID.test(id)))];
-  const brands = scopeValue === "SELECTED" ? await rawPrisma().brand.findMany({ where: { id: { in: brandIds } }, select: { id: true, organizationId: true } }) : [];
+  const picked = scopeValue === "SELECTED" ? await rawPrisma().brand.findMany({ where: { id: { in: brandIds } }, select: { id: true, organizationId: true, niche: true } }) : [];
+  // Niche separation: a finance or health note never goes to a brand of another niche.
+  const brands = picked.filter((brand) => noteFitsBrand(note.niche, brand.niche));
+  if (picked.length > brands.length) go(back, "error", `This is a ${note.niche} note: it can only go to ${note.niche} brands.`);
   if (scopeValue === "SELECTED" && brands.length === 0) go(back, "error", "Tick at least one brand, or choose All brands.");
   await mainBrain(async (tx) => {
     await tx.mainBrainPushTarget.deleteMany({ where: { noteId: note.id } });
@@ -176,7 +193,8 @@ export async function uploadMainVault(formData: FormData) {
   if (!/\.zip$/i.test(file.name)) go("/brain/import", "error", "Upload a .zip file.");
   if (file.size > MAX_VAULT_ZIP_BYTES) go("/brain/import", "error", "That zip is over 55 MB. Split the vault into smaller zips.");
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const plan = await planMainFromZip(bytes);
+  const niche = asNiche(String(formData.get("niche") ?? ""));
+  const plan = await planMainFromZip(bytes, niche);
   if (!plan.ok) go("/brain/import", "error", plan.error);
   const job = await mainBrain((tx) =>
     tx.mainBrainImport.create({
@@ -184,6 +202,7 @@ export async function uploadMainVault(formData: FormData) {
         filename: file.name.slice(0, 200),
         size: file.size,
         data: bytes,
+        niche,
         status: "DRY_RUN",
         report: { ...plan.report, rootPrefix: plan.rootPrefix } as unknown as Prisma.InputJsonValue,
         createdById: staff.userId,
