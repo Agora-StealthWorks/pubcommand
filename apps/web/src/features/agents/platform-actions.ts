@@ -7,6 +7,7 @@ import { superAdminCtx } from "./platform-access";
 import type { NewKeyState } from "./actions";
 import { issueAgentToken } from "./data";
 import { checkAuthorizeRequest, issueAuthorizationCode, oauthRedirect } from "./oauth";
+import { restoreNotes } from "./platform-org-tools";
 
 /**
  * Platform agents (admin console → AI Agents). Only an active SUPER_ADMIN with a ready session
@@ -155,4 +156,17 @@ export async function denyPlatformConnection(formData: FormData) {
   const checked = await checkAuthorizeRequest(oauthParams(formData));
   if (!checked.ok) redirect("redirect" in checked ? checked.redirect : "/agents");
   redirect(oauthRedirect(checked.request.redirectUri, { error: "access_denied", error_description: "The PubCommand staff member declined.", state: checked.request.state }));
+}
+
+/** Admin console → AI Agents → "Notes deleted by AI agents": restore one delete batch. */
+export async function restoreAgentDeletedNotes(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const auditId = text(formData, "auditId", 40);
+  const row = UUID.test(auditId) ? await rawPrisma().platformAuditLog.findFirst({ where: { id: auditId, action: "agents.notes.deleted" } }) : null;
+  const meta = (row?.metadata ?? {}) as { kind?: string; organizationId?: string | null; noteIds?: unknown };
+  const noteIds = Array.isArray(meta.noteIds) ? meta.noteIds.filter((id): id is string => typeof id === "string" && UUID.test(id)) : [];
+  if (!row || (meta.kind !== "brain" && meta.kind !== "master") || noteIds.length === 0) redirect(back("/agents", "error", "That delete batch was not found."));
+  const restored = await restoreNotes({ kind: meta.kind, organizationId: meta.organizationId ?? null, noteIds });
+  await appendPlatformAudit({ actorId: ctx.userId, action: "agents.notes.restored_by_staff", targetType: row.targetType, targetId: row.targetId, metadata: { batch: row.id, restored } });
+  redirect(back("/agents", "notice", `Restored ${restored} note${restored === 1 ? "" : "s"}.`));
 }

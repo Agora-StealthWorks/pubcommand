@@ -24,6 +24,20 @@ and write posts through PubCommand's MCP server. The sidebar's **AI Agents** sec
 
 ## Connecting
 
+**One address for every organization: `https://app.<root>/api/mcp`.** A key or a login says
+which organization: on the app host the token is looked up across organizations (its own
+organization then applies, exactly as on that organization's host), and the OAuth login screen
+(`app.<root>/agents/connect`) asks which of the person's organizations to connect. Each
+organization's own host (`<org>.<root>/api/mcp`) keeps working.
+
+**GrokBot.** In PubCommand, Cursor (the AI code editor) is called GrokBot (platform id
+`cursor`). The AI Agents page has an **Add to GrokBot** button: a Cursor install link
+(`cursor://anysphere.cursor-deeplink/mcp/install?name=…&config=<base64 {"url": …}>`, see
+`features/agents/cursor.ts`) that adds the one address; GrokBot then opens the login. GrokBot
+signs in with `cursor://anysphere.cursor-mcp/oauth/callback` or `http://localhost:8787/callback`,
+so editor app links (`cursor:`, `vscode:`, `vscode-insiders:`, `windsurf:`) are accepted as
+OAuth redirect addresses. The help page also shows the `mcp.json` entry, with or without a key.
+
 The MCP server is `POST /api/mcp`: Streamable HTTP, stateless, JSON responses. Code:
 `apps/web/src/features/agents/mcp.ts` and `tools.ts`.
 
@@ -111,5 +125,33 @@ with a `pca_` key.
     switched off per agent): `suspend_organization` (and resume), `change_organization_plan`,
     `set_organization_app_access`, `add_organization_member` and `run_job`. Each one needs a
     `reason` and is written to the platform audit log under the agent's name.
-  - Deliberately left out: deleting or purging anything, passwords, 2FA, impersonation, staff
-    changes and domains.
+  - Restructuring (`features/agents/platform-org-tools.ts`, also behind **Can make admin
+    changes**, each with a reason, in the platform audit log):
+    - `rename_organization`: name and/or slug (the old slug keeps redirecting).
+    - `create_brand`, `update_brand` (name, niche, audience), `delete_brand`: only for an empty
+      brand (no notes, sites, posts, Mini-Blogs, forms, funnels, publications, members or roles).
+    - `move_brain_notes`: notes from one brand to another, in the same or another organization
+      (up to 1000 per call, with `dry_run`). Their Master Brain copies are re-pointed and re-keyed
+      to the new organization and brand, so they keep feeding the Master Brain with no duplicates.
+    - `move_master_notes_to_brand`: Master Brain-only notes (imported or authored) become notes of
+      a brand (source ref `main:<id>`), and the Master Brain note becomes their learned copy.
+    - `delete_notes` (brand Brain or Master Brain, soft delete; pushed Master notes are withdrawn
+      from brands), `list_deleted_notes`, `restore_notes`. Staff can restore any agent's delete
+      batch from admin console → AI Agents → "Notes deleted by AI agents".
+  - Deliberately left out: deleting or purging organizations and users, deleting a brand that
+    has content, passwords, 2FA, impersonation, staff changes and domains.
+  - Read anything (`features/agents/platform-audit-tools.ts`): `describe_data` lists every model and
+    its fields, and `query_records` / `count_records` read any model, in any organization or across
+    all of them, with a Prisma-style `where` that is checked field by field. Secrets are never
+    returned and cannot be filtered on (a filter could probe them): fields named like password,
+    secret, cipher, hash, totp, token or *Key, `Bytes` columns, and the `Session` model.
+  - Reviews: `security_review` (settings such as staff 2FA and exposed sign-in links, staff
+    without 2FA, row-level security on every organization table, disabled accounts with
+    sessions, stale agent keys, open forms without a privacy link, recent sensitive staff
+    actions) and `performance_review` (database size, largest and most-scanned tables, unused
+    indexes, connections and long-running queries, `pg_stat_statements` when enabled, job
+    durations and failures, agent tool latency, server memory).
+  - Audits: `audit_form` and `audit_funnel` (any organization: settings, fields or days, counts,
+    public link, problems found) and `audit_page` (loads a public page on the PubCommand domain,
+    its subdomains or an active custom domain, and checks status, speed, title, description,
+    headings, alt text, security headers and up to 25 of its own links, four at a time).

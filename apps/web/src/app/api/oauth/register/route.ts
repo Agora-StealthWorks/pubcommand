@@ -1,4 +1,4 @@
-import { hostOrganization } from "@/features/agents/context";
+import { agentHostOrigin } from "@/features/agents/context";
 import { registerClient } from "@/features/agents/oauth";
 import { oauthJson, preflight } from "../shared";
 
@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 
 /** Dynamic client registration (RFC 7591) for MCP connectors. */
 export async function POST(request: Request) {
-  const host = await hostOrganization();
-  if (!host) return oauthJson(404, { error: "not_found" });
+  const origin = await agentHostOrigin();
+  if (!origin) return oauthJson(404, { error: "not_found" });
   let body: unknown;
   try {
     body = JSON.parse((await request.text()).slice(0, 20_000));

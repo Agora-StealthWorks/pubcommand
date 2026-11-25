@@ -1,4 +1,7 @@
+import { buildSiteUrl } from "@pubcommand/core";
 import { notFound } from "next/navigation";
+import { cursorInstallLink, cursorMcpJson } from "@/features/agents/cursor";
+import { rootDomain } from "@/lib/auth";
 import { agentsPage } from "@/features/agents/page-access";
 
 function Step({ title, children }: { title: string; children: React.ReactNode }) {
@@ -30,29 +33,47 @@ export default async function AgentsHelpPage({ params }: { params: Promise<{ slu
   const { slug } = await params;
   const access = await agentsPage(slug);
   if (!access) notFound();
-  const url = `${access.ctx.request.origin}/api/mcp`;
+  // One address for every organization: a key or a login says which organization.
+  const url = buildSiteUrl({ rootDomain: rootDomain(), requestHost: access.ctx.request.host, site: { kind: "app" }, pathname: "/api/mcp" });
   return (
     <div className="min-w-0 max-w-4xl space-y-4">
+      <Step title="GrokBot">
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>
+            Click{" "}
+            <a href={cursorInstallLink("PubCommand", url)} className="font-semibold text-accent">
+              Add to GrokBot
+            </a>{" "}
+            and confirm in GrokBot.
+          </li>
+          <li>GrokBot opens PubCommand: log in with your PubCommand account, pick the organization, and approve.</li>
+          <li>Done. Ask GrokBot to &quot;call whoami&quot; to check. The agent appears in the Agents tab as yours.</li>
+        </ol>
+        <p className="text-muted">To set it up by hand, add this to GrokBot&apos;s MCP settings (mcp.json). It asks you to log in the first time:</p>
+        <Code>{cursorMcpJson("pubcommand", url)}</Code>
+        <p className="text-muted">Or with an API key from the Agents tab instead of logging in:</p>
+        <Code>{cursorMcpJson("pubcommand", url, "pca_…")}</Code>
+      </Step>
       <Step title="The address">
-        <p>Every agent uses the same PubCommand MCP server for this organization:</p>
+        <p>Every agent uses the same PubCommand address:</p>
         <Code>{url}</Code>
         <p className="text-muted">
-          Agents sign in one of two ways. Apps with connectors (Claude, ChatGPT) send you to PubCommand to sign in with your own account and approve. Agents run through an API (Grok, the OpenAI or
-          Claude API, scripts) use an API key from the Agents tab. Either way the AI usage is billed to that AI account, not to PubCommand.
+          Agents either log in with your PubCommand account (GrokBot, Claude, ChatGPT) or use an API key from the Agents tab (Grok API, the OpenAI or Claude API, scripts). Either way PubCommand knows which
+          organization it is, and the AI usage is billed to that AI account, not to PubCommand.
         </p>
       </Step>
       <Step title="Claude (claude.ai, Claude Desktop, Claude Code)">
         <ol className="list-decimal space-y-1 pl-5">
           <li>In Claude, open Settings → Connectors and add a custom connector. On Team and Enterprise plans an owner may need to add it first.</li>
           <li>Paste the address above and connect.</li>
-          <li>Claude opens PubCommand. Sign in, name the agent, and approve. It appears in the Agents tab as yours.</li>
+          <li>Claude opens PubCommand. Log in, pick the organization, and approve. It appears in the Agents tab as yours.</li>
         </ol>
-        <p className="text-muted">Claude Code: <code className="font-mono text-xs">claude mcp add --transport http pubcommand {url}</code>, then run /mcp to sign in.</p>
+        <p className="text-muted">Claude Code: <code className="font-mono text-xs">claude mcp add --transport http pubcommand {url}</code>, then run /mcp to log in.</p>
       </Step>
       <Step title="ChatGPT and OpenAI agents">
         <ol className="list-decimal space-y-1 pl-5">
           <li>In ChatGPT, add a custom connector (app) with the address above, using OAuth sign-in. Some plans need developer mode turned on first.</li>
-          <li>Sign in to PubCommand when asked and approve.</li>
+          <li>Log in to PubCommand when asked, pick the organization and approve.</li>
         </ol>
         <p>With the OpenAI Responses API, add PubCommand as a remote MCP tool with an API key from the Agents tab:</p>
         <Code>{`"tools": [{
@@ -63,15 +84,15 @@ export default async function AgentsHelpPage({ params }: { params: Promise<{ slu
   "require_approval": "never"
 }]`}</Code>
       </Step>
-      <Step title="Grok (xAI)">
-        <p>Make an API key in the Agents tab (platform Grok). In the xAI API, add PubCommand as a remote MCP tool:</p>
+      <Step title="Grok API (xAI)">
+        <p>Make an API key in the Agents tab (platform Grok API). In the xAI API, add PubCommand as a remote MCP tool:</p>
         <Code>{`"tools": [{
   "type": "mcp",
   "server_label": "pubcommand",
   "server_url": "${url}",
   "authorization": "pca_…"
 }]`}</Code>
-        <p className="text-muted">Any client that can send an HTTP header works: send Authorization: Bearer pca_… to the address above.</p>
+        <p className="text-muted">Any app that can send an HTTP header works: send Authorization: Bearer pca_… to the address above.</p>
       </Step>
       <Step title="Claude API">
         <Code>{`"mcp_servers": [{
