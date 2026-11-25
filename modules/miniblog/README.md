@@ -2,13 +2,15 @@
 
 Route `/mini-blog`. Formerly "text-letter sites" inside Funnels; now its own app.
 
-A Mini-Blog (a "T-Letter") is a small public site per brand: the latest post, an archive, one page per post, and a subscribe page for its **medium**. It carries everything the OxfordHub T-Letter site (`stephenpriorhub/mta-sms`) had, plus themes, mediums and ad zones. **Nothing is sent** (no SMS or email provider yet); opt-ins are exported as CSV.
+A Mini-Blog (a "T-Letter") is a small public site per brand: the latest post, an archive, one page per post, and (for Email Mini-Blogs only) an email sign-up page. It carries everything the OxfordHub T-Letter site (`stephenpriorhub/mta-sms`) had, plus themes, mediums and ad zones. **Nothing is sent** (no email provider yet); email opt-ins are exported as CSV.
+
+**There is no SMS sign-up in Mini-Blog.** No Mini-Blog, whatever its medium, collects phone numbers or SMS consent: an SMS (or Push, or custom) Mini-Blog has no sign-up form, no subscribe button, and its `/subscribe` page and submit route return 404. SMS opt-ins collected before this rule stay listed (masked) on the Subscribers tab and in the CSV export; none are added. (Funnels has its own SMS forms; that is a separate app.)
 
 Permissions: `miniblog.read` (see everything), `miniblog.write` (create sites, write posts), `miniblog.publish` (publish/unpublish posts), `miniblog.manage` (go live, delete/restore a site, ad codes, app settings, export opt-ins). Entitlement `miniblog`.
 
 ## Mediums (`mediums.ts`)
 
-Mini-Blog → App settings (`/mini-blog/settings`, `miniblog.manage`) holds the organization's list (`miniblog_settings.mediums`): Email, SMS, Push Notification until an admin saves one. A new Mini-Blog asks for its medium (and Calendar publication). The medium picks the subscribe form (`subscribeKind`: "sms"/"text" → mobile number with carrier consent, "email"/"newsletter" → email address, anything else → no form, `/subscribe` 404s), the go-live checks, and is the **issue type** of its posts' Calendar issues.
+Mini-Blog → App settings (`/mini-blog/settings`, `miniblog.manage`) holds the organization's list (`miniblog_settings.mediums`): Email, SMS, Push Notification until an admin saves one. A new Mini-Blog asks for its medium (and Calendar publication). The medium decides the sign-up form (`subscribeKind`: "email"/"newsletter" → email address; every other medium, SMS included → no form, `/subscribe` 404s), the go-live checks (Email needs a privacy link; others only a name and link name), and is the **issue type** of its posts' Calendar issues.
 
 ## Themes (`themes.ts`) and the shared renderer
 
@@ -37,7 +39,7 @@ Admin preview: `?preview=1` shows drafts and scheduled posts. Previews never rec
 
 ## Pure code (this folder, unit tested in `miniblog.test.ts`)
 
-- `sms.ts`: E.164 phone validation, SMS and email consent text, `captureOptin` / `captureEmailOptin` (refuse a form that showed stale consent text), compliance lines.
+- `sms.ts`: email consent text and `captureEmailOptin` (refuses a form that showed stale consent text); phone formatting/masking only for showing SMS opt-ins collected before SMS sign-up was removed.
 - `themes.ts`, `ads.ts`, `mediums.ts`, `stats.ts`, `post-fields.ts`: see above (tests in `tletter.test.ts`).
 - `site.ts`: slugs, go-live checks, colours, CSV, excerpts, `postState`, the Brain note.
 - `paths.ts`: canonical `/b/` paths and the link base for `/b/`, `/t/` and custom domains.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { manifest } from "./manifest";
 import { MINIBLOG_PREFIXES, miniBlogPath, publicBaseFor } from "./paths";
 import { checkSite, contrastText, csvCell, excerpt, htmlToText, isValidSlug, normalizeSlug, postBrainNote, postState, toCsv } from "./site";
-import { captureOptin, complianceLines, consentText, formatPhone, isE164, maskPhone, normalizePhone, type ConsentSite } from "./sms";
+import { formatPhone, isE164, maskPhone, normalizePhone } from "./sms";
 import { formatZonedDate, utcToZonedLocal, zonedLocalToUtc } from "./time";
 
 describe("manifest", () => {
@@ -34,45 +34,11 @@ describe("phone numbers", () => {
   });
 });
 
-describe("SMS consent capture", () => {
-  const site: ConsentSite = {
-    programName: "Morning Alerts",
-    companyName: "Example Gazette",
-    messageFrequency: "Up to 5 msgs/week",
-    helpContact: "help@example.com",
-    privacyUrl: "https://example.com/privacy",
-    termsUrl: "https://example.com/sms-terms",
-  };
-  const text = consentText(site);
-
-  it("writes the consent text with the required disclosures", () => {
-    expect(text).toContain("Example Gazette (Morning Alerts)");
-    expect(text).toContain("Up to 5 msgs/week.");
-    expect(text).toContain("Msg & data rates may apply.");
-    expect(text).toContain("Reply STOP to cancel or HELP for help (or contact help@example.com).");
-    expect(text).toContain("Consent is not a condition of any purchase.");
-    expect(text).toContain("Privacy Policy: https://example.com/privacy");
-    expect(complianceLines(site).join(" ")).toContain("STOP");
-  });
-
-  it("stores the normalized phone and the exact text shown", () => {
-    expect(captureOptin({ phone: "(212) 555-0142", consentChecked: true, shownConsent: text, honeypot: "" }, text)).toEqual({ ok: true, record: { phone: "+12125550142", consentText: text } });
-  });
-
-  it("refuses without consent, with a bad number, with stale text, and quietly drops bots", () => {
-    expect(captureOptin({ phone: "2125550142", consentChecked: false, shownConsent: text, honeypot: "" }, text)).toMatchObject({ ok: false, error: expect.stringContaining("Check the box") });
-    expect(captureOptin({ phone: "555", consentChecked: true, shownConsent: text, honeypot: "" }, text)).toMatchObject({ ok: false, error: expect.stringContaining("valid mobile") });
-    expect(captureOptin({ phone: "2125550142", consentChecked: true, shownConsent: "older wording", honeypot: "" }, text)).toMatchObject({ ok: false, error: expect.stringContaining("updated") });
-    expect(captureOptin({ phone: "2125550142", consentChecked: true, shownConsent: text, honeypot: "http://spam" }, text)).toMatchObject({ ok: false, spam: true });
-  });
-});
-
 describe("site checks and exports", () => {
-  it("blocks going live without privacy and terms links or a program name", () => {
-    const result = checkSite({ name: "S", slug: "s", privacyUrl: null, termsUrl: "https://x.example/t", programName: "", helpContact: "" });
-    expect(result.errors).toHaveLength(2);
-    expect(result.warnings).toHaveLength(1);
-    expect(checkSite({ name: "S", slug: "s", privacyUrl: "https://x.example/p", termsUrl: "https://x.example/t", programName: "Alerts", helpContact: "help@x.example" })).toEqual({ errors: [], warnings: [] });
+  it("blocks going live without a name or a valid link name", () => {
+    const result = checkSite({ name: " ", slug: "Bad Slug", privacyUrl: null, termsUrl: null, programName: "", helpContact: "", medium: "Email" });
+    expect(result.errors).toHaveLength(3);
+    expect(checkSite({ name: "S", slug: "s", privacyUrl: "https://x.example/p", termsUrl: null, programName: "", helpContact: "", medium: "Email" })).toEqual({ errors: [], warnings: [] });
   });
 
   it("makes slugs and refuses bad ones", () => {

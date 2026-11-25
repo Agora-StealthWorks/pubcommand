@@ -3,14 +3,50 @@
  *
  * There is no SMS provider yet: these forms only capture consent the way a
  * carrier audit expects (the exact text shown, when, and from which page).
- * Phone parsing and the consent wording are shared with Mini-Blog.
+ * Phone parsing is shared with Mini-Blog (which has no SMS sign-up of its own).
  */
-import { captureOptin, consentText as standardConsent, normalizePhone, type ConsentSite } from "../miniblog/sms";
+import { normalizePhone, type ConsentSite } from "../miniblog/sms";
 
 export { formatPhone, maskPhone, normalizePhone } from "../miniblog/sms";
 
 export function isValidEmail(value: string): boolean {
   return value.length <= 254 && /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[a-z]{2,}$/i.test(value);
+}
+
+/**
+ * The standard consent sentence shown next to the checkbox. It is stored with
+ * every opt-in, so a later edit to the form never rewrites what someone agreed to.
+ */
+export function standardConsent(site: ConsentSite): string {
+  const program = site.programName.trim() || "text alerts";
+  const company = site.companyName.trim() || "us";
+  const frequency = site.messageFrequency.trim() || "Message frequency varies";
+  const parts = [
+    `By checking this box, I agree to receive recurring automated marketing text messages from ${company} (${program}) at the number provided.`,
+    "Consent is not a condition of any purchase.",
+    `${frequency.replace(/\.$/, "")}.`,
+    "Msg & data rates may apply.",
+    "Reply STOP to cancel or HELP for help" + (site.helpContact.trim() ? ` (or contact ${site.helpContact.trim()})` : "") + ".",
+  ];
+  const links = [site.privacyUrl ? `Privacy Policy: ${site.privacyUrl}` : null, site.termsUrl ? `Terms: ${site.termsUrl}` : null].filter(Boolean);
+  if (links.length) parts.push(`${links.join(". ")}.`);
+  return parts.join(" ");
+}
+
+export type OptinInput = { phone: string; consentChecked: boolean; shownConsent: string; honeypot: string };
+
+/**
+ * Validate one SMS sign-up against the CURRENT consent text. A form rendered
+ * before an edit (different text) is refused so the stored text is always what
+ * the person actually saw.
+ */
+export function captureOptin(input: OptinInput, currentConsent: string): { ok: true; record: { phone: string; consentText: string } } | { ok: false; error: string; spam?: boolean } {
+  if (input.honeypot.trim()) return { ok: false, error: "Thanks!", spam: true };
+  const phone = normalizePhone(input.phone);
+  if (!phone) return { ok: false, error: "Enter a valid mobile number, including the area code." };
+  if (!input.consentChecked) return { ok: false, error: "Check the box to agree to receive text messages." };
+  if (input.shownConsent.trim() !== currentConsent.trim()) return { ok: false, error: "This page was updated. Please review the terms and try again." };
+  return { ok: true, record: { phone, consentText: currentConsent } };
 }
 
 export type SmsFormConsent = ConsentSite & { customConsent: string };

@@ -3,7 +3,7 @@ import { RichContentStyles } from "@/components/rich-text-editor/content-css";
 import { parseAdCodes, resolveAd, splitAtContentAd, stripContentAd, type ResolvedAd } from "../../../../../modules/miniblog/ads";
 import { rewriteLinks } from "../../../../../modules/miniblog/links";
 import { subscribeKind } from "../../../../../modules/miniblog/mediums";
-import { complianceLines, emailComplianceLines } from "../../../../../modules/miniblog/sms";
+import { emailComplianceLines } from "../../../../../modules/miniblog/sms";
 import { formatZonedDate } from "../../../../../modules/miniblog/time";
 import { AdCodeSlot, ArchiveCard, BlogHeader, LookRoot, PostArticle, SubscribeBox, TLetterFooter, TextAd, type ArchiveLink } from "./article";
 import type { Branding, PostRow, SiteRow } from "./data";
@@ -13,10 +13,9 @@ import { sanitizeRich } from "./sanitize";
 export const RICH =
   "[&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-lg [&_h3]:font-bold [&_img]:h-auto [&_img]:max-w-full [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_ul]:list-disc [&_ul]:pl-5 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0";
 
-/** The legal lines for the Mini-Blog's medium (none for mediums without a subscribe form). */
+/** The legal lines under an email Mini-Blog (none for other mediums: they have no sign-up form). */
 function legalLines(site: SiteRow): string[] {
-  const kind = subscribeKind(site.medium);
-  return kind === "sms" ? complianceLines(site) : kind === "email" ? emailComplianceLines(site) : [];
+  return subscribeKind(site.medium) === "email" ? emailComplianceLines(site) : [];
 }
 
 /**
@@ -83,12 +82,10 @@ export function BlogShell({ site, branding, base, children, preview, archives = 
   );
 }
 
-/** The subscribe button card, per medium. Mediums without a form (Push, custom) show nothing. */
+/** The email sign-up card. Every other medium (SMS, Push, custom) shows nothing: there is no SMS sign-up. */
 export function SubscribeCard({ site, base }: { site: SiteRow; branding?: Branding; base: string }) {
-  const kind = subscribeKind(site.medium);
-  if (kind === "none") return null;
-  const program = site.programName || site.name;
-  return <SubscribeBox title={kind === "sms" ? `Get ${program} by text` : `Get ${program} by email`} tagline={site.tagline} href={`${base}/subscribe`} cta={kind === "sms" ? "Subscribe by text" : "Subscribe by email"} />;
+  if (subscribeKind(site.medium) !== "email") return null;
+  return <SubscribeBox title={`Get ${site.programName || site.name} by email`} tagline={site.tagline} href={`${base}/subscribe`} cta="Subscribe by email" />;
 }
 
 function AdZone({ ad, hrefs, label }: { ad: ResolvedAd; hrefs?: Map<string, string>; label: string }) {

@@ -97,7 +97,7 @@ const CARDS: AppCard[] = [
   {
     moduleId: "miniblog",
     name: "Mini-Blog",
-    description: "Small public blogs with an archive and SMS subscribe page.",
+    description: "Small public blogs (T-Letters) with themes, an archive, ad zones, stats and an email sign-up.",
     icon: "✍️",
     category: "Media & Audience",
   },

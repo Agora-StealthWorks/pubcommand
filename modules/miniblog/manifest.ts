@@ -4,7 +4,7 @@ export const manifest = defineModule({
   id: "miniblog",
   slug: "miniblog",
   name: "Mini-Blog",
-  description: "Small public blogs (T-Letters) per brand: themes, latest post, archive, post pages, ad zones, a stat engine and a subscribe page for the medium (Email, SMS, Push Notification).",
+  description: "Small public blogs (T-Letters) per brand: themes, latest post, archive, post pages, ad zones, a stat engine and an email sign-up page for Email Mini-Blogs (no SMS sign-up).",
   nav: [{ label: "Mini-Blog", href: "/mini-blog", permission: "miniblog.read" }],
   routes: [{ path: "/mini-blog", title: "Mini-Blogs" }],
   permissions: [

@@ -27,18 +27,16 @@ export function mediumsFromText(text: string): string[] {
   return cleanMediums(text.split(/[\n,]/));
 }
 
-export type SubscribeKind = "sms" | "email" | "none";
+export type SubscribeKind = "email" | "none";
 
 /**
- * Which opt-in form a medium gets. SMS/text mediums collect a mobile number with
- * carrier consent; email mediums collect an email address; anything else (Push
- * Notification, custom mediums) has no subscribe form yet.
+ * Which sign-up form a medium gets. Email mediums collect an email address;
+ * every other medium (SMS, Push Notification, custom) has NO sign-up form.
+ * Mini-Blogs never collect phone numbers or SMS consent: there is no way for a
+ * reader to sign up for SMS here.
  */
 export function subscribeKind(medium: string | null | undefined): SubscribeKind {
-  const value = (medium ?? "").toLowerCase();
-  if (/\b(sms|text|mms)\b/.test(value)) return "sms";
-  if (/e-?mail|newsletter/.test(value)) return "email";
-  return "none";
+  return /e-?mail|newsletter/i.test(medium ?? "") ? "email" : "none";
 }
 
 /** A submitted medium, kept only if it is on the list (or is the Mini-Blog's current one). */
