@@ -5,6 +5,7 @@ import Link from "next/link";
 import { TableScroll } from "@/components/table-scroll";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { AgentKeyForm } from "@/features/agents/key-form";
+import { cursorInstallLink } from "@/features/agents/cursor";
 import { when } from "@/features/agents/page-access";
 import { superAdminCtx } from "@/features/agents/platform-access";
 import { createPlatformAgentWithKey } from "@/features/agents/platform-actions";
@@ -86,12 +87,16 @@ export default async function PlatformAgentsPage({ searchParams }: { searchParam
 
       <section className="grid min-w-0 gap-4 xl:grid-cols-2">
         <div className="min-w-0 rounded-xl border border-line bg-white p-4">
-          <h2 className="text-base font-semibold">Connect with sign-in (Claude, ChatGPT)</h2>
-          <p className="mt-1 text-sm text-muted">Add this address as a custom connector. The app opens the console; sign in as a super admin and approve. Its AI usage stays on your own AI account.</p>
-          <code className="mt-3 block break-all rounded bg-canvas px-2 py-2 font-mono text-xs text-ink">{mcpUrl}</code>
+          <h2 className="text-base font-semibold">Log in (GrokBot, Claude, ChatGPT)</h2>
+          <p className="mt-1 text-sm text-muted">The app opens the console; log in as a super admin and approve. Its AI usage stays on your own AI account.</p>
+          <a href={cursorInstallLink("PubCommand Platform", mcpUrl)} className="mt-3 inline-flex min-h-11 items-center rounded-md bg-accent px-4 text-sm font-semibold text-white">
+            Add to GrokBot
+          </a>
+          <p className="mt-3 text-sm text-muted">For Claude or ChatGPT, add this address as a custom connector:</p>
+          <code className="mt-1 block break-all rounded bg-canvas px-2 py-2 font-mono text-xs text-ink">{mcpUrl}</code>
         </div>
         <div className="min-w-0 rounded-xl border border-line bg-white p-4">
-          <h2 className="text-base font-semibold">Connect with an API key (Grok, OpenAI API, scripts)</h2>
+          <h2 className="text-base font-semibold">With an API key (Grok API, OpenAI API, scripts)</h2>
           <p className="mb-3 mt-1 text-sm text-muted">Send the key as Authorization: Bearer pca_… to the address on the left.</p>
           <AgentKeyForm action={createPlatformAgentWithKey} mcpUrl={mcpUrl} platforms={AGENT_PLATFORMS.map((platform) => ({ id: platform.id, label: platform.label }))} adminToggle />
         </div>

@@ -1,13 +1,17 @@
 import { hostOrganization } from "@/features/agents/context";
-import { revokeToken } from "@/features/agents/oauth";
+import { organizationOfGrant, revokeToken } from "@/features/agents/oauth";
+import { currentRequest } from "@/lib/request";
 import { oauthJson, preflight, readForm } from "../shared";
 
 export const dynamic = "force-dynamic";
 
 /** Token revocation (RFC 7009). */
 export async function POST(request: Request) {
-  const host = await hostOrganization();
-  if (host) await revokeToken(host.resolved.id, (await readForm(request)).get("token") ?? "");
+  const form = await readForm(request);
+  const appHost = (await currentRequest()).site.kind === "app";
+  const host = appHost ? null : await hostOrganization();
+  const organizationId = appHost ? await organizationOfGrant(form) : (host?.resolved.id ?? null);
+  if (organizationId) await revokeToken(organizationId, form.get("token") ?? "");
   return oauthJson(200, {});
 }
 

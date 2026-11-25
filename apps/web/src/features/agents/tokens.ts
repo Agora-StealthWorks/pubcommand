@@ -59,9 +59,16 @@ export function pkceMatches(verifier: string, challenge: string): boolean {
 }
 
 /**
- * Redirect addresses a connector may register: https anywhere, or http only on loopback
- * (desktop apps). No fragments. Claude uses https://claude.ai/api/mcp/auth_callback,
- * ChatGPT https://chatgpt.com/connector_platform_oauth_redirect.
+ * Desktop editors that sign in to MCP servers through their own app link (RFC 8252 private-use
+ * URI schemes). Cursor uses cursor://anysphere.cursor-mcp/oauth/callback on some installs
+ * (others use http://localhost:8787/callback); VS Code and Windsurf do the same with theirs.
+ */
+const NATIVE_APP_SCHEMES = new Set(["cursor:", "vscode:", "vscode-insiders:", "windsurf:"]);
+
+/**
+ * Redirect addresses a connector may register: https anywhere, http only on loopback (desktop
+ * apps), or a known editor's app link. No fragments. Claude uses
+ * https://claude.ai/api/mcp/auth_callback, ChatGPT https://chatgpt.com/connector_platform_oauth_redirect.
  */
 export function isAllowedRedirectUri(value: string): boolean {
   let url: URL;
@@ -73,7 +80,7 @@ export function isAllowedRedirectUri(value: string): boolean {
   if (url.hash || url.username || url.password) return false;
   if (url.protocol === "https:") return true;
   if (url.protocol === "http:") return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
-  return false;
+  return NATIVE_APP_SCHEMES.has(url.protocol);
 }
 
 /** Sliding-window rate decision, given calls in the last minute. */

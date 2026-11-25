@@ -78,9 +78,9 @@ export async function middleware(request: NextRequest) {
   }
 
   // OAuth discovery for AI agent connectors (MCP server at /api/mcp on organization hosts, and on
-  // the admin host for platform agents).
+  // the admin host for platform agents, and the app host: one address for every organization).
   const discoveryPath =
-    site.kind !== "org" && site.kind !== "admin"
+    site.kind !== "org" && site.kind !== "admin" && site.kind !== "app"
       ? null
       : pathname === "/.well-known/oauth-protected-resource" || pathname.startsWith("/.well-known/oauth-protected-resource/")
         ? "/api/oauth/protected-resource"

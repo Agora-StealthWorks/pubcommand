@@ -79,7 +79,7 @@ export function AgentKeyForm({
               </div>
               <div className="min-w-0">
                 <Label htmlFor="agent-name">Name</Label>
-                <Input id="agent-name" name="name" maxLength={80} placeholder="e.g. Market Desk Grok" className="mt-1" />
+                <Input id="agent-name" name="name" maxLength={80} placeholder="e.g. Market Desk GrokBot" className="mt-1" />
               </div>
             </div>
             {owners?.length ? (

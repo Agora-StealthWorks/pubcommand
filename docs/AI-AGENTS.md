@@ -24,6 +24,20 @@ and write posts through PubCommand's MCP server. The sidebar's **AI Agents** sec
 
 ## Connecting
 
+**One address for every organization: `https://app.<root>/api/mcp`.** A key or a login says
+which organization: on the app host the token is looked up across organizations (its own
+organization then applies, exactly as on that organization's host), and the OAuth login screen
+(`app.<root>/agents/connect`) asks which of the person's organizations to connect. Each
+organization's own host (`<org>.<root>/api/mcp`) keeps working.
+
+**GrokBot.** In PubCommand, Cursor (the AI code editor) is called GrokBot (platform id
+`cursor`). The AI Agents page has an **Add to GrokBot** button: a Cursor install link
+(`cursor://anysphere.cursor-deeplink/mcp/install?name=…&config=<base64 {"url": …}>`, see
+`features/agents/cursor.ts`) that adds the one address; GrokBot then opens the login. GrokBot
+signs in with `cursor://anysphere.cursor-mcp/oauth/callback` or `http://localhost:8787/callback`,
+so editor app links (`cursor:`, `vscode:`, `vscode-insiders:`, `windsurf:`) are accepted as
+OAuth redirect addresses. The help page also shows the `mcp.json` entry, with or without a key.
+
 The MCP server is `POST /api/mcp`: Streamable HTTP, stateless, JSON responses. Code:
 `apps/web/src/features/agents/mcp.ts` and `tools.ts`.
 
