@@ -68,6 +68,12 @@ describe("platform staff", () => {
   it("rejects a non-staff session on the admin host and holds staff at 2FA", () => {
     expect(
       decideAdminAccess({ pathname: "/orgs", hasSession: true, staffRole: null, mfaVerified: false }),
+    ).toEqual({ type: "refresh" });
+    expect(
+      decideAdminAccess({ pathname: "/orgs", hasSession: true, staffRole: null, mfaVerified: false, gateRetried: true }),
+    ).toEqual({ type: "reject" });
+    expect(
+      decideAdminAccess({ pathname: "/api/orgs", hasSession: true, staffRole: null, mfaVerified: false }),
     ).toEqual({ type: "reject" });
     expect(
       decideAdminAccess({ pathname: "/orgs", hasSession: false, staffRole: null, mfaVerified: false }),

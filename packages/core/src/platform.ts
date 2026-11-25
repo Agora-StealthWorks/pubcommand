@@ -84,6 +84,8 @@ export type AdminAccessDecision =
   | { type: "allow" }
   | { type: "login" }
   | { type: "mfa" }
+  /** Signed in but the staff pass cookie is missing or expired: re-check staff and reissue it. */
+  | { type: "refresh" }
   | { type: "reject" };
 
 function pathIs(pathname: string, prefix: string): boolean {
@@ -99,6 +101,8 @@ export function decideAdminAccess(input: {
   hasSession: boolean;
   staffRole: PlatformRole | null;
   mfaVerified: boolean;
+  /** True when a pass refresh was just attempted, so a failed refresh cannot loop. */
+  gateRetried?: boolean;
 }): AdminAccessDecision {
   if (pathIs(input.pathname, "/api/auth") || input.pathname === "/api/health") {
     return { type: "allow" };
@@ -107,6 +111,10 @@ export function decideAdminAccess(input: {
     // Signing in and "Forgot your password?" work on every host, including this one.
     if (input.pathname === "/login" || input.pathname === "/reset-password") return { type: "allow" };
     if (!input.hasSession) return { type: "login" };
+    // The staff pass expires after 12 h but the session lasts 30 days. A signed-in
+    // visitor without a pass gets one reissued after a database staff check, rather
+    // than a flat refusal. API calls cannot follow that redirect, so they are refused.
+    if (!input.gateRetried && !pathIs(input.pathname, "/api")) return { type: "refresh" };
     return { type: "reject" };
   }
   if (!input.mfaVerified) {

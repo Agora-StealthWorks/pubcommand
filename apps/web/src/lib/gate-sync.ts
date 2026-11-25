@@ -9,6 +9,9 @@ import type { GatePayload } from "@pubcommand/auth/edge";
  * so uploads on admin.<root> arrived without their files. Same token format:
  * base64url(JSON) + "." + base64url(HMAC-SHA256(body, secret)).
  */
+/** Set briefly by /api/auth/gate so the middleware refuses instead of looping if a reissued pass is not accepted. */
+export const GATE_RETRY_COOKIE = "pc_gate_retry";
+
 export function openGateSync(token: string, secret: string, now = Date.now()): GatePayload | null {
   const [body, signature] = token.split(".");
   if (!body || !signature) return null;
