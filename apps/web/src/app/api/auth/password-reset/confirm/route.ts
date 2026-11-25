@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   } catch {
     return invalid();
   }
-  const { staff } = await establishSession(consumed.userId);
+  const { staff } = await establishSession(consumed.userId, "password_reset");
   // Reset on an organization's address the person belongs to: land on that workspace (the new session cookie is set here).
   const site = resolveSite(host, rootDomain(), new URL(request.url).searchParams);
   if (site.kind === "org" && !(staff && staffTwoFactorRequired())) {

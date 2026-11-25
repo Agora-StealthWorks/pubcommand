@@ -152,6 +152,8 @@ model User {
   /// Deleted by platform staff: email/name scrubbed, login disabled, row kept so authored content stays valid.
   deletedAt    DateTime?      @map("deleted_at")
   deletedById  String?        @map("deleted_by_id") @db.Uuid
+  /// Sign out after this many minutes without activity. Null = the default (12 hours). Set by console admins.
+  idleTimeoutMinutes Int?     @map("idle_timeout_minutes")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
   memberships  Membership[]
@@ -167,6 +169,9 @@ model Session {
   userId      String   @map("user_id") @db.Uuid
   expiresAt   DateTime @map("expires_at")
   mfaVerified Boolean  @default(false) @map("mfa_verified")
+  /// Last request or active heartbeat. The session ends after the user's idle timeout.
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt   DateTime @default(now()) @map("created_at")
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])

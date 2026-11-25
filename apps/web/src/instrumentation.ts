@@ -7,5 +7,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { startJobRunner } = await import("./lib/jobs/runner");
     startJobRunner();
+    const { startServerSampler } = await import("./features/usage/record");
+    startServerSampler();
   }
 }

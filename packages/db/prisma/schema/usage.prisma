@@ -1,0 +1,132 @@
+// App usage: sign-ins, time in each app, what people built, server samples, and the
+// Operations Brain (strategic notes about how the platform is used).
+//
+// Platform tables, PubCommand staff and platform agents only. They have no
+// `organizationId` field on purpose: the tenant client (packages/db/src/tenant.ts)
+// only exposes models with that field, so organization code cannot reach them.
+// The organization column is `orgId` (organization_id). Row-level security allows
+// access only inside a transaction that sets app.bypass_rls (platformTx).
+
+/// One sign-in (magic link, password, password reset or registration).
+model UsageLogin {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  /// "magic_link" | "password" | "password_reset" | "registration"
+  method    String
+  /// The host the person signed in on: "org" | "app" | "admin" | "marketing".
+  site      String
+  orgId     String?  @map("organization_id") @db.Uuid
+  userAgent String?  @map("user_agent")
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("usage_logins")
+}
+
+/// Browser-measured use, rolled up per day, person, site and page area.
+/// `site` is "admin", "app" or the organization id; `area` is the path with ids replaced.
+model UsageDaily {
+  id            String   @id @default(uuid()) @db.Uuid
+  day           DateTime @db.Date
+  userId        String   @map("user_id") @db.Uuid
+  site          String
+  orgId         String?  @map("organization_id") @db.Uuid
+  /// The app (first path segment, e.g. "forms", "promo-studio"), or "dashboard".
+  app           String
+  area          String
+  views         Int      @default(0)
+  /// Seconds the tab was visible and the person was active (input in the last minute).
+  activeSeconds Int      @default(0) @map("active_seconds")
+  /// Bytes the browser transferred for these pages (navigation + resources).
+  bytes         BigInt   @default(0)
+  firstSeenAt   DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt    DateTime @default(now()) @map("last_seen_at")
+
+  @@unique([day, userId, site, area])
+  @@index([day])
+  @@index([userId, day])
+  @@index([orgId, day])
+  @@map("usage_daily")
+}
+
+/// What someone actually did and made: one row per organization audit entry, with a
+/// plain-text snapshot of the thing they created or changed (form fields, post copy,
+/// promo headlines...). Built by the usage.capture job. Secrets and contact details are never copied.
+model UsageActivity {
+  id         String   @id @default(uuid()) @db.Uuid
+  auditLogId String   @unique @map("audit_log_id") @db.Uuid
+  orgId      String   @map("organization_id") @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  /// "member" | "agent" | "staff" | "system"
+  actorKind  String   @map("actor_kind")
+  app        String
+  action     String
+  /// The last word of the action: created, saved, published, deleted...
+  verb       String
+  targetType String   @map("target_type")
+  targetId   String?  @map("target_id")
+  /// The thing's title or name, when it has one.
+  title      String?
+  /// One line: "created a form \"Free Retirement Guide\"".
+  summary    String
+  /// Text snapshot of the content (capped), null when there is nothing to copy.
+  content    String?
+  createdAt  DateTime @map("created_at")
+  capturedAt DateTime @default(now()) @map("captured_at")
+
+  @@index([createdAt])
+  @@index([orgId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([app, createdAt])
+  @@map("usage_activities")
+}
+
+/// Memory of one web server process, sampled every few minutes.
+model UsageServerSample {
+  id             String   @id @default(uuid()) @db.Uuid
+  service        String
+  instance       String
+  rssBytes       BigInt   @map("rss_bytes")
+  heapUsedBytes  BigInt   @map("heap_used_bytes")
+  heapTotalBytes BigInt   @map("heap_total_bytes")
+  externalBytes  BigInt   @map("external_bytes")
+  /// CPU used since the previous sample, as a percent of one core.
+  cpuPercent     Float?   @map("cpu_percent")
+  uptimeSeconds  Int      @map("uptime_seconds")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("usage_server_samples")
+}
+
+/// The Operations Brain: a separate area of the Master Brain about how the business runs.
+/// Strategic, non-technical notes (marketing tactics, copy, strategy trends, user behavior),
+/// written daily and weekly by the usage.insights job, or by staff and platform agents.
+/// Never pushed to brands and never mixed into the Master Brain's marketing knowledge.
+model OpsBrainNote {
+  id          String                   @id @default(uuid()) @db.Uuid
+  /// Idempotency key: daily:<yyyy-mm-dd> | weekly:<yyyy-mm-dd> | note:<uuid>
+  key         String                   @unique
+  /// "daily" | "weekly" | "note"
+  kind        String
+  title       String
+  body        String
+  periodStart DateTime?                @map("period_start")
+  periodEnd   DateTime?                @map("period_end")
+  /// The numbers the note was written from (activity counts, top apps...).
+  stats       Json?
+  model       String?
+  /// "usage-insights" | "staff" | "ai-agent"
+  source      String
+  createdById String?                  @map("created_by_id") @db.Uuid
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+  deletedAt   DateTime?                @map("deleted_at")
+  searchVector Unsupported("tsvector")? @default(dbgenerated("(setweight(to_tsvector('english'::regconfig, COALESCE(title, ''::text)), 'A'::\"char\") || setweight(to_tsvector('english'::regconfig, \"left\"(COALESCE(body, ''::text), 500000)), 'B'::\"char\"))")) @map("search_vector")
+
+  @@index([kind, periodStart])
+  @@index([searchVector], type: Gin)
+  @@map("ops_brain_notes")
+}
