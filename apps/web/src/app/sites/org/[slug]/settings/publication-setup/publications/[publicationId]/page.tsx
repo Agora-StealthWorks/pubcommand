@@ -19,6 +19,7 @@ const BRANDING_LABELS: Record<string, string> = {
   headingFont: "Heading font",
   bodyFont: "Body font",
   tagline: "Tagline",
+  logoSize: "Logo size",
 };
 
 const SOURCE_LABELS = { publication: "own", brand: "brand default", default: "platform default" } as const;

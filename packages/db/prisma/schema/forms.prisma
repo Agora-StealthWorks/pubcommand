@@ -38,6 +38,9 @@ model FormTheme {
   companyName      String    @default("") @map("company_name")
   footerText       String?   @map("footer_text")
   isDefault        Boolean   @default(false) @map("is_default")
+  /// On: header color, button color, logo and logo height follow the brand's branding
+  /// (Settings → Brands) and are re-copied whenever it is saved (syncBrandLook).
+  followBrand      Boolean   @default(false) @map("follow_brand")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")

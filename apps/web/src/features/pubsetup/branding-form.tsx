@@ -2,7 +2,7 @@
 
 import { Button, Input, Label, Textarea } from "@pubcommand/ui";
 import { useState } from "react";
-import { contrastText } from "../../../../../modules/pubsetup/branding";
+import { contrastText, logoHeightPx } from "../../../../../modules/pubsetup/branding";
 import { FONT_OPTIONS, fontStack, normalizeHex, type FieldDef } from "../../../../../modules/pubsetup/fields";
 import { LogoSlotsField } from "./logo-field";
 
@@ -39,7 +39,6 @@ export function BrandingForm(props: {
   const other = headerBg === "dark" ? "light" : "dark";
   const { own: ownLogo, inherited } = props.logo;
   const logoSrc = ownLogo[headerBg] || ownLogo[other] || inherited[headerBg] || inherited[other];
-  const tagline = props.fields.some((f) => f.key === "tagline") ? value("tagline") : props.tagline;
 
   return (
     <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
@@ -129,14 +128,15 @@ export function BrandingForm(props: {
       <aside className="min-w-0 lg:sticky lg:top-4 lg:self-start" aria-label="Preview">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Preview</p>
         <div className="overflow-hidden rounded-xl border border-line shadow-sm" style={{ background: value("backgroundColor") || "#ffffff" }}>
-          <div className="flex items-center gap-3 px-4 py-4" style={{ background: primary, color: contrastText(primary) }}>
-            {logoSrc ? <img src={logoSrc} alt="" className="h-10 w-auto max-w-[45%] object-contain" /> : null}
-            <div className="min-w-0">
-              <p className="text-lg font-bold leading-tight [overflow-wrap:anywhere]" style={{ fontFamily: fontStack(value("headingFont") || "Georgia") }}>
+          {/* The header shows the logo alone, centered, at the chosen size; the name only when there is no logo. */}
+          <div className="flex items-center justify-center px-4 py-4" style={{ background: primary, color: contrastText(primary) }}>
+            {logoSrc ? (
+              <img src={logoSrc} alt={`${props.name} logo`} className="w-auto max-w-full object-contain" style={{ height: logoHeightPx(value("logoSize")) }} />
+            ) : (
+              <p className="text-center text-lg font-bold leading-tight [overflow-wrap:anywhere]" style={{ fontFamily: fontStack(value("headingFont") || "Georgia") }}>
                 {props.name}
               </p>
-              {tagline ? <p className="text-xs opacity-90 [overflow-wrap:anywhere]">{tagline}</p> : null}
-            </div>
+            )}
           </div>
           <div className="space-y-3 px-4 py-4" style={{ color: value("textColor") || "#1f2937", fontFamily: fontStack(value("bodyFont") || "Arial") }}>
             <p className="text-base font-bold" style={{ fontFamily: fontStack(value("headingFont") || "Georgia") }}>

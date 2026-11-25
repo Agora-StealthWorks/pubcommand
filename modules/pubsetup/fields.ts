@@ -198,6 +198,7 @@ export const BRANDING_FIELDS: readonly FieldDef[] = [
   { key: "headingFont", label: "Heading font", kind: "font", group: "Fonts" },
   { key: "bodyFont", label: "Body font", kind: "font", group: "Fonts" },
   { key: "tagline", label: "Tagline", kind: "text", group: "Identity", max: 200 },
+  { key: "logoSize", label: "Logo size", kind: "select", group: "Identity", options: ["Small", "Medium", "Large", "Extra large"], internal: true, hint: "How big the logo shows in headers." },
 ];
 
 export function fieldGroups(defs: readonly FieldDef[]): { group: string; fields: FieldDef[] }[] {

@@ -63,11 +63,16 @@ export function OrgShell({
         </Link>
         <SiteSwitcher model={switcher} />
         <div className="rounded-lg border border-line px-2 py-1.5">
-          {brand && brandLogos[brand.id] ? (
-            <img src={brandLogos[brand.id]} alt={`${brand.name} logo`} className="mb-1 h-9 w-auto max-w-full object-contain object-left px-1 pt-1" />
-          ) : null}
           <p className="px-1 text-[11px] font-medium text-muted">Brand</p>
-          <BrandSwitcher brands={brands} current={brand?.id ?? null} />
+          {/* Second line: the brand's logo on the left (40% of the box), its name or picker beside it. */}
+          <div className="flex min-w-0 items-center gap-2">
+            {brand && brandLogos[brand.id] ? (
+              <img src={brandLogos[brand.id]} alt={`${brand.name} logo`} className="h-auto max-h-12 w-[40%] shrink-0 object-contain object-left px-1" />
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <BrandSwitcher brands={brands} current={brand?.id ?? null} />
+            </div>
+          </div>
         </div>
       </div>
       <nav className="flex-1 px-2 pb-4" aria-label="Apps">

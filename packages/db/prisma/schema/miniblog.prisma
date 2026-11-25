@@ -34,6 +34,9 @@ model TextSite {
   logoHeight       Int          @default(36) @map("logo_height")
   headerBg         String       @default("#111827") @map("header_bg")
   accentColor      String       @default("#1d4ed8") @map("accent_color")
+  /// On: header color, accent color, logo and logo height follow the brand's branding
+  /// (Settings → Brands) and are re-copied whenever it is saved (syncBrandLook).
+  followBrand      Boolean      @default(false) @map("follow_brand")
   archivesEnabled  Boolean      @default(true) @map("archives_enabled")
   /// Marketing Calendar publication code; when set, each published post adds a calendar issue.
   calendarCode     String?      @map("calendar_code")
