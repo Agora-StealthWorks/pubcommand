@@ -1,5 +1,6 @@
 import { appendPlatformAudit, type Prisma } from "@pubcommand/db";
 import { frameNote } from "../../../../../modules/knowledge/industry-lens";
+import { frontmatterNiche, withNicheFrontmatter, type NoteNiche } from "../../../../../modules/knowledge/main-brain";
 import { importDecision, planVaultImport, type ExistingNote } from "../../../../../modules/knowledge/vault";
 import { readVaultZip } from "../../../../../modules/knowledge/zip";
 import type { StoredReport } from "../brain/vault-import";
@@ -11,13 +12,17 @@ import { uniqueMainSlug } from "./learn";
  * import (modules/knowledge/vault.ts); notes are keyed `vault:<path>` so
  * re-importing the same vault updates notes in place.
  */
-export async function planMainFromZip(bytes: Uint8Array) {
+export async function planMainFromZip(bytes: Uint8Array, defaultNiche: NoteNiche = "general") {
   const read = readVaultZip(bytes);
   if (!read.ok) return { ok: false as const, error: read.error };
   // The Master Brain's industry lens (no "competitors"); keys stay the original vault paths.
   const decisions = read.files.map((file) => {
     const decision = importDecision(file.path, file.text);
-    return decision.ok ? { ...decision, note: frameNote(decision.note) } : decision;
+    if (!decision.ok) return decision;
+    // A note's own `niche:` frontmatter wins; otherwise the niche chosen for the upload. Either way
+    // the niche is written into the note's markdown.
+    const note = frameNote(decision.note);
+    return { ...decision, note: { ...note, body: withNicheFrontmatter(note.body, frontmatterNiche(note.body) ?? defaultNiche) } };
   });
   const keys = decisions.flatMap((decision) => (decision.ok ? [decision.note.sourceRef] : []));
   const existing = new Map<string, ExistingNote>();
@@ -31,6 +36,10 @@ export async function planMainFromZip(bytes: Uint8Array) {
   return { ok: true as const, ...plan, rootPrefix: read.rootPrefix };
 }
 
+export function asNiche(value: string | null | undefined): NoteNiche {
+  return value === "finance" || value === "health" ? value : "general";
+}
+
 const running = new Set<string>();
 
 export async function runMainVaultImport(input: { importId: string; actorId: string | null }): Promise<void> {
@@ -40,7 +49,7 @@ export async function runMainVaultImport(input: { importId: string; actorId: str
     const job = await mainBrain((tx) => tx.mainBrainImport.findUnique({ where: { id: input.importId } }));
     if (!job) return;
     await mainBrain((tx) => tx.mainBrainImport.update({ where: { id: job.id }, data: { status: "RUNNING", error: null } }));
-    const plan = await planMainFromZip(new Uint8Array(job.data));
+    const plan = await planMainFromZip(new Uint8Array(job.data), asNiche(job.niche));
     if (!plan.ok) throw new Error(plan.error);
     let created = 0;
     let updated = 0;
@@ -65,6 +74,7 @@ export async function runMainVaultImport(input: { importId: string; actorId: str
                     body: row.note.body,
                     folder: row.note.folder,
                     origin: "IMPORTED",
+                    niche: frontmatterNiche(row.note.body) ?? asNiche(job.niche),
                     source: "vault-import",
                     originSourceRef: row.note.sourceRef,
                     createdById: input.actorId,
@@ -74,7 +84,7 @@ export async function runMainVaultImport(input: { importId: string; actorId: str
               } else if (row.existingId) {
                 await tx.mainBrainNote.updateMany({
                   where: { id: row.existingId, deletedAt: null },
-                  data: { title: row.note.title, body: row.note.body, folder: row.note.folder, updatedById: input.actorId },
+                  data: { title: row.note.title, body: row.note.body, folder: row.note.folder, niche: frontmatterNiche(row.note.body) ?? asNiche(job.niche), updatedById: input.actorId },
                 });
                 u += 1;
               }

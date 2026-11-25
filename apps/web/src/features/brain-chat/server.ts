@@ -1,6 +1,7 @@
 import { runChat, type AiInput, type ChatActivity, type ChatTool, type ChatTurn } from "@pubcommand/ai";
 import { appendPlatformAudit, type Prisma } from "@pubcommand/db";
 import { checkAttachment, cleanFilename, extensionOf } from "../../../../../modules/knowledge/attachments";
+import { frontmatterNiche, withNicheFrontmatter, type NoteNiche } from "../../../../../modules/knowledge/main-brain";
 import {
   BRAINCHAT_SYSTEM,
   BRAINCHAT_TOOLS,
@@ -94,7 +95,8 @@ export async function saveUploadAsNote(file: File, staff: Staff): Promise<{ uplo
         key: `brainchat-upload:${crypto.randomUUID()}`,
         title: title.slice(0, 200),
         slug: await uniqueMainSlug(tx, title),
-        body: attach.ok ? `${body}\n\n![[${attach.filename}]]\n` : body,
+        body: withNicheFrontmatter(attach.ok ? `${body}\n\n![[${attach.filename}]]\n` : body, "general"),
+        niche: "general",
         folder: BRAINCHAT_UPLOAD_FOLDER,
         origin: "AUTHORED",
         source: "brainchat",
@@ -185,7 +187,8 @@ function brainTools(staff: Staff, savedNoteIds: string[]): ChatTool[] {
       if (parsed.noteId) {
         const existing = await getMainNote(parsed.noteId);
         if (!existing) return { error: "That note does not exist; create a new one with note_id null." };
-        await mainBrain((tx) => tx.mainBrainNote.update({ where: { id: existing.id }, data: { title: parsed.title, body: parsed.body, folder: parsed.folder, updatedById: staff.userId, editedAt: new Date() } }));
+        const niche = frontmatterNiche(parsed.body) ?? (existing.niche as NoteNiche);
+        await mainBrain((tx) => tx.mainBrainNote.update({ where: { id: existing.id }, data: { title: parsed.title, body: withNicheFrontmatter(parsed.body, niche), niche, folder: parsed.folder, updatedById: staff.userId, editedAt: new Date() } }));
         await appendPlatformAudit({ actorId: staff.userId, action: "main_brain.note.updated", targetType: "main_brain_note", targetId: existing.id, metadata: { via: "brainchat" } });
         if (existing.pushScope !== "NONE") await syncPushDown({ noteIds: [existing.id] }).catch((error: unknown) => console.error("[brainchat] push-down failed", error));
         savedNoteIds.push(existing.id);
@@ -193,7 +196,7 @@ function brainTools(staff: Staff, savedNoteIds: string[]): ChatTool[] {
       }
       const note = await mainBrain(async (tx) =>
         tx.mainBrainNote.create({
-          data: { key: `note:${crypto.randomUUID()}`, title: parsed.title, slug: await uniqueMainSlug(tx, parsed.title), body: parsed.body, folder: parsed.folder, origin: "AUTHORED", source: "brainchat", createdById: staff.userId },
+          data: { key: `note:${crypto.randomUUID()}`, title: parsed.title, slug: await uniqueMainSlug(tx, parsed.title), body: withNicheFrontmatter(parsed.body, frontmatterNiche(parsed.body) ?? "general"), niche: frontmatterNiche(parsed.body) ?? "general", folder: parsed.folder, origin: "AUTHORED", source: "brainchat", createdById: staff.userId },
           select: { id: true },
         }),
       );

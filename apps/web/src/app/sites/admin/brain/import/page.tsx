@@ -1,3 +1,4 @@
+import { NICHE_LABELS, NICHES } from "@pubcommand/core";
 import { Button, Label } from "@pubcommand/ui";
 import Link from "next/link";
 import { Denied, Flash } from "@/components/ui";
@@ -34,6 +35,20 @@ export default async function MainImportPage({ searchParams }: { searchParams: P
             className="mt-1 block w-full rounded-md border border-dashed border-line bg-canvas px-3 py-6 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
           />
           <p className="mt-1 text-xs text-muted">Up to 55 MB. Re-uploading the same vault updates notes instead of duplicating them. Notes that look like they hold a secret are skipped.</p>
+        </div>
+        <div>
+          <Label htmlFor="main-vault-niche">Niche</Label>
+          <select id="main-vault-niche" name="niche" required defaultValue="" className="pc-control mt-1 w-full">
+            <option value="" disabled>
+              Choose the vault&apos;s niche
+            </option>
+            {NICHES.map((value) => (
+              <option key={value} value={value}>
+                {value === "general" ? "General: craft for every niche" : NICHE_LABELS[value]}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted">For notes without their own <code>niche:</code> line in the frontmatter. Each note gets a <code>niche:</code> line written into its markdown. Finance and health notes never reach brands of the other niche.</p>
         </div>
         <Button type="submit" className="w-full sm:w-auto">
           Upload and check

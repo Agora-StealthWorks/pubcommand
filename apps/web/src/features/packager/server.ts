@@ -87,11 +87,13 @@ async function isConsoleOrganization(organizationId: string): Promise<boolean> {
 }
 
 /** The console workspace has no brand knowledge of its own: its Packager learns the craft from the Master Brain. */
-async function masterBrainCraftNotes(): Promise<BrainNote[]> {
+async function masterBrainCraftNotes(niche: string): Promise<BrainNote[]> {
   const rows = await mainBrain((tx) =>
     tx.mainBrainNote.findMany({
       where: {
         deletedAt: null,
+        // Niche separation: the brand's own niche plus general craft, never another niche.
+        niche: { in: [...new Set([niche, "general"])] },
         OR: [...CRAFT_FOLDERS.flatMap((folder) => [{ folder }, { folder: { startsWith: `${folder}/` } }]), { title: { in: CRAFT_TITLES } }],
       },
       select: { title: true, body: true },
@@ -103,7 +105,10 @@ async function masterBrainCraftNotes(): Promise<BrainNote[]> {
 }
 
 async function brainNotes(db: Db, brandId: string, promoId: string, packageId: string, organizationId?: string): Promise<BrainNote[]> {
-  if (organizationId && (await isConsoleOrganization(organizationId))) return masterBrainCraftNotes();
+  if (organizationId && (await isConsoleOrganization(organizationId))) {
+    const brand = await db.brand.findFirst({ where: { id: brandId }, select: { niche: true } });
+    return masterBrainCraftNotes(brandProfile({ name: "", niche: brand?.niche }).niche);
+  }
   const rows = await db.knowledgePage.findMany({
     where: {
       AND: [scopeWhere(brandScope(brandId)), { NOT: { sourceRef: { in: [`promo:${promoId}`, `package:${packageId}`] } } }],

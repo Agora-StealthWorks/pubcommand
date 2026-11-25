@@ -12,7 +12,7 @@ export default async function NewMainNotePage({ searchParams }: { searchParams: 
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">New main-Brain note</h1>
       <p className="mb-4 text-sm text-muted">Platform knowledge. No brand sees it unless you push it down from its page.</p>
       <Flash error={query.error} />
-      <NoteForm action={createMainNote} cancelHref="/brain" folder={normalizeFolder(query.folder)} targetLabel="the main Brain" />
+      <NoteForm action={createMainNote} cancelHref="/brain" folder={normalizeFolder(query.folder)} targetLabel="the main Brain" niche="general" />
     </div>
   );
 }

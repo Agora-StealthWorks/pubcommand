@@ -137,6 +137,7 @@ export default async function TestimonialPage({ params, searchParams }: { params
                   values={t}
                   publications={look.publications.filter((p) => !p.archived || p.id === t.publicationId).map((p) => ({ id: p.id, name: p.name, code: p.code }))}
                   editors={look.editorList.filter((e) => !e.archived || e.id === t.editorId).map((e) => ({ id: e.id, name: e.name }))}
+                  niche={niche}
                 />
                 {t.consentMethod !== "public-form" ? (
                   <div className="space-y-2">

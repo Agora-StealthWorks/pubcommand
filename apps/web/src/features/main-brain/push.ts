@@ -21,6 +21,7 @@ type MainNoteForPush = {
   title: string;
   body: string;
   pushScope: "NONE" | "ALL" | "SELECTED";
+  niche: string;
   deletedAt: Date | null;
   targets: BrandRef[];
   attachments: { id: string; filename: string; contentType: string; size: number }[];
@@ -29,7 +30,7 @@ type MainNoteForPush = {
 async function allBrands(): Promise<BrandRef[]> {
   const brands = await rawPrisma().brand.findMany({
     where: { organization: { suspendedAt: null } },
-    select: { id: true, organizationId: true },
+    select: { id: true, organizationId: true, niche: true },
   });
   return brands;
 }
@@ -43,6 +44,7 @@ async function loadPushedNotes(noteIds?: string[]): Promise<MainNoteForPush[]> {
         title: true,
         body: true,
         pushScope: true,
+        niche: true,
         deletedAt: true,
         pushTargets: { select: { brandId: true, targetOrganizationId: true } },
         attachments: { select: { id: true, filename: true, contentType: true, size: true } },
@@ -53,6 +55,7 @@ async function loadPushedNotes(noteIds?: string[]): Promise<MainNoteForPush[]> {
       title: row.title,
       body: row.body,
       pushScope: row.pushScope,
+      niche: row.niche,
       deletedAt: row.deletedAt,
       targets: row.pushTargets.map((target) => ({ id: target.brandId, organizationId: target.targetOrganizationId })),
       attachments: row.attachments,
@@ -118,7 +121,7 @@ export async function syncPushDown(options: { noteIds?: string[] } = {}): Promis
   for (const note of notes) {
     summary.notes += 1;
     const scope = note.deletedAt ? "NONE" : note.pushScope;
-    const targets = pushTargets(scope, note.targets, brands);
+    const targets = pushTargets(scope, note.targets, brands, note.niche);
     for (const orgId of orgIds) {
       const copies = copiesByOrg.get(orgId) ?? [];
       const plan = planPush(

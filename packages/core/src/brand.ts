@@ -28,6 +28,7 @@ const COMPLIANCE_RULES: Record<Niche, string[]> = {
     "No guaranteed results; testimonials need a results-not-typical disclosure.",
     "Every health claim must be substantiated; no invented studies, doctors or statistics.",
     "No telling readers to stop prescribed medication or replace medical care.",
+    "Testimonials describe how readers feel, never money made: no financial gains, returns or profits.",
   ],
   general: [
     "No guaranteed results.",
