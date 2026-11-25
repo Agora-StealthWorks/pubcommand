@@ -19,6 +19,7 @@ export function HexColorInput({
   defaultValue,
   label,
   className = "",
+  onChange,
 }: {
   name: string;
   id?: string;
@@ -26,6 +27,8 @@ export function HexColorInput({
   /** Accessible name for the swatch and the code box. */
   label: string;
   className?: string;
+  /** Called with #rrggbb whenever a valid color is picked or typed (live previews). */
+  onChange?: (hex: string) => void;
 }) {
   const start = normalize(defaultValue) ?? "#000000";
   const [color, setColor] = useState(start);
@@ -41,6 +44,7 @@ export function HexColorInput({
         onChange={(e) => {
           setColor(e.target.value);
           setText(e.target.value.toUpperCase());
+          onChange?.(e.target.value);
         }}
         className="h-11 w-14 shrink-0 cursor-pointer rounded-md border border-line bg-white p-1"
       />
@@ -58,7 +62,10 @@ export function HexColorInput({
         onChange={(e) => {
           setText(e.target.value);
           const hex = normalize(e.target.value);
-          if (hex) setColor(hex);
+          if (hex) {
+            setColor(hex);
+            onChange?.(hex);
+          }
         }}
         onBlur={() => setText(color.toUpperCase())}
         className={`pc-control h-11 w-full min-w-0 font-mono uppercase ${valid ? "" : "border-[#b42318]"}`}

@@ -18,7 +18,7 @@ describe("tracked links", () => {
   it("finds distinct links with their text, plus the button", () => {
     const html = '<p><a href="https://a.test/x?y=1&amp;z=2" rel="noopener">Read <b>this</b></a> <a href="mailto:a@b.co">mail</a> <a href="https://a.test/x?y=1&amp;z=2">again</a></p>';
     expect(extractLinks(html)).toEqual([{ url: "https://a.test/x?y=1&z=2", label: "Read this" }]);
-    expect(postLinks(html, "https://shop.test/buy", "Buy now").map((link) => link.label)).toEqual(["Read this", "Buy now"]);
+    expect(postLinks(html, "https://shop.test/buy", "Buy now").map((link) => link.label)).toEqual(["Buy now", "Read this"]);
     expect(postLinks(html, "javascript:x", "Bad")).toHaveLength(1);
   });
 

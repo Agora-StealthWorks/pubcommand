@@ -8,7 +8,7 @@
  * open redirect; and it is re-checked to be http(s) before redirecting.
  */
 
-export type FoundLink = { url: string; label: string };
+export type FoundLink = { url: string; label: string; kind?: "content" | "cta" | "ad" };
 
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const HREF_RE = /\bhref\s*=\s*"([^"]*)"/i;
@@ -46,11 +46,23 @@ export function extractLinks(html: string): FoundLink[] {
   return [...seen.values()];
 }
 
-/** All links of a post: body links plus the button. */
-export function postLinks(bodyHtml: string, buttonUrl: string | null | undefined, buttonText: string | null | undefined): FoundLink[] {
-  const links = extractLinks(bodyHtml);
-  if (isTrackableUrl(buttonUrl) && !links.some((link) => link.url === buttonUrl.trim())) links.push({ url: buttonUrl.trim(), label: (buttonText ?? "").trim().slice(0, 200) || "Button" });
-  return links.slice(0, 200);
+/**
+ * All links of a post: body links, the action button (cta) and the links of
+ * its text ads (ad). Stored once per URL; the first kind found wins, in the order
+ * ad, cta, content, so a URL used by an ad is reported as the ad.
+ */
+export function postLinks(bodyHtml: string, buttonUrl: string | null | undefined, buttonText: string | null | undefined, adLinks: readonly { url: string | null | undefined; label: string }[] = []): FoundLink[] {
+  const out: FoundLink[] = [];
+  const seen = new Set<string>();
+  const add = (url: string, label: string, kind: "content" | "cta" | "ad") => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    out.push({ url, label, kind });
+  };
+  for (const ad of adLinks) if (isTrackableUrl(ad.url)) add(ad.url.trim(), ad.label.slice(0, 200) || "Text ad", "ad");
+  if (isTrackableUrl(buttonUrl)) add(buttonUrl.trim(), (buttonText ?? "").trim().slice(0, 200) || "Button", "cta");
+  for (const link of extractLinks(bodyHtml)) add(link.url, link.label, "content");
+  return out.slice(0, 200);
 }
 
 export const LINK_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

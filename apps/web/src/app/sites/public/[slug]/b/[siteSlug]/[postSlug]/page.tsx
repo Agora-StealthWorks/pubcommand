@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { tenantDb } from "@pubcommand/db";
 import { siteBranding } from "@/features/miniblog/data";
-import { loadPublicSite, publicBase, publicSiteMatches, recordSiteView } from "@/features/miniblog/public";
+import { loadPublicSite, publicBase, publicSiteMatches } from "@/features/miniblog/public";
 import { trackedHrefs } from "@/features/miniblog/links";
-import { PostBody, SubscribeCard, BlogShell } from "@/features/miniblog/view";
+import { BlogShell, PostBody, SubscribeCard, TopAd } from "@/features/miniblog/view";
+import { formatZonedDate } from "../../../../../../../../../../modules/miniblog/time";
 
 type Params = Promise<{ slug: string; siteSlug: string; postSlug: string }>;
 type Search = Promise<{ preview?: string }>;
@@ -31,22 +32,28 @@ export default async function MiniBlogPostPage({ params, searchParams }: { param
   const result = await load(params, searchParams);
   if (!result) notFound();
   const { loaded, post, siteSlug } = result;
+  const { site, timeZone } = loaded;
   const base = await publicBase(siteSlug);
-  const branding = siteBranding(loaded.site, loaded.brandName, base);
-  await recordSiteView(loaded, post.id);
-  const hrefs = (await trackedHrefs(loaded.organizationId, [post.id], base, loaded.preview)).get(post.id);
+  const branding = siteBranding(site, loaded.brandName, base);
+  const db = tenantDb(loaded.organizationId);
+  const [hrefs, others] = await Promise.all([
+    trackedHrefs(loaded.organizationId, [post.id], base, loaded.preview).then((map) => map.get(post.id)),
+    branding.theme.footer === "tletter" && site.archivesEnabled
+      ? db.textPost.findMany({ where: { siteId: site.id, deletedAt: null, status: "published", publishAt: { lte: loaded.now }, id: { not: post.id } }, orderBy: { publishAt: "desc" }, take: 60, select: { slug: true, title: true, publishAt: true } })
+      : Promise.resolve([]),
+  ]);
+  const archives = others.map((item) => ({ href: `${base}/${item.slug}`, title: item.title, date: formatZonedDate(item.publishAt, timeZone) }));
   return (
-    <BlogShell site={loaded.site} branding={branding} base={base} preview={loaded.preview}>
-      <div className="space-y-5">
-        {loaded.preview && post.status !== "published" ? <p className="text-xs font-semibold text-[#b54708]">Draft preview.</p> : null}
-        <PostBody post={post} branding={branding} timeZone={loaded.timeZone} hrefs={hrefs} />
-        <SubscribeCard site={loaded.site} branding={branding} base={base} />
-        <p className="text-center text-sm">
-          <a href={base || "/"} className="font-semibold underline">
-            ← All posts
-          </a>
-        </p>
-      </div>
+    <BlogShell site={site} branding={branding} base={base} preview={loaded.preview} archives={archives} pixel={`${base}/px?p=${post.id}`}>
+      {loaded.preview && post.status !== "published" ? <p className="text-xs font-semibold text-[#b54708]">Draft preview.</p> : null}
+      <TopAd post={post} site={site} hrefs={hrefs} />
+      <PostBody post={post} site={site} branding={branding} timeZone={timeZone} hrefs={hrefs} />
+      <SubscribeCard site={site} base={base} />
+      <p style={{ textAlign: "center", fontSize: 14 }}>
+        <a href={base || "/"} style={{ fontWeight: 600, textDecoration: "underline", color: "inherit" }}>
+          ← All posts
+        </a>
+      </p>
     </BlogShell>
   );
 }

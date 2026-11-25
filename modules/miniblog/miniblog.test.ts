@@ -113,7 +113,7 @@ describe("Brain note", () => {
     expect(excerpt("<p>" + "word ".repeat(80) + "</p>", 30).endsWith("…")).toBe(true);
     const note = postBrainNote({ siteName: "Alerts", title: "Big news", publishLabel: "today", bodyHtml: "<p>Read this</p>", actionToTake: null, siteOptins: 12, postViews: 40 });
     expect(note.title).toBe("Mini-Blog post: Big news");
-    expect(note.body).toContain("Mini-Blog SMS subscribers (all time): 12.");
+    expect(note.body).toContain("Mini-Blog subscribers (all time): 12.");
     expect(note.body).not.toContain("<p>");
   });
 });
