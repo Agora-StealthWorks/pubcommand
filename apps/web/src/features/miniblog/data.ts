@@ -2,8 +2,7 @@ import { tenantDb } from "@pubcommand/db";
 import { isHttpUrl } from "../../../../../modules/miniblog/site";
 import { safeZone } from "../../../../../modules/miniblog/time";
 import { DEFAULT_MEDIUMS, cleanMediums } from "../../../../../modules/miniblog/mediums";
-import type { MiniBlogTheme } from "../../../../../modules/miniblog/themes";
-import { lookFrom } from "./article";
+import { lookFrom, type Look } from "./article";
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -16,20 +15,13 @@ export async function orgTimezone(organizationId: string): Promise<string> {
   return safeZone(settings?.timezone);
 }
 
-export type Branding = {
+/** A Mini-Blog's look (see `Look` in ./article) plus what its public pages show around it. */
+export type Branding = Look & {
   brandName: string;
   logoSrc: string | null;
-  logoHeight: number;
-  headerBg: string;
-  headerText: string;
-  accentColor: string;
-  accentText: string;
   companyName: string;
   privacyUrl: string | null;
   termsUrl: string | null;
-  theme: MiniBlogTheme;
-  /** Post title color (the header color for the T-Letter look). */
-  titleColor: string;
 };
 
 export function siteBranding(site: SiteRow, brandName: string, base: string): Branding {
@@ -42,6 +34,11 @@ export function siteBranding(site: SiteRow, brandName: string, base: string): Br
     headerText: look.headerText,
     accentColor: look.accentColor,
     accentText: look.accentText,
+    buttonColor: look.buttonColor,
+    buttonText: look.buttonText,
+    pageBg: look.pageBg,
+    pageMuted: look.pageMuted,
+    pageLink: look.pageLink,
     theme: look.theme,
     titleColor: look.titleColor,
     companyName: (site.companyName || brandName).trim(),

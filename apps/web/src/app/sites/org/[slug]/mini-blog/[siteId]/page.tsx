@@ -18,7 +18,7 @@ import { AD_NETWORKS, CONTENT_AD_SHORTCODE, networkLabel, parseAdCodes } from ".
 import { mediumOptions, subscribeKind } from "../../../../../../../../../modules/miniblog/mediums";
 import { checkSite, postState } from "../../../../../../../../../modules/miniblog/site";
 import { LINK_KIND_LABEL, formatPct, type PostStats } from "../../../../../../../../../modules/miniblog/stats";
-import { consentText, emailConsentText, maskEmail, maskPhone } from "../../../../../../../../../modules/miniblog/sms";
+import { emailConsentText, maskEmail, maskPhone } from "../../../../../../../../../modules/miniblog/sms";
 import { formatZoned, formatZonedDate } from "../../../../../../../../../modules/miniblog/time";
 
 const TABS = [
@@ -280,7 +280,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                     htmlFor="medium"
                     hint={
                       <>
-                        How readers get it. SMS shows a text sign-up, Email an email sign-up; other mediums have no sign-up form. It is also the issue type on the Calendar.{" "}
+                        How readers get it. Email Mini-Blogs show an email sign-up; every other medium, SMS included, has no sign-up form. It is also the issue type on the Calendar.{" "}
                         {canManage ? (
                           <Link href="/mini-blog/settings" className="font-semibold text-accent">
                             Edit the list
@@ -313,56 +313,53 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                   <Textarea id="postCategories" name="postCategories" defaultValue={site.postCategories.join("\n")} className="min-h-20" />
                 </Field>
               </Section>
-              {kind === "none" ? null : (
-                <Section title={kind === "sms" ? "SMS compliance" : "Email sign-up"} description={kind === "sms" ? "These fill the consent text next to the checkbox. Each opt-in stores the exact text it was shown." : "These fill the consent text on the email sign-up form. Each opt-in stores the exact text it was shown."}>
+              <Section title="Footer and legal" description="Shown in the footer of every page.">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Company name" htmlFor="companyName">
+                    <Input id="companyName" name="companyName" defaultValue={site.companyName} maxLength={120} />
+                  </Field>
+                  <Field label="Privacy-policy link" htmlFor="privacyUrl" hint={kind === "email" ? "Required: it is shown on the email sign-up form." : undefined}>
+                    <Input id="privacyUrl" name="privacyUrl" type="url" defaultValue={site.privacyUrl ?? ""} placeholder="https://" />
+                  </Field>
+                  <Field label="Terms link (optional)" htmlFor="termsUrl">
+                    <Input id="termsUrl" name="termsUrl" type="url" defaultValue={site.termsUrl ?? ""} placeholder="https://" />
+                  </Field>
+                </div>
+                <input type="hidden" name="helpContact" value={site.helpContact} />
+              </Section>
+              {kind === "email" ? (
+                <Section title="Email sign-up" description="These fill the consent text on the email sign-up form. Each opt-in stores the exact text it was shown.">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label={kind === "sms" ? "Program name" : "Newsletter name"} htmlFor="programName">
+                    <Field label="Newsletter name" htmlFor="programName">
                       <Input id="programName" name="programName" defaultValue={site.programName} maxLength={120} />
                     </Field>
-                    <Field label="Company name" htmlFor="companyName">
-                      <Input id="companyName" name="companyName" defaultValue={site.companyName} maxLength={120} />
-                    </Field>
-                    <Field label="Message frequency" htmlFor="messageFrequency" hint={kind === "sms" ? "e.g. “Up to 5 msgs/week”." : "e.g. “Every weekday morning”."}>
+                    <Field label="Message frequency" htmlFor="messageFrequency" hint="e.g. “Every weekday morning”.">
                       <Input id="messageFrequency" name="messageFrequency" defaultValue={site.messageFrequency} maxLength={120} />
-                    </Field>
-                    {kind === "sms" ? (
-                      <Field label="HELP contact" htmlFor="helpContact" hint="An email or phone number.">
-                        <Input id="helpContact" name="helpContact" defaultValue={site.helpContact} maxLength={120} />
-                      </Field>
-                    ) : (
-                      <input type="hidden" name="helpContact" value={site.helpContact} />
-                    )}
-                    <Field label="Privacy-policy link" htmlFor="privacyUrl">
-                      <Input id="privacyUrl" name="privacyUrl" type="url" defaultValue={site.privacyUrl ?? ""} placeholder="https://" />
-                    </Field>
-                    <Field label={kind === "sms" ? "SMS terms link" : "Terms link (optional)"} htmlFor="termsUrl">
-                      <Input id="termsUrl" name="termsUrl" type="url" defaultValue={site.termsUrl ?? ""} placeholder="https://" />
                     </Field>
                   </div>
                   <div className="rounded-lg bg-canvas p-3 text-xs text-muted">
                     <p className="mb-1 font-semibold text-ink">Consent text now:</p>
-                    {kind === "sms" ? consentText(site) : emailConsentText(site)}
+                    {emailConsentText(site)}
                   </div>
                 </Section>
-              )}
-              {kind === "none" ? (
+              ) : (
                 <>
-                  {(["programName", "companyName", "messageFrequency", "helpContact"] as const).map((key) => (
-                    <input key={key} type="hidden" name={key} value={site[key]} />
-                  ))}
-                  <input type="hidden" name="privacyUrl" value={site.privacyUrl ?? ""} />
-                  <input type="hidden" name="termsUrl" value={site.termsUrl ?? ""} />
+                  <input type="hidden" name="programName" value={site.programName} />
+                  <input type="hidden" name="messageFrequency" value={site.messageFrequency} />
+                  <p className="rounded-md border border-line bg-white px-3 py-2 text-sm text-muted">
+                    {site.medium} Mini-Blogs have no sign-up form. Readers reach posts by link; only Email Mini-Blogs collect sign-ups (there is no SMS sign-up).
+                  </p>
                 </>
-              ) : null}
+              )}
               <Section title="Look" description="Pick a theme, then make it yours. The preview shows the page as visitors will see it.">
                 <Check
                   name="followBrand"
                   label="Use the brand look"
                   defaultChecked={site.followBrand}
-                  hint={`Header and button colors, logo and logo size come from ${ctx.brand.name}'s branding (Settings → Brands) and update when it changes. The theme still sets the page style.`}
+                  hint={`Header and link colors, logo and logo size come from ${ctx.brand.name}'s branding (Settings → Brands) and update when it changes. The theme, button color and page background stay yours.`}
                 />
                 <LookEditor
-                  initial={{ theme: site.theme, headerBg: branding.headerBg, accentColor: branding.accentColor, logoHeight: branding.logoHeight }}
+                  initial={{ theme: site.theme, headerBg: branding.headerBg, accentColor: branding.accentColor, logoHeight: branding.logoHeight, pageBg: site.pageBg, buttonColor: site.buttonColor }}
                   logoSrc={branding.logoSrc}
                   siteName={site.name}
                   companyName={branding.companyName}
@@ -528,7 +525,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
       {tab === "subscribers" ? (
         <div className="space-y-4">
           <p className="rounded-md border border-[#fedf89] bg-[#fffaeb] px-3 py-2 text-sm text-[#93370d]">
-            Nothing is sent from here. Export the opt-ins (each with its consent text, time and page) to load into your {kind === "email" ? "email" : "SMS"} platform.
+            Nothing is sent from here. Export the opt-ins (each with its consent text, time and page) to load into your email platform. SMS opt-ins listed here were collected before SMS sign-up was removed; none are collected now.
           </p>
           <Section title={`${optinCount} opt-ins`} description="Numbers and addresses are masked here; the full list is in the export.">
             {canManage ? (

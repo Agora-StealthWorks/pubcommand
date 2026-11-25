@@ -33,6 +33,12 @@ export function color(formData: FormData, key: string, fallback: string): string
   return isHexColor(value) ? value.toLowerCase() : fallback;
 }
 
+/** A #rrggbb color, or null when the field is empty or not a color. */
+export function optionalColor(formData: FormData, key: string): string | null {
+  const value = text(formData, key, 7);
+  return isHexColor(value) ? value.toLowerCase() : null;
+}
+
 /** A datetime-local value typed in the org time zone, stored as UTC. */
 export function zoned(formData: FormData, key: string, timeZone: string): Date | null {
   return zonedLocalToUtc(text(formData, key, 20), timeZone);

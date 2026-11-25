@@ -33,7 +33,7 @@ function ThemeThumb({ look, name }: { look: Look; name: string }) {
             ) : (
               <div style={{ border: `1.5px solid ${look.accentColor}`, borderRadius: 4, padding: 5, fontSize: 8, fontWeight: 700, color: look.accentColor }}>ACTION TO TAKE</div>
             )}
-            <div style={{ margin: "6px auto 0", width: 60, height: 12, borderRadius: 3, background: look.accentColor }} />
+            <div style={{ margin: "6px auto 0", width: 60, height: 12, borderRadius: 3, background: look.buttonColor }} />
           </div>
         </div>
       </LookRoot>
@@ -43,7 +43,7 @@ function ThemeThumb({ look, name }: { look: Look; name: string }) {
 
 /**
  * Settings → Look for one Mini-Blog: pick a theme (each shown as a preview),
- * then fine-tune the header color, button color and logo size, with a live
+ * then fine-tune the header, link, button and page colors and logo size, with a live
  * preview of a post page. Writes hidden fields for the settings form.
  */
 export function LookEditor({
@@ -55,7 +55,7 @@ export function LookEditor({
   followBrand,
   disabled,
 }: {
-  initial: { theme: string; headerBg: string; accentColor: string; logoHeight: number };
+  initial: { theme: string; headerBg: string; accentColor: string; logoHeight: number; pageBg: string | null; buttonColor: string | null };
   logoSrc: string | null;
   siteName: string;
   companyName: string;
@@ -67,9 +67,12 @@ export function LookEditor({
   const [headerBg, setHeaderBg] = useState(initial.headerBg);
   const [accentColor, setAccentColor] = useState(initial.accentColor);
   const [logoHeight, setLogoHeight] = useState(initial.logoHeight);
-  // Remount the color fields when a theme resets them.
+  // null = the theme's page color / the link color.
+  const [pageBg, setPageBg] = useState<string | null>(initial.pageBg);
+  const [buttonColor, setButtonColor] = useState<string | null>(initial.buttonColor);
+  // Remount the color fields when a theme or a reset changes them.
   const [colorKey, setColorKey] = useState(0);
-  const look = lookFrom({ theme, headerBg, accentColor, logoHeight });
+  const look = lookFrom({ theme, headerBg, accentColor, logoHeight, pageBg, buttonColor });
   const post = sample ?? SAMPLE;
 
   const pick = (id: ThemeId) => {
@@ -78,8 +81,14 @@ export function LookEditor({
       const preset = themeById(id);
       setHeaderBg(preset.headerBg);
       setAccentColor(preset.accent);
-      setColorKey((key) => key + 1);
     }
+    setPageBg(null);
+    setButtonColor(null);
+    setColorKey((key) => key + 1);
+  };
+  const reset = (set: (value: null) => void) => {
+    set(null);
+    setColorKey((key) => key + 1);
   };
 
   return (
@@ -87,7 +96,7 @@ export function LookEditor({
       <input type="hidden" name="theme" value={theme} />
       <div>
         <p className="text-sm font-semibold">Theme</p>
-        <p className="text-xs text-muted">Pick a starting look. Picking one resets the header and button colors to its own; change them below.</p>
+        <p className="text-xs text-muted">Pick a starting look. Picking one resets the colors to its own; change them below.</p>
         <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" role="radiogroup" aria-label="Theme">
           {THEMES.map((item) => {
             const active = item.id === theme;
@@ -113,8 +122,10 @@ export function LookEditor({
         </div>
       </div>
 
-      <div className={`grid gap-4 sm:grid-cols-3 ${followBrand ? "opacity-60" : ""}`}>
-        <div className="min-w-0">
+      <input type="hidden" name="pageBg" value={pageBg ?? ""} />
+      <input type="hidden" name="buttonColor" value={buttonColor ?? ""} />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={`min-w-0 ${followBrand ? "opacity-60" : ""}`}>
           <label htmlFor="headerBg" className="text-sm font-semibold">
             Header color
           </label>
@@ -122,13 +133,47 @@ export function LookEditor({
             <HexColorInput key={`h-${colorKey}`} id="headerBg" name="headerBg" defaultValue={headerBg} label="Header color" onChange={setHeaderBg} />
           </div>
         </div>
-        <div className="min-w-0">
+        <div className={`min-w-0 ${followBrand ? "opacity-60" : ""}`}>
           <label htmlFor="accentColor" className="text-sm font-semibold">
-            Button and link color
+            Link color
           </label>
           <div className="mt-1">
-            <HexColorInput key={`a-${colorKey}`} id="accentColor" name="accentColor" defaultValue={accentColor} label="Button and link color" onChange={setAccentColor} />
+            <HexColorInput key={`a-${colorKey}`} id="accentColor" name="accentColor" defaultValue={accentColor} label="Link color" onChange={setAccentColor} />
           </div>
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="buttonColorPick" className="text-sm font-semibold">
+            Button color
+          </label>
+          <div className="mt-1">
+            <HexColorInput key={`b-${colorKey}-${buttonColor ? "own" : accentColor}`} id="buttonColorPick" name="buttonColorPick" defaultValue={look.buttonColor} label="Button color" onChange={setButtonColor} />
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            {buttonColor ? (
+              <button type="button" className="font-semibold text-accent" disabled={disabled} onClick={() => reset(setButtonColor)}>
+                Use the link color
+              </button>
+            ) : (
+              "Same as the link color."
+            )}
+          </p>
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="pageBgPick" className="text-sm font-semibold">
+            Page background
+          </label>
+          <div className="mt-1">
+            <HexColorInput key={`p-${colorKey}`} id="pageBgPick" name="pageBgPick" defaultValue={look.pageBg} label="Page background" onChange={setPageBg} />
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            {pageBg ? (
+              <button type="button" className="font-semibold text-accent" disabled={disabled} onClick={() => reset(setPageBg)}>
+                Use the theme's background
+              </button>
+            ) : (
+              "The color around the content box. Theme default now."
+            )}
+          </p>
         </div>
         <div className="min-w-0">
           <label htmlFor="logoHeight" className="text-sm font-semibold">
@@ -137,7 +182,7 @@ export function LookEditor({
           <input id="logoHeight" name="logoHeight" type="range" min={16} max={120} value={logoHeight} disabled={disabled} onChange={(event) => setLogoHeight(Number(event.target.value))} className="mt-3 w-full accent-accent" />
         </div>
       </div>
-      {followBrand ? <p className="text-xs text-muted">“Use the brand look” is on, so the header color, button color, logo and logo size come from the brand when you save. Turn it off to use your own.</p> : null}
+      {followBrand ? <p className="text-xs text-muted">“Use the brand look” is on, so the header and link colors, logo and logo size come from the brand when you save. Button color and page background stay yours. Turn it off to use your own header and link colors.</p> : null}
 
       <div>
         <p className="text-sm font-semibold">Live preview</p>

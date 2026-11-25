@@ -24,7 +24,7 @@ export function PublicShell({ branding, homeHref, children, preview }: { brandin
         <div className="mx-auto flex max-w-5xl items-center justify-center px-4 py-3.5">
           <a href={homeHref} className="inline-flex max-w-full items-center" aria-label={branding.brandName}>
             {branding.logoSrc ? (
-              <img src={branding.logoSrc} alt={branding.brandName} style={{ maxHeight: branding.logoHeight, maxWidth: "100%", width: "auto" }} />
+              <img src={branding.logoSrc} alt={branding.brandName} style={{ height: branding.logoHeight, maxWidth: "100%", width: "auto", objectFit: "contain", flex: "none" }} />
             ) : (
               <span className="truncate text-lg font-bold tracking-tight">{branding.brandName}</span>
             )}
