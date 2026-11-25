@@ -153,7 +153,7 @@ export const USAGE_TOOLS: Tool[] = [
   {
     name: "search_operations_brain",
     title: "Search the Operations Brain",
-    description: "Full-text search of the Operations Brain: strategic notes about how the business runs (marketing tactics, copy, strategy trends, how people work), written nightly from usage. Separate from the Master Brain's marketing notes.",
+    description: "Full-text search of the Operations Brain: strategic notes about how the business runs (marketing tactics, copy, strategy trends, how people work), written nightly from usage, plus the Reference notes on how PubCommand works today (every app, the platform, AI agents, usage). Separate from the Master Brain's marketing notes.",
     inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false },
     readOnly: true,
     available: platform,
@@ -167,14 +167,14 @@ export const USAGE_TOOLS: Tool[] = [
   {
     name: "list_operations_brain",
     title: "List Operations Brain notes",
-    description: "Operations Brain notes, newest period first: daily reads, weekly strategy notes, and notes written by staff or agents.",
+    description: "Operations Brain notes, newest period first: daily reads, weekly strategy notes and notes by staff or agents. kind=reference lists how PubCommand works (synced from its docs, in folders: Start here, Platform, Apps, AI agents, Usage & insights); start with \"How PubCommand works (start here)\".",
     inputSchema: { type: "object", properties: { kind: { type: "string", enum: [...OPS_KINDS] }, limit: { type: "integer", minimum: 1, maximum: 100 } }, additionalProperties: false },
     readOnly: true,
     available: platform,
     run: async (_ctx, args) => {
       const kind = oneOf(args, "kind", OPS_KINDS);
-      const notes = await listOpsNotes({ kind, take: limit(args, 20) });
-      return { data: { notes: notes.map((note) => ({ id: note.id, kind: note.kind, title: note.title, period_start: iso(note.periodStart), period_end: iso(note.periodEnd), source: note.source, updated_at: iso(note.updatedAt) })) } };
+      const notes = await listOpsNotes({ kind, take: limit(args, kind === "reference" ? 100 : 20) });
+      return { data: { notes: notes.map((note) => ({ id: note.id, kind: note.kind, folder: note.folder, title: note.title, period_start: iso(note.periodStart), period_end: iso(note.periodEnd), source: note.source, updated_at: iso(note.updatedAt) })) } };
     },
   },
   {
@@ -187,7 +187,7 @@ export const USAGE_TOOLS: Tool[] = [
     run: async (_ctx, args) => {
       const note = await getOpsNote(uuid(args, "note_id")!);
       if (!note) throw new ToolError("No Operations Brain note with that id.");
-      return { data: { id: note.id, kind: note.kind, title: note.title, body: note.body, period_start: iso(note.periodStart), period_end: iso(note.periodEnd), stats: note.stats, source: note.source, model: note.model, updated_at: iso(note.updatedAt) } };
+      return { data: { id: note.id, kind: note.kind, folder: note.folder, title: note.title, body: note.body, period_start: iso(note.periodStart), period_end: iso(note.periodEnd), stats: note.stats, source: note.source, model: note.model, updated_at: iso(note.updatedAt) } };
     },
   },
   {

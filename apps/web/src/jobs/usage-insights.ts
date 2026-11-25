@@ -1,6 +1,7 @@
 import { defineJob } from "@/lib/jobs/types";
 import { captureActivities } from "@/features/usage/capture";
 import { runInsights } from "@/features/usage/insights";
+import { syncReference } from "@/features/usage/reference";
 
 /** Operations Brain: yesterday's daily read, and on Mondays last week's strategy note. */
 export const usageInsights = defineJob({
@@ -11,6 +12,7 @@ export const usageInsights = defineJob({
   async run(ctx) {
     // Catch up first so the note sees everything up to midnight.
     await captureActivities({ log: ctx.log });
-    return runInsights(ctx.scheduledFor);
+    const reference = await syncReference();
+    return { ...(await runInsights(ctx.scheduledFor)), reference };
   },
 });

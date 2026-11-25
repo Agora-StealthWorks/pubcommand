@@ -107,10 +107,12 @@ model UsageServerSample {
 /// Never pushed to brands and never mixed into the Master Brain's marketing knowledge.
 model OpsBrainNote {
   id          String                   @id @default(uuid()) @db.Uuid
-  /// Idempotency key: daily:<yyyy-mm-dd> | weekly:<yyyy-mm-dd> | note:<uuid>
+  /// Idempotency key: daily:<yyyy-mm-dd> | weekly:<yyyy-mm-dd> | note:<uuid> | doc:<path>
   key         String                   @unique
-  /// "daily" | "weekly" | "note"
+  /// "daily" | "weekly" | "note" | "reference" (how PubCommand works, synced from the repository's docs)
   kind        String
+  /// Reference notes are grouped in folders ("Start here", "Platform", "Apps"...).
+  folder      String?
   title       String
   body        String
   periodStart DateTime?                @map("period_start")
@@ -118,7 +120,7 @@ model OpsBrainNote {
   /// The numbers the note was written from (activity counts, top apps...).
   stats       Json?
   model       String?
-  /// "usage-insights" | "staff" | "ai-agent"
+  /// "usage-insights" | "docs" | "staff" | "ai-agent"
   source      String
   createdById String?                  @map("created_by_id") @db.Uuid
   createdAt   DateTime                 @default(now()) @map("created_at")

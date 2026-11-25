@@ -42,6 +42,15 @@ work, opportunities and notable work. On Mondays it also writes a **weekly strat
 week's daily reads, compared with the previous week. Without an AI key it writes a factual digest.
 A note staff edit is never rewritten. These notes are never pushed to brands.
 
+## How PubCommand works (reference notes)
+
+The Operations Brain also holds the app's own documentation as **reference** notes, so the Brain
+and the platform agents know how PubCommand works today. On every boot and every night
+(`features/usage/reference.ts`) it syncs `README.md`, `docs/*.md`, `DEPLOY.md` and every
+`modules/<app>/README.md` into folders (Start here, Platform, Apps, AI agents, Usage & insights)
+with a start-here index. New docs appear on their own; removed docs are retired; a note staff edit
+is left alone. Keeping those docs current is a rule for every change (`CLAUDE.md`).
+
 ## Idle sign-out
 
 Default 12 hours without activity. Console admins (`platform.users.manage`) change it per person

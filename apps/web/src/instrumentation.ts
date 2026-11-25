@@ -9,5 +9,8 @@ export async function register() {
     startJobRunner();
     const { startServerSampler } = await import("./features/usage/record");
     startServerSampler();
+    // The usage docs as Operations Brain reference notes. Never blocks boot.
+    const { syncReference } = await import("./features/usage/reference");
+    void syncReference().catch((error: unknown) => console.warn("[usage] reference sync failed", error));
   }
 }

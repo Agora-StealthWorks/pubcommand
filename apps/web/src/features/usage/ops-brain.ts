@@ -8,22 +8,28 @@ import { platformTx } from "@pubcommand/db";
  * (ops_brain_notes), so these notes never mix with the marketing knowledge pushed to brands.
  */
 
-export const OPS_KINDS = ["daily", "weekly", "note"] as const;
+export const OPS_KINDS = ["daily", "weekly", "note", "reference"] as const;
 export type OpsKind = (typeof OPS_KINDS)[number];
-export const OPS_KIND_LABELS: Record<OpsKind, string> = { daily: "Daily read", weekly: "Weekly strategy", note: "Note" };
+export const OPS_KIND_LABELS: Record<OpsKind, string> = { daily: "Daily read", weekly: "Weekly strategy", note: "Note", reference: "Reference" };
 
-const LIST_SELECT = { id: true, key: true, kind: true, title: true, periodStart: true, periodEnd: true, source: true, model: true, createdAt: true, updatedAt: true } as const;
+const LIST_SELECT = { id: true, key: true, kind: true, folder: true, title: true, periodStart: true, periodEnd: true, source: true, model: true, createdAt: true, updatedAt: true } as const;
 export type OpsNoteRow = Prisma.OpsBrainNoteGetPayload<{ select: typeof LIST_SELECT }>;
 
 export async function listOpsNotes(filter: { kind?: string | null; take?: number; before?: Date | null } = {}): Promise<OpsNoteRow[]> {
   return platformTx((tx) =>
     tx.opsBrainNote.findMany({
-      where: { deletedAt: null, ...(filter.kind && OPS_KINDS.includes(filter.kind as OpsKind) ? { kind: filter.kind } : {}), ...(filter.before ? { createdAt: { lt: filter.before } } : {}) },
+      where: { deletedAt: null, ...(filter.kind && OPS_KINDS.includes(filter.kind as OpsKind) ? { kind: filter.kind } : filter.kind === "all" ? {} : { kind: { not: "reference" } }), ...(filter.before ? { createdAt: { lt: filter.before } } : {}) },
       orderBy: [{ periodStart: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
       take: Math.min(Math.max(filter.take ?? 50, 1), 200),
       select: LIST_SELECT,
     }),
   );
+}
+
+/** Title → id for [[wiki links]] between Operations Brain notes. */
+export async function opsTitleIndex(): Promise<Map<string, { id: string; title: string }>> {
+  const rows = await platformTx((tx) => tx.opsBrainNote.findMany({ where: { deletedAt: null }, select: { id: true, title: true } }));
+  return new Map(rows.map((row) => [row.title.toLowerCase(), row]));
 }
 
 export async function getOpsNote(id: string) {
@@ -83,7 +89,7 @@ export async function saveOpsNote(input: { id?: string | null; title: string; bo
     if (input.id) {
       const existing = await tx.opsBrainNote.findFirst({ where: { id: input.id, deletedAt: null } });
       if (!existing) throw new Error("That note no longer exists.");
-      return tx.opsBrainNote.update({ where: { id: existing.id }, data: { title, body, source: input.source === "staff" ? "staff" : existing.source === "usage-insights" ? "staff" : existing.source } });
+      return tx.opsBrainNote.update({ where: { id: existing.id }, data: { title, body, source: input.source === "staff" ? "staff" : ["usage-insights", "docs"].includes(existing.source) ? "staff" : existing.source } });
     }
     const id = randomUUID();
     return tx.opsBrainNote.create({ data: { id, key: `note:${id}`, kind: "note", title, body, source: input.source, createdById: input.actorId } });

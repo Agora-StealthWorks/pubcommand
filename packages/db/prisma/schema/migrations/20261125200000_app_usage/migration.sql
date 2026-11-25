@@ -83,6 +83,7 @@ CREATE TABLE "ops_brain_notes" (
     "id" UUID NOT NULL,
     "key" TEXT NOT NULL,
     "kind" TEXT NOT NULL,
+    "folder" TEXT,
     "title" TEXT NOT NULL,
     "body" TEXT NOT NULL,
     "period_start" TIMESTAMP(3),

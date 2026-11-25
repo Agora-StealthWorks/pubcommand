@@ -6,6 +6,7 @@ import { captureActivities, snapshotTarget } from "./capture";
 import { addDays, nyDay, nyMidnight, writeDailyInsight } from "./insights";
 import { saveOpsNote, searchOpsNotes, upsertGeneratedOpsNote } from "./ops-brain";
 import { recordHeartbeat } from "./record";
+import { docNote, referenceDocs, repoRoot, syncReference } from "./reference";
 import { appUsage, recentActivities, topUsers, usageOverview, userUsage } from "./stats";
 
 process.env.DATABASE_URL ??= "postgresql://postgres:postgres@127.0.0.1:5432/pubcommand";
@@ -127,5 +128,27 @@ describe("Operations Brain", () => {
     const hits = await searchOpsNotes(`retirement ${suffix}`);
     expect(hits.map((hit) => hit.id)).toContain(note!.id);
     await platformTx((tx) => tx.opsBrainNote.delete({ where: { id: note!.id } }));
+  });
+});
+
+describe("How PubCommand works (reference notes)", () => {
+  it("files every doc in a folder, with a start-here index", async () => {
+    const root = repoRoot(new URL(".", import.meta.url).pathname)!;
+    const docs = referenceDocs(root);
+    expect(docs.find((doc) => doc.file === "README.md")?.folder).toBe("Start here");
+    expect(docs.find((doc) => doc.file === "docs/USAGE.md")?.folder).toBe("Usage & insights");
+    expect(docs.find((doc) => doc.file === "modules/forms/README.md")?.folder).toBe("Apps");
+    expect(docs.some((doc) => doc.file.includes("example"))).toBe(false);
+    expect(docNote("# Forms\n\nRoute /forms.", { file: "modules/forms/README.md", folder: "Apps" }).title).toBe("Forms");
+
+    await syncReference(root);
+    const second = await syncReference(root);
+    expect(second.synced + second.updated).toBe(0);
+    const notes = await platformTx((tx) => tx.opsBrainNote.findMany({ where: { kind: "reference", deletedAt: null } }));
+    const index = notes.find((note) => note.key === "doc:index")!;
+    expect(index.folder).toBe("Start here");
+    expect(index.body).toContain("[[What PubCommand is]]");
+    expect(index.body).toContain("[[Forms]]");
+    expect(notes.find((note) => note.key === "doc:docs/USAGE.md")?.title).toBe("Usage");
   });
 });
