@@ -1,5 +1,5 @@
 import { isAgentEmail } from "@pubcommand/core";
-import { Prisma, platformTx, rawPrisma } from "@pubcommand/db";
+import { platformTx, rawPrisma } from "@pubcommand/db";
 import { moduleRegistry } from "@pubcommand/modules";
 import { CONSOLE_ORG_SLUG } from "@/lib/console-workspace";
 import { appCatalog } from "@/lib/apps";
@@ -121,19 +121,20 @@ export type AppRow = {
 /** Apps ranked by time spent: org workspace apps, console pages and the organization picker. */
 export async function appUsage(daysInput: number, options: { orgId?: string | null } = {}): Promise<AppRow[]> {
   const days = clampDays(daysInput);
-  const orgFilter = options.orgId ? Prisma.sql`AND organization_id = ${options.orgId}::uuid` : Prisma.empty;
+  // A plain parameter, not a composed Prisma.sql fragment: in the production bundle a fragment can arrive as a value.
+  const org = options.orgId ?? null;
   return platformTx(async (tx) => {
     const pages = await tx.$queryRaw<{ where: string; app: string; area: string; users: bigint; views: bigint; seconds: bigint; bytes: bigint }[]>`
       SELECT CASE WHEN site = 'admin' THEN 'console' WHEN site = 'app' THEN 'picker' ELSE 'workspace' END AS "where",
              app, area, count(DISTINCT user_id) AS users, sum(views) AS views, sum(active_seconds) AS seconds, sum(bytes) AS bytes
-      FROM usage_daily WHERE day > (now() AT TIME ZONE 'America/New_York')::date - ${days}::int ${orgFilter}
+      FROM usage_daily WHERE day > (now() AT TIME ZONE 'America/New_York')::date - ${days}::int AND (${org}::uuid IS NULL OR organization_id = ${org}::uuid)
       GROUP BY 1, 2, 3`;
     const appUsers = await tx.$queryRaw<{ where: string; app: string; users: bigint }[]>`
       SELECT CASE WHEN site = 'admin' THEN 'console' WHEN site = 'app' THEN 'picker' ELSE 'workspace' END AS "where", app, count(DISTINCT user_id) AS users
-      FROM usage_daily WHERE day > (now() AT TIME ZONE 'America/New_York')::date - ${days}::int ${orgFilter}
+      FROM usage_daily WHERE day > (now() AT TIME ZONE 'America/New_York')::date - ${days}::int AND (${org}::uuid IS NULL OR organization_id = ${org}::uuid)
       GROUP BY 1, 2`;
     const actions = await tx.$queryRaw<{ app: string; n: bigint }[]>`
-      SELECT app, count(*) AS n FROM usage_activities WHERE created_at >= ${since(days)} ${orgFilter} GROUP BY app`;
+      SELECT app, count(*) AS n FROM usage_activities WHERE created_at >= ${since(days)} AND (${org}::uuid IS NULL OR organization_id = ${org}::uuid) GROUP BY app`;
     const tokens = await tx.aiUsageLog.groupBy({
       by: ["moduleId"],
       where: { createdAt: { gte: since(days) }, ...(options.orgId ? { organizationId: options.orgId } : {}) },
@@ -183,18 +184,19 @@ export type UserRow = {
 export async function topUsers(daysInput: number, options: { limit?: number; orgId?: string | null } = {}): Promise<UserRow[]> {
   const days = clampDays(daysInput);
   const take = Math.min(Math.max(options.limit ?? 25, 1), 200);
-  const orgFilter = options.orgId ? Prisma.sql`AND organization_id = ${options.orgId}::uuid` : Prisma.empty;
+  // A plain parameter, not a composed Prisma.sql fragment: in the production bundle a fragment can arrive as a value.
+  const org = options.orgId ?? null;
   const data = await platformTx(async (tx) => {
     const usage = await tx.$queryRaw<{ user_id: string; days: bigint; seconds: bigint; views: bigint; last: Date }[]>`
       SELECT user_id, count(DISTINCT day) AS days, sum(active_seconds) AS seconds, sum(views) AS views, max(last_seen_at) AS last
-      FROM usage_daily WHERE day > (now() AT TIME ZONE 'America/New_York')::date - ${days}::int ${orgFilter} GROUP BY user_id`;
+      FROM usage_daily WHERE day > (now() AT TIME ZONE 'America/New_York')::date - ${days}::int AND (${org}::uuid IS NULL OR organization_id = ${org}::uuid) GROUP BY user_id`;
     const logins = await tx.$queryRaw<{ user_id: string; n: bigint; last: Date }[]>`
-      SELECT user_id, count(*) AS n, max(created_at) AS last FROM usage_logins WHERE created_at >= ${since(days)} ${orgFilter} GROUP BY user_id`;
+      SELECT user_id, count(*) AS n, max(created_at) AS last FROM usage_logins WHERE created_at >= ${since(days)} AND (${org}::uuid IS NULL OR organization_id = ${org}::uuid) GROUP BY user_id`;
     const actions = await tx.$queryRaw<{ actor_id: string; n: bigint }[]>`
-      SELECT actor_id, count(*) AS n FROM usage_activities WHERE created_at >= ${since(days)} AND actor_id IS NOT NULL ${orgFilter} GROUP BY actor_id`;
+      SELECT actor_id, count(*) AS n FROM usage_activities WHERE created_at >= ${since(days)} AND actor_id IS NOT NULL AND (${org}::uuid IS NULL OR organization_id = ${org}::uuid) GROUP BY actor_id`;
     const apps = await tx.$queryRaw<{ user_id: string; app: string; seconds: bigint }[]>`
       SELECT user_id, app, sum(active_seconds) AS seconds FROM usage_daily
-      WHERE day > (now() AT TIME ZONE 'America/New_York')::date - ${days}::int AND site NOT IN ('admin', 'app') ${orgFilter} GROUP BY user_id, app`;
+      WHERE day > (now() AT TIME ZONE 'America/New_York')::date - ${days}::int AND site NOT IN ('admin', 'app') AND (${org}::uuid IS NULL OR organization_id = ${org}::uuid) GROUP BY user_id, app`;
     return { usage, logins, actions, apps };
   });
   const ids = new Set<string>([...data.usage.map((row) => row.user_id), ...data.logins.map((row) => row.user_id), ...data.actions.map((row) => row.actor_id)]);
