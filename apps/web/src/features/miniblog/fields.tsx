@@ -1,3 +1,4 @@
+import { HexColorInput } from "@/components/hex-color-input";
 import { Label } from "@pubcommand/ui";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -30,8 +31,7 @@ export function ColorField({ name, label, value }: { name: string; label: string
     <div className="min-w-0">
       <Label htmlFor={name}>{label}</Label>
       <div className="mt-1 flex items-center gap-2">
-        <input id={name} name={name} type="color" defaultValue={value} className="h-11 w-14 shrink-0 cursor-pointer rounded-md border border-line bg-white p-1" />
-        <span className="truncate font-mono text-xs text-muted">{value}</span>
+        <HexColorInput id={name} name={name} defaultValue={value} label={label} />
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { HexColorInput } from "@/components/hex-color-input";
 import { Button, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -134,7 +135,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
             <div key={key}>
               <Label htmlFor={`c-${key}`}>{label}</Label>
               <div className="flex items-center gap-2">
-                <input id={`c-${key}`} type="color" name={`theme_${key}`} defaultValue={theme[key]} className="h-11 w-14 rounded border border-line" />
+                <HexColorInput id={`c-${key}`} name={`theme_${key}`} defaultValue={theme[key]} label={key} />
                 <span className="font-mono text-xs text-muted">{theme[key]}</span>
               </div>
             </div>

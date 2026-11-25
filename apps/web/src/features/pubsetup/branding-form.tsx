@@ -3,7 +3,7 @@
 import { Button, Input, Label, Textarea } from "@pubcommand/ui";
 import { useState } from "react";
 import { contrastText } from "../../../../../modules/pubsetup/branding";
-import { FONT_OPTIONS, fontStack, type FieldDef } from "../../../../../modules/pubsetup/fields";
+import { FONT_OPTIONS, fontStack, normalizeHex, type FieldDef } from "../../../../../modules/pubsetup/fields";
 import { LogoSlotsField } from "./logo-field";
 
 type Inherited = { value: string; from: string };
@@ -27,6 +27,7 @@ export function BrandingForm(props: {
   logo: { own: Logos; inherited: Logos };
 }) {
   const [own, setOwn] = useState<Record<string, string>>(() => Object.fromEntries(props.fields.map((f) => [f.key, props.own[f.key] ?? ""])));
+  const [hexDraft, setHexDraft] = useState<Record<string, string>>({});
   const [useDefault, setUseDefault] = useState<Record<string, boolean>>(() => Object.fromEntries(props.fields.map((f) => [f.key, !props.own[f.key]])));
 
   const value = (key: string): string => {
@@ -66,15 +67,36 @@ export function BrandingForm(props: {
                   <Label htmlFor={id}>{def.label}</Label>
                   <div className="mt-1">
                     {def.kind === "color" ? (
-                      <input
-                        id={id}
-                        type="color"
-                        name={off ? undefined : def.key}
-                        disabled={off}
-                        value={own[def.key] || inherited?.value || "#000000"}
-                        onChange={(e) => setOwn((o) => ({ ...o, [def.key]: e.target.value }))}
-                        className="h-11 w-full rounded-md border border-line bg-white disabled:opacity-50"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="color"
+                          aria-label={`${def.label} picker`}
+                          disabled={off}
+                          value={normalizeHex(own[def.key] ?? "") || normalizeHex(inherited?.value ?? "") || "#000000"}
+                          onChange={(e) => { setOwn((o) => ({ ...o, [def.key]: e.target.value })); setHexDraft((d) => ({ ...d, [def.key]: e.target.value })); }}
+                          className="h-11 w-14 shrink-0 rounded-md border border-line bg-white disabled:opacity-50"
+                        />
+                        <Input
+                          id={id}
+                          name={off ? undefined : def.key}
+                          disabled={off}
+                          inputMode="text"
+                          autoComplete="off"
+                          spellCheck={false}
+                          maxLength={7}
+                          pattern="#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})"
+                          title="A hex color, like #7C3AED"
+                          placeholder="#1d4ed8"
+                          value={hexDraft[def.key] ?? (own[def.key] || inherited?.value || "")}
+                          onChange={(e) => {
+                            const typed = e.target.value;
+                            setHexDraft((d) => ({ ...d, [def.key]: typed }));
+                            const hex = normalizeHex(typed);
+                            if (hex) setOwn((o) => ({ ...o, [def.key]: hex }));
+                          }}
+                          className="min-w-0 flex-1 font-mono uppercase disabled:opacity-50"
+                        />
+                      </div>
                     ) : def.kind === "font" ? (
                       <select id={id} name={def.key} value={off ? "" : own[def.key]} onChange={(e) => { setOwn((o) => ({ ...o, [def.key]: e.target.value })); setUseDefault((u) => ({ ...u, [def.key]: !e.target.value })); }} className="pc-control w-full">
                         <option value="">{`Use ${inherited?.from ?? "default"}: ${inherited?.value ?? ""}`}</option>

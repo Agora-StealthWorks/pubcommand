@@ -221,6 +221,14 @@ export function optionLabel(def: FieldDef, value: string): string {
 export type FormLike = { getAll(name: string): unknown[] };
 
 const HEX = /^#[0-9a-f]{6}$/i;
+
+/** A typed hex color as #rrggbb: accepts "#1D4ED8", "1d4ed8" and the short "#14d". Null when it is not one. */
+export function normalizeHex(input: string): string | null {
+  const raw = input.trim().replace(/^#/, "").toLowerCase();
+  if (/^[0-9a-f]{6}$/.test(raw)) return `#${raw}`;
+  if (/^[0-9a-f]{3}$/.test(raw)) return `#${raw.split("").map((c) => c + c).join("")}`;
+  return null;
+}
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE = /^[A-Z0-9][A-Z0-9_-]{0,19}$/;
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
@@ -337,8 +345,8 @@ export function parseFields(defs: readonly FieldDef[], form: FormLike): ParseRes
             value = value.toLowerCase();
             if (!EMAIL.test(value)) errors[def.key] = "Enter an email address.";
           } else if (def.kind === "color") {
-            value = value.toLowerCase();
-            if (!HEX.test(value)) errors[def.key] = "Use a color like #1d4ed8.";
+            value = normalizeHex(value) ?? value.toLowerCase();
+            if (!HEX.test(value)) errors[def.key] = "Use a hex color like #1d4ed8.";
           } else if (def.kind === "date") {
             if (!validDay(value)) errors[def.key] = "Use a real date (YYYY-MM-DD).";
           } else if (def.kind === "select") {

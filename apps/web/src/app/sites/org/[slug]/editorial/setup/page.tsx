@@ -1,3 +1,4 @@
+import { HexColorInput } from "@/components/hex-color-input";
 import { Button, Input } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -117,7 +118,7 @@ export default async function SetupPage({ params, searchParams }: { params: Prom
             <Field label="New channel">
               <Input name="name" required maxLength={80} />
             </Field>
-            <input type="color" name="color" defaultValue="#27455c" aria-label="Color" className="h-11 w-14 rounded-md border border-line bg-white" />
+            <HexColorInput name="color" defaultValue="#27455c" label="Color" />
             <Button type="submit" variant="secondary">
               Add
             </Button>

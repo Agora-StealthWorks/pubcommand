@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { LOGO_SLOT_LABELS, slotForUpload, type LogoBackground } from "../../../../../modules/pubsetup/logos";
 import { withMessage } from "./guard";
+import { uploadedImageType } from "./image-type";
 import { classifyLogo } from "./logo-tone";
 
-const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp|svg\+xml)$/;
 
 export type Img = { filename: string; mime: string; data: Uint8Array<ArrayBuffer> };
 
@@ -12,8 +12,10 @@ export async function readImage(formData: FormData, input: string, back: string,
   const file = formData.get(input);
   if (!(file instanceof File) || file.size === 0) return null;
   if (file.size > maxMb * 1024 * 1024) redirect(withMessage(back, "error", `Images must be under ${maxMb} MB.`));
-  if (!IMAGE_TYPES.test(file.type)) redirect(withMessage(back, "error", "Upload a PNG, JPG, GIF, WebP or SVG image."));
-  return { filename: file.name.slice(0, 200), mime: file.type, data: new Uint8Array(await file.arrayBuffer()) };
+  const data = new Uint8Array(await file.arrayBuffer());
+  const mime = uploadedImageType(file, data);
+  if (!mime) redirect(withMessage(back, "error", "Upload a PNG, JPG, GIF, WebP or SVG image."));
+  return { filename: file.name.slice(0, 200), mime, data };
 }
 
 const COLUMNS: Record<LogoBackground, { filename: string; mime: string; data: string }> = {

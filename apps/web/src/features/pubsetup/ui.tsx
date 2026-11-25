@@ -1,3 +1,4 @@
+import { HexColorInput } from "@/components/hex-color-input";
 import { Badge, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { FONT_OPTIONS, asPairs, fieldGroups, optionLabel, type FieldDef } from "../../../../../modules/pubsetup/fields";
@@ -54,7 +55,7 @@ function FieldInput({ def, value, categories = [] }: { def: FieldDef; value: unk
         </select>
       );
     case "color":
-      return <input type="color" {...common} defaultValue={text(value) || "#7f77dd"} className="h-11 w-full rounded-md border border-line bg-white" />;
+      return <HexColorInput id={id} name={def.key} defaultValue={text(value) || "#7f77dd"} label={def.label} />;
     case "date":
       return <Input {...common} type="date" />;
     case "number":

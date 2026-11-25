@@ -1,3 +1,4 @@
+import { HexColorInput } from "@/components/hex-color-input";
 import { Badge, Button, Input, Label, Textarea } from "@pubcommand/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -101,11 +102,11 @@ export default async function FormThemesPage({
               <div className="grid gap-4 sm:grid-cols-4">
                 <div>
                   <Label htmlFor="theme-bar">Header colour</Label>
-                  <input id="theme-bar" name="barColor" type="color" defaultValue={editing?.barColor ?? "#0b1220"} className="mt-1 h-11 w-full rounded-md border border-line" />
+                  <HexColorInput id="theme-bar" name="barColor" defaultValue={editing?.barColor ?? "#0b1220"} label="Header colour" className="mt-1" />
                 </div>
                 <div>
                   <Label htmlFor="theme-accent">Button colour</Label>
-                  <input id="theme-accent" name="accentColor" type="color" defaultValue={editing?.accentColor ?? "#1d4ed8"} className="mt-1 h-11 w-full rounded-md border border-line" />
+                  <HexColorInput id="theme-accent" name="accentColor" defaultValue={editing?.accentColor ?? "#1d4ed8"} label="Button colour" className="mt-1" />
                 </div>
                 <div>
                   <Label htmlFor="theme-size">Header size</Label>
