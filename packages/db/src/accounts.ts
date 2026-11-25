@@ -96,6 +96,21 @@ export async function revokeUserSessions(input: { actorId: string; userId: strin
   return removed.count;
 }
 
+/** Sign-out after inactivity for one person. Null = the default (12 hours). */
+export async function setUserIdleTimeout(input: { actorId: string; userId: string; minutes: number | null }): Promise<void> {
+  await requireUserManager(input.actorId);
+  const target = await rawPrisma().user.findUnique({ where: { id: input.userId }, select: { id: true, idleTimeoutMinutes: true } });
+  if (!target) throw new Error("Unknown account.");
+  await rawPrisma().user.update({ where: { id: target.id }, data: { idleTimeoutMinutes: input.minutes } });
+  await appendPlatformAudit({
+    actorId: input.actorId,
+    action: "user.idle_timeout.changed",
+    targetType: "user",
+    targetId: target.id,
+    metadata: { from: target.idleTimeoutMinutes, to: input.minutes },
+  });
+}
+
 export async function setUserDisabled(input: { actorId: string; userId: string; disabled: boolean }) {
   await requireUserManager(input.actorId);
   const target = await rawPrisma().user.findUnique({ where: { id: input.userId } });

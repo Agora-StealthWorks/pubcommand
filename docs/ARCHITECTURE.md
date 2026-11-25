@@ -2,6 +2,10 @@
 
 Phase 1 is the shell. Later phases fill the modules. This document is the contract those phases should keep.
 
+## Ownership and branding
+
+PubCommand is owned by Agora StealthWorks. PubCommand's own screens (the console, every organization's app, the login and the organization picker) end with a footer carrying the black stacked "By Agora StealthWorks" logo (`/brand/agora-stealthworks-stacked-black.svg`, `OwnerFooter` in `apps/web/src/components/brand.tsx`). Customers' public sites (websites, funnels, mini-blogs) never show it. PubCommand's system emails carry the white logo in a black bar under the PubCommand masthead (`docs/EMAILS.md`).
+
 ## Tenancy
 
 Platform, then Organization, Brand, Workspace, and User. A user is a global identity. Membership joins a user to one organization and one role. A role may be limited to a brand or workspace. The membership may be limited the same way.
@@ -48,7 +52,7 @@ Reserved organization slugs: `www`, `app`, `admin`, `api`, `platform`, `mail`, `
 
 `PlatformStaff` is the staff flag. Roles:
 
-- `SUPER_ADMIN` — everything, including inviting and removing staff. Seeded for Stephen. Only this role can change staff, and only on `admin.pubcommand.com`.
+- `SUPER_ADMIN` — everything, including inviting and removing staff and editing PubCommand's own system emails (Admin → Emails, `platform.emails.manage`; see `docs/EMAILS.md`). Seeded for Stephen. Only this role can change staff, and only on `admin.pubcommand.com`.
 - `SUPPORT` — view organizations and users, create organizations, manage organization members, impersonate, read the platform audit.
 - `BILLING` — view organizations, manage plans, read the platform audit. Billing cannot create organizations or change members.
 - `OPS` — view and create organizations, manage members, suspend organizations, manage platform subdomains and plan modules, read the platform audit.
@@ -64,6 +68,8 @@ Impersonation is a signed cookie plus a banner. It uses the target member's perm
 ## Auth
 
 Lucia sessions. Magic link and optional password. SSO is an interface (`SsoHooks`) with no provider. The seeded super admin has no password.
+
+Sessions end after a period without activity: 12 hours by default, set per person in the console (Users → a person → Sign-ins and usage, `users.idle_timeout_minutes`). `readSession()` checks `sessions.last_active_at` and ends an idle session; every request counts as activity (written at most once a minute), and the in-app heartbeat counts only when the person touched the page. The 30-day Lucia expiry still caps a session. See `docs/USAGE.md`.
 
 ## AI
 

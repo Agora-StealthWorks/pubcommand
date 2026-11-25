@@ -12,6 +12,8 @@ import {
   hostnameConfirmationMatches,
   parseAppAccessChoice,
   passwordProblem,
+  idleTimeoutLabel,
+  parseIdleTimeoutChoice,
 } from "@pubcommand/core";
 import {
   addOrganizationMember as addOrganizationMemberRecord,
@@ -34,6 +36,7 @@ import {
   removeOrganizationMember as removeOrganizationMemberRecord,
   resetUserTwoFactor,
   revokeUserSessions,
+  setUserIdleTimeout,
   setOrganizationSuspended,
   setPlanArchived,
   setPlatformStaffAccess,
@@ -50,6 +53,7 @@ import { clearCustomHostCache } from "@/features/domains/resolve";
 import { detachDomainsFromRailway } from "@/features/platform-admin/domains";
 import { createLoginLink, readSession, readStaff, rootDomain, secret, staffReady } from "@/lib/auth";
 import { deliverMagicLink, exposeMagicLinkOnPage, magicLinkUrl } from "@/lib/mail";
+import { loadSystemEmailOverrides } from "@/features/system-emails/store";
 import { currentRequest, siteUrl } from "@/lib/request";
 
 const ORGANIZATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -121,7 +125,7 @@ async function inviteNotice(userId: string, email: string, lead: string, organiz
   const organizationName = organizationId
     ? ((await rawPrisma().organization.findUnique({ where: { id: organizationId }, select: { name: true } }))?.name ?? null)
     : null;
-  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", organizationName });
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", organizationName, overrides: await loadSystemEmailOverrides() });
   return organizationInviteNotice({ lead, delivered, magicUrl, exposeOnPage: exposeMagicLinkOnPage() });
 }
 
@@ -336,7 +340,7 @@ export async function inviteStaff(formData: FormData) {
   const link = await createLoginLink(userId);
   const request = await currentRequest();
   const magicUrl = magicLinkUrl(request.origin, link.token);
-  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite" });
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", overrides: await loadSystemEmailOverrides() });
   const notice = exposeMagicLinkOnPage()
     ? `Staff member saved. Magic link: ${magicUrl}`
     : delivered === "sent"
@@ -503,6 +507,20 @@ export async function signOutUserSessions(formData: FormData) {
   redirect(`${href}?notice=${encodeURIComponent("Signed out of all sessions.")}`);
 }
 
+export async function setUserIdleTimeoutAction(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  const choice = parseIdleTimeoutChoice(String(formData.get("minutes") ?? ""));
+  if (!choice.ok) redirect(`${href}?error=${encodeURIComponent(choice.reason)}`);
+  try {
+    await setUserIdleTimeout({ actorId: auth.user.id, userId, minutes: choice.minutes });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not change the sign-out time."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent(`Signs out after ${idleTimeoutLabel(choice.minutes)} without activity.`)}`);
+}
+
 export async function setUserAccess(formData: FormData) {
   const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
   const userId = String(formData.get("userId") ?? "");
@@ -613,7 +631,7 @@ export async function runJob(formData: FormData) {
   const { runJobNow } = await import("@/lib/jobs/runner");
   const result = await runJobNow(name, auth.user.id);
   await appendPlatformAudit({ actorId: auth.user.id, action: "job.run", targetType: "job", targetId: name });
-  redirect(result.ok ? `/jobs?notice=${encodeURIComponent(`${name} started.`)}` : `/jobs?error=${encodeURIComponent(result.reason ?? "Could not start.")}`);
+  redirect(result.ok ? `/usage/jobs?notice=${encodeURIComponent(`${name} started.`)}` : `/usage/jobs?error=${encodeURIComponent(result.reason ?? "Could not start.")}`);
 }
 
 // ── Per-organization app access ─────────────────────────────────────────────

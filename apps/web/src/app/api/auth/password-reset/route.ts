@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { issuePasswordReset } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { exposeMagicLinkOnPage } from "@/lib/mail";
+import { loadSystemEmailOverrides } from "@/features/system-emails/store";
 import { allowResetRequest } from "@/lib/password-throttle";
 
 /**
@@ -25,7 +26,9 @@ export async function POST(request: Request) {
     const issued = await issuePasswordReset(email);
     if (issued) {
       const link = `${origin}/reset-password?token=${issued.token}`;
-      const message = passwordResetEmail({ link, logoUrl: `${origin}/brand/logo-light.png`, minutes: MAGIC_LINK_TTL_MS.password_reset / 60_000 });
+      const message = passwordResetEmail({ link, logoUrl: `${origin}/brand/logo-light.png`, minutes: MAGIC_LINK_TTL_MS.password_reset / 60_000,
+        overrides: await loadSystemEmailOverrides(),
+      });
       const result = await sendEmail({ to: issued.email, ...message });
       if (result.status === "logged") console.info("[password-reset] email not sent (RESEND_API_KEY unset)");
       if (result.status === "failed") console.error(`[password-reset] email failed: ${result.reason}`);

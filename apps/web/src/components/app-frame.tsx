@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { UsageBeacon } from "@/features/usage/beacon";
+import { OwnerFooter } from "./brand";
 
 export function AppFrame({
   sidebar,
@@ -23,6 +25,7 @@ export function AppFrame({
 
   return (
     <div className="min-h-screen max-w-full bg-canvas text-ink">
+      <UsageBeacon />
       {banner}
       <div className="md:grid md:min-h-screen md:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="hidden border-r border-line bg-white md:sticky md:top-0 md:block md:h-screen md:overflow-y-auto">{sidebar}</aside>
@@ -55,7 +58,7 @@ export function AppFrame({
             </aside>
           </div>
         ) : null}
-        <div className="min-w-0 max-w-full">
+        <div className="flex min-h-screen min-w-0 max-w-full flex-col">
           <header className="flex min-h-14 min-w-0 items-center gap-2 border-b border-line bg-white px-3 py-2">
             <button
               type="button"
@@ -72,7 +75,8 @@ export function AppFrame({
             </button>
             <div className="min-w-0 flex-1">{header}</div>
           </header>
-          <main className="pc-main min-w-0 px-4 py-5 sm:px-6">{children}</main>
+          <main className="pc-main min-w-0 flex-1 px-4 py-5 sm:px-6">{children}</main>
+          <OwnerFooter />
         </div>
       </div>
     </div>

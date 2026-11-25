@@ -144,3 +144,14 @@ export function PromoLine({ promo, stage = true }: { promo: { id: string; name: 
     </span>
   );
 }
+
+/** Mini-Blog post stats on a Calendar issue (views and CTR from the Mini-Blog stat engine). */
+export function PostStatsChip({ stats }: { stats: { views: number; ctr: number | null } | null }) {
+  if (!stats) return null;
+  const ctr = stats.ctr == null ? "—" : `${(stats.ctr * 100).toFixed(1)}%`;
+  return (
+    <span className="inline-flex shrink-0 items-center rounded bg-[#eef4ff] px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-[#1e3a8a]" title="Mini-Blog post: page views and click-through rate (unique clickers ÷ unique views)">
+      {stats.views.toLocaleString("en-US")} views · {ctr} CTR
+    </span>
+  );
+}

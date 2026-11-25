@@ -1,6 +1,9 @@
 import { tenantDb } from "@pubcommand/db";
-import { contrastText, isHttpUrl, safeColor } from "../../../../../modules/miniblog/site";
+import { isHttpUrl } from "../../../../../modules/miniblog/site";
 import { safeZone } from "../../../../../modules/miniblog/time";
+import { DEFAULT_MEDIUMS, cleanMediums } from "../../../../../modules/miniblog/mediums";
+import type { MiniBlogTheme } from "../../../../../modules/miniblog/themes";
+import { lookFrom } from "./article";
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -24,19 +27,23 @@ export type Branding = {
   companyName: string;
   privacyUrl: string | null;
   termsUrl: string | null;
+  theme: MiniBlogTheme;
+  /** Post title color (the header color for the T-Letter look). */
+  titleColor: string;
 };
 
 export function siteBranding(site: SiteRow, brandName: string, base: string): Branding {
-  const headerBg = safeColor(site.headerBg, "#111827");
-  const accentColor = safeColor(site.accentColor, "#1d4ed8");
+  const look = lookFrom(site);
   return {
     brandName,
     logoSrc: site.logoAssetId ? `${base}/logo?v=${site.updatedAt.getTime()}` : isHttpUrl(site.logoUrl) ? site.logoUrl : null,
-    logoHeight: Math.max(16, Math.min(120, site.logoHeight)),
-    headerBg,
-    headerText: contrastText(headerBg),
-    accentColor,
-    accentText: contrastText(accentColor),
+    logoHeight: look.logoHeight,
+    headerBg: look.headerBg,
+    headerText: look.headerText,
+    accentColor: look.accentColor,
+    accentText: look.accentText,
+    theme: look.theme,
+    titleColor: look.titleColor,
     companyName: (site.companyName || brandName).trim(),
     privacyUrl: isHttpUrl(site.privacyUrl) ? site.privacyUrl : null,
     termsUrl: isHttpUrl(site.termsUrl) ? site.termsUrl : null,
@@ -65,4 +72,10 @@ const STATUS_LABEL = { draft: "Draft", published: "Published", live: "Live", sch
 export function statusBadge(status: string): { tone: (typeof STATUS_TONE)[keyof typeof STATUS_TONE] | "neutral"; label: string } {
   const key = status as keyof typeof STATUS_TONE;
   return { tone: STATUS_TONE[key] ?? "neutral", label: STATUS_LABEL[key] ?? status };
+}
+
+/** The organization's mediums (Mini-Blog → App settings); Email, SMS, Push Notification until an admin saves a list. */
+export async function loadMediums(organizationId: string): Promise<string[]> {
+  const row = await tenantDb(organizationId).miniblogSettings.findUnique({ where: { organizationId }, select: { mediums: true } });
+  return row ? cleanMediums(row.mediums) : [...DEFAULT_MEDIUMS];
 }

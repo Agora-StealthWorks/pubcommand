@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { passwordResetEmail, renderEmailLayout } from "./email-layout";
+import { inviteEmail, passwordResetEmail, renderEmailLayout } from "./email-layout";
 
 describe("email layout", () => {
   it("escapes every value and keeps the link in both versions", () => {
@@ -43,5 +43,39 @@ describe("email layout", () => {
     expect(email.html).toContain("30 minutes");
     expect(email.text).toContain("https://app.pubcommand.com/reset-password?token=t");
     expect(email.text).not.toMatch(/sign-in link/i);
+  });
+
+  it("puts the black Agora StealthWorks bar under the PubCommand masthead, and names the owner in the footer", () => {
+    const email = passwordResetEmail({ link: "https://app.pubcommand.com/reset-password?token=t", origin: "https://app.pubcommand.com", minutes: 30 });
+    const bar = email.html.indexOf("agora-stealthworks-white.png");
+    const masthead = email.html.indexOf("logo-light.png");
+    expect(bar).toBeGreaterThan(-1);
+    expect(masthead).toBeGreaterThan(-1);
+    expect(bar).toBeGreaterThan(masthead);
+    expect(email.html).toContain("background:#000000");
+    expect(email.html).toContain('alt="By Agora StealthWorks"');
+    expect(email.html).toContain("PubCommand by Agora StealthWorks");
+    expect(email.text).toContain("PubCommand by Agora StealthWorks");
+  });
+
+  it("uses staff edits, fills placeholders, and keeps the real link", () => {
+    const email = inviteEmail({
+      link: "https://acme.pubcommand.com/api/auth/magic-link/verify?token=abc",
+      origin: "https://acme.pubcommand.com",
+      organizationName: "Acme <News>",
+      overrides: { invite_organization: { subject: "Welcome to {organization}", body: "First.\n\nSecond\nline.", buttonLabel: "Let me in" } },
+    });
+    expect(email.subject).toBe("Welcome to Acme <News>");
+    expect(email.html).toContain("Acme &lt;News&gt;");
+    expect(email.html).toContain(">First.</p>");
+    expect(email.html).toContain(">Second line.</p>");
+    expect(email.html).toContain("Let me in");
+    // Fields left alone keep the default.
+    expect(email.html).toContain("Join Acme &lt;News&gt; on PubCommand");
+    expect(email.text).toContain("Let me in: https://acme.pubcommand.com/api/auth/magic-link/verify?token=abc");
+  });
+
+  it("uses the staff invite when there is no organization", () => {
+    expect(inviteEmail({ link: "https://admin.pubcommand.com/x", origin: null }).subject).toBe("You're invited to PubCommand");
   });
 });

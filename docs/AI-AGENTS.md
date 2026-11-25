@@ -117,6 +117,10 @@ with a `pca_` key.
   - Monitoring: `platform_overview`, `list_organizations`, `get_organization`, `list_users`,
     `platform_audit_log`, `organization_audit_log`, `list_job_runs`, `ai_usage`,
     `list_ai_agents`.
+  - Usage (see `docs/USAGE.md`): `usage_overview`, `usage_apps`, `usage_people`, `user_usage`,
+    `usage_activity` (what people made, with copy snapshots) and `server_health`.
+  - Operations Brain: `search_operations_brain`, `list_operations_brain`,
+    `read_operations_note`, `save_operations_note`.
   - Admin changes, only when the agent's **Can make admin changes** is on (default on, can be
     switched off per agent): `suspend_organization` (and resume), `change_organization_plan`,
     `set_organization_app_access`, `add_organization_member` and `run_job`. Each one needs a

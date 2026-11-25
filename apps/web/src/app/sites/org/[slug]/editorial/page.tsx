@@ -6,7 +6,7 @@ import { quickAddAction } from "@/features/calendar/actions";
 import { calendarPage } from "@/features/calendar/context";
 import { feedItems, listChannels, listPublications, loadRange } from "@/features/calendar/data";
 import { loadOptions } from "@/features/calendar/options";
-import { StageDot } from "@/features/calendar/ui";
+import { PostStatsChip, StageDot } from "@/features/calendar/ui";
 import { EditPencil, WeekStrip } from "@/features/calendar/week-strip";
 import { addDays, fmtDay, fmtTime, isDay, todayIn } from "../../../../../../../../modules/editorial/dates";
 import { SEND_STATS_ENABLED } from "../../../../../../../../modules/editorial/features";
@@ -226,6 +226,7 @@ export default async function RunningListPage({ params, searchParams }: { params
                   </Link>
                   {ctx.canWrite ? <EditPencil href={`/editorial/issues/${item.id}/edit`} label={`Edit ${item.title}`} /> : null}
                   {SEND_STATS_ENABLED && i.hasStats ? <span className="rounded bg-[#ecfdf3] px-1.5 py-0.5 text-[11px] font-semibold text-[#067647]">Stats</span> : null}
+                  <PostStatsChip stats={i.post} />
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-muted">{["Issue", i.issueType, i.writer, i.subjectLines[0]].filter(Boolean).join(" · ")}</span>
                 <span className="mt-1 flex flex-wrap gap-1.5 sm:hidden">

@@ -16,9 +16,9 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
   const account = token ? await checkPasswordReset(token) : null;
 
   return (
-    <main data-surface="reset-password" className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
-      <Link href="/" className="self-start" aria-label="PubCommand home">
-        <BrandLogo className="h-9 w-auto" />
+    <main data-surface="reset-password" className="mx-auto flex w-full flex-1 max-w-md flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
+      <Link href="/" className="block w-full" aria-label="PubCommand home">
+        <BrandLogo className="mx-auto block h-auto w-full" />
       </Link>
       <h1 className="mt-4 text-3xl font-semibold">Choose a new password</h1>
       {account ? (

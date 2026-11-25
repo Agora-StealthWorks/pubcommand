@@ -16,6 +16,8 @@ export const PLATFORM_PERMISSIONS = {
   manageJobs: "platform.jobs.manage",
   /** The main Brain: platform-level knowledge, learning provenance and push-down to brands. */
   manageBrain: "platform.brain.manage",
+  /** Edit the copy of PubCommand's own system emails (invites, sign-in links, password resets). Super admin only. */
+  manageSystemEmails: "platform.emails.manage",
   /** Delete, restore and purge organizations, delete accounts, remove domains. Super admin only. */
   deleteData: "platform.data.delete",
 } as const;

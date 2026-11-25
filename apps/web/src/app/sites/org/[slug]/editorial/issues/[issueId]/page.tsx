@@ -9,6 +9,8 @@ import { listPublications, loadIssue } from "@/features/calendar/data";
 import { count, ExternalLink, LinkButton, money, pct, PromoLine, PubChip, Section, Stat } from "@/features/calendar/ui";
 import { findPromo } from "@/features/calendar/promos";
 import { SEND_STATS_ENABLED } from "../../../../../../../../../../modules/editorial/features";
+import { statsForCalendarIssues } from "@/features/miniblog/stats";
+import { LINK_KIND_LABEL, byKind, formatPct } from "../../../../../../../../../../modules/miniblog/stats";
 import { fmtDayFull, toDay } from "../../../../../../../../../../modules/editorial/dates";
 
 export default async function IssuePage({
@@ -28,6 +30,8 @@ export default async function IssuePage({
   const promo = await findPromo(ctx.resolved.id, ctx.brand.id, i.calendarPromoId);
   const pub = publications.find((p) => p.code === i.publicationCode);
   const s = i.stat;
+  const postStats = (await statsForCalendarIssues(ctx.resolved.id, [i.id]).catch(() => new Map())).get(i.id) ?? null;
+  const kinds = postStats ? byKind(postStats.links) : null;
   const revPerThousand = s?.revenue != null && s.delivered ? (s.revenue / s.delivered) * 1000 : null;
 
   return (
@@ -51,6 +55,27 @@ export default async function IssuePage({
           </LinkButton>
         ) : null}
       </header>
+
+      {postStats && kinds ? (
+        <section className="rounded-xl border border-[#c7d7fe] bg-[#f5f8ff] p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold text-[#1e3a8a]">Mini-Blog stats</h2>
+            <Link href={`/mini-blog/${postStats.siteId}/posts/${postStats.postId}`} className="text-xs font-semibold text-accent">
+              {postStats.siteName} post →
+            </Link>
+          </div>
+          <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <Stat label="Views" value={count(postStats.views)} />
+            <Stat label="Unique views" value={count(postStats.uniqueViews)} />
+            <Stat label="Clicks" value={count(postStats.clicks)} />
+            <Stat label="Unique clickers" value={count(postStats.uniqueClickers)} />
+            <Stat label="CTR" value={formatPct(postStats.ctr)} />
+          </dl>
+          <p className="mt-3 text-xs text-muted">
+            {(["ad", "cta", "content"] as const).map((kind) => `${LINK_KIND_LABEL[kind]} clicks: ${kinds[kind].clicks.toLocaleString("en-US")} (${kinds[kind].unique.toLocaleString("en-US")} unique)`).join(" · ")}. Live from the Mini-Blog; bots and previews are left out.
+          </p>
+        </section>
+      ) : null}
 
       {SEND_STATS_ENABLED ? (
       <section className="rounded-xl border border-[#c7d7fe] bg-[#f5f8ff] p-4 sm:p-5">

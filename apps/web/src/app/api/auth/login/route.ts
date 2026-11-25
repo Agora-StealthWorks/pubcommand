@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     dest.searchParams.set("error", "This account is disabled.");
     return NextResponse.redirect(dest, 303);
   }
-  const { staff } = await establishSession(user.id);
+  const { staff } = await establishSession(user.id, "password");
   // `next` may be a path on this host ("/settings"): resolve it here, since redirects need a full URL.
   return NextResponse.redirect(new URL(loginDestination({ staff: Boolean(staff), next, requestHost: host }), origin), 303);
 }
