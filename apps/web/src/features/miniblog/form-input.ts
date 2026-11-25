@@ -48,7 +48,7 @@ const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
  */
 export async function storeLogo(organizationId: string, siteId: string, file: FormDataEntryValue | null): Promise<{ id: string } | { error: string } | null> {
   if (!(file instanceof File) || file.size === 0) return null;
-  if (!IMAGE_TYPES.has(file.type)) return { error: "Images must be PNG, JPG, WebP or GIF." };
+  if (!IMAGE_TYPES.has(file.type) && file.type !== "image/svg+xml") return { error: "Logos must be PNG, JPG, WebP, GIF or SVG." };
   if (file.size > MAX_IMAGE_BYTES) return { error: "Images must be 3 MB or smaller." };
   return tenantDb(organizationId).funnelAsset.create({
     data: {

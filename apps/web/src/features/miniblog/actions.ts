@@ -12,6 +12,7 @@ import { bool, color, int, optional, storeLogo, text, url, zoned } from "./form-
 import { syncPostLinks } from "./links";
 import { miniblogAction, miniblogWriteCtx, orgPublicUrl, withMessage, type MiniBlogCtx } from "./guard";
 import { richFromInput } from "./sanitize";
+import { brandLook } from "../pubsetup/brand-look";
 
 function audit(ctx: MiniBlogCtx, action: string, targetType: string, targetId: string, metadata?: Prisma.InputJsonValue) {
   return appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action, targetType, targetId, metadata });
@@ -43,7 +44,11 @@ async function uniquePostSlug(organizationId: string, siteId: string, wanted: st
 export async function createSite(formData: FormData) {
   const ctx = await miniblogAction("/mini-blog", "miniblog.write");
   const name = text(formData, "name", 120) || "Mini-Blog";
-  const site = await tenantDb(ctx.resolved.id).textSite.create({
+  const db = tenantDb(ctx.resolved.id);
+  // Starts in the brand's look (Settings → Brands): header and accent colors and the logo.
+  // Everything stays editable in the Mini-Blog's settings.
+  const look = await brandLook(ctx.resolved.id, ctx.brand, { headerColor: "#111827", accentColor: "#1d4ed8" });
+  const site = await db.textSite.create({
     data: {
       organizationId: ctx.resolved.id,
       brandId: ctx.brand.id,
@@ -51,9 +56,18 @@ export async function createSite(formData: FormData) {
       slug: await uniqueSiteSlug(ctx.resolved.id, name),
       programName: name,
       companyName: ctx.brand.name,
+      headerBg: look.headerColor,
+      accentColor: look.accentColor,
       createdById: ctx.actorId,
     },
   });
+  if (look.logo && look.logo.data.length <= 3 * 1024 * 1024) {
+    const asset = await db.funnelAsset.create({
+      data: { organizationId: ctx.resolved.id, ownerId: site.id, kind: "logo", filename: look.logo.filename.slice(0, 200), mimeType: look.logo.mime, size: look.logo.data.length, data: look.logo.data },
+      select: { id: true },
+    });
+    await db.textSite.updateMany({ where: { id: site.id }, data: { logoAssetId: asset.id } });
+  }
   await audit(ctx, "miniblog.site.created", "text_site", site.id);
   redirect(`/mini-blog/${site.id}?tab=settings`);
 }

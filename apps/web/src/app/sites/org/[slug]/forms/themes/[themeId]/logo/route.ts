@@ -13,6 +13,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const file = await db.formFile.findFirst({ where: { id: theme.logoFileId, kind: "logo" } });
   if (!file) return new Response("Not found", { status: 404 });
   return new Response(Buffer.from(file.data), {
-    headers: { "content-type": file.mimeType, "content-length": String(file.size), "cache-control": "private, max-age=300", "x-content-type-options": "nosniff" },
+    headers: { "content-type": file.mimeType, "content-length": String(file.size), "cache-control": "private, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" },
   });
 }

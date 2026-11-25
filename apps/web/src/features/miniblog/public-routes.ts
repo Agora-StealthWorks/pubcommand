@@ -69,7 +69,7 @@ export async function siteLogo(orgSlug: string, siteSlug: string): Promise<Respo
       "content-length": String(asset.size),
       "cache-control": "public, max-age=3600",
       "x-content-type-options": "nosniff",
-      "content-security-policy": "default-src 'none'",
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     },
   });
 }

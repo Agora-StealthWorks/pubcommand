@@ -13,6 +13,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       "content-length": String(file.size),
       "cache-control": "public, max-age=3600",
       "x-content-type-options": "nosniff",
+      // SVG logos must never run script.
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     },
   });
 }
