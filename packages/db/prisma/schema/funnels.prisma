@@ -125,6 +125,8 @@ model Funnel {
   emailReplyTo           String?         @map("email_reply_to")
   /// The first module follows scheduled / link-key progression too.
   lockFirstModule        Boolean         @default(false) @map("lock_first_module")
+  /// Scheduled / watch % progression: each module's ?k= link (from an email) also unlocks it early.
+  keyForceUnlock         Boolean         @default(false) @map("key_force_unlock")
   /// Live: where the front door goes between sessions: hybrid | recent | next
   betweenSessions        String          @default("hybrid") @map("between_sessions")
   /// Live: countdown in the video box on the calendar day of a session.

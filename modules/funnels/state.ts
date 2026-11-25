@@ -9,7 +9,8 @@
  *   2. live now          a live session is running: send people to the room
  *   3. not started       the funnel's start is still ahead
  *   4. live upcoming     a live day whose session has not begun
- *   5. progression lock  scheduled / watch % / URL key (never day 1, never live days)
+ *   5. progression lock  scheduled / watch % / URL key (never day 1, never live days);
+ *                        with keyForceUnlock the link key also opens a scheduled / watch % lock
  *   6. video             the day's video is in
  *   7. replay pending    a live day after its session, replay not uploaded yet
  *   8. coming soon       build-as-you-go: no video yet
@@ -59,6 +60,12 @@ export type FunnelRules = {
   siteType?: SiteType;
   /** The first module follows scheduled / link-key progression too, instead of opening at the start. */
   lockFirstModule?: boolean;
+  /**
+   * Scheduled / watch % progression: a module's secret link (?k=…) also opens it
+   * early, so an email can force-unlock it before its time. Link-key progression
+   * always works this way.
+   */
+  keyForceUnlock?: boolean;
   /**
    * Live funnels, where the front door goes between sessions:
    *   hybrid (default)  the most recent session, until the calendar day of the next one; that day, the next one
@@ -177,13 +184,21 @@ function progressionLock(
       const watched = viewer.watched[previous.id] ?? 0;
       return watched >= funnel.watchPercent ? null : { kind: "locked", reason: "watch", unlockAt: null, prevPosition: previous.position };
     }
-    case "url_key": {
-      if (viewer.keys.includes(day.id)) return null;
-      const presented = presentedKeys[day.id];
-      if (presented && day.unlockKey && presented === day.unlockKey) return null;
-      return { kind: "locked", reason: "key", unlockAt: null };
-    }
+    case "url_key":
+      return hasKey(day, viewer, presentedKeys) ? null : { kind: "locked", reason: "key", unlockAt: null };
   }
+}
+
+/** The viewer holds this day's link key: remembered in the cookie, or the ?k= on this request. */
+function hasKey(day: DayRules, viewer: ViewerFacts, presentedKeys: Record<string, string>): boolean {
+  if (viewer.keys.includes(day.id)) return true;
+  const presented = presentedKeys[day.id];
+  return Boolean(presented && day.unlockKey && presented === day.unlockKey);
+}
+
+/** Does a module's link key open it under this funnel's rule? */
+export function keyUnlocks(funnel: { progression: string; keyForceUnlock?: boolean | null }): boolean {
+  return funnel.progression === "url_key" || (Boolean(funnel.keyForceUnlock) && (funnel.progression === "scheduled" || funnel.progression === "watch_percent"));
 }
 
 export function orderDays<T extends { position: number }>(days: readonly T[]): T[] {
@@ -221,7 +236,7 @@ export function computeDayStates(
       const own = funnel.progression === "scheduled" && followsProgression ? scheduledUnlock(day, start) ?? start : start;
       return { kind: "locked", reason: "not_started", unlockAt: own };
     }
-    if (followsProgression) {
+    if (followsProgression && !(keyUnlocks(funnel) && hasKey(day, viewer, presentedKeys))) {
       const lock = progressionLock(funnel, day, ordered[index - 1], viewer, start, now, presentedKeys);
       if (lock) return lock;
     }

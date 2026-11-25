@@ -3,7 +3,7 @@
  * progression A/B/C/D, live sessions and the between-sessions front door.
  */
 import { describe, expect, it } from "vitest";
-import { computeDayStates, dayKey, earlierPendingSession, entryDecision, isClosed, type DayRules, type FunnelRules, type ViewerFacts } from "./state";
+import { computeDayStates, dayKey, earlierPendingSession, entryDecision, isClosed, keyUnlocks, type DayRules, type FunnelRules, type ViewerFacts } from "./state";
 
 const HOUR = 3_600_000;
 // 4 pm Eastern on Mon 12 Oct 2026 (EDT, UTC-4).
@@ -121,6 +121,31 @@ describe("progression", () => {
     expect(computeDayStates(rules, modules, nobody({ keys: ["m2"] }), at(1))[1]!.kind).toBe("video");
     expect(computeDayStates(rules, modules, nobody(), at(1), { m2: "secret2" })[1]!.kind).toBe("video");
     expect(computeDayStates(rules, modules, nobody(), at(1), { m2: "guess" })[1]!.kind).toBe("locked");
+  });
+
+  it("B + force-unlock: an email link opens a module before its time; without it the schedule still applies", () => {
+    const rules = funnel({ timing: "per_viewer", startAt: null, progression: "scheduled", keyForceUnlock: true });
+    const viewer = nobody({ start: T0.getTime() });
+    expect(computeDayStates(rules, modules, viewer, at(1))[1]).toMatchObject({ kind: "locked", reason: "scheduled" });
+    expect(computeDayStates(rules, modules, viewer, at(1), { m2: "secret2" })[1]!.kind).toBe("video");
+    expect(computeDayStates(rules, modules, { ...viewer, keys: ["m3"] }, at(1))[2]!.kind).toBe("video");
+    expect(computeDayStates(rules, modules, viewer, at(1), { m2: "guess" })[1]!.kind).toBe("locked");
+    expect(computeDayStates(rules, modules, viewer, at(25))[1]!.kind).toBe("video");
+  });
+
+  it("C + force-unlock: an email link skips the watch requirement", () => {
+    const rules = funnel({ progression: "watch_percent", keyForceUnlock: true });
+    expect(computeDayStates(rules, modules, nobody(), at(1))[1]!.kind).toBe("locked");
+    expect(computeDayStates(rules, modules, nobody({ keys: ["m2"] }), at(1))[1]!.kind).toBe("video");
+  });
+
+  it("without force-unlock, keys do nothing under B or C", () => {
+    const rules = funnel({ progression: "scheduled" });
+    expect(computeDayStates(rules, modules, nobody({ keys: ["m2"] }), at(1), { m2: "secret2" })[1]!.kind).toBe("locked");
+    expect(keyUnlocks({ progression: "scheduled" })).toBe(false);
+    expect(keyUnlocks({ progression: "scheduled", keyForceUnlock: true })).toBe(true);
+    expect(keyUnlocks({ progression: "all_open", keyForceUnlock: true })).toBe(false);
+    expect(keyUnlocks({ progression: "url_key" })).toBe(true);
   });
 
   it("module 1 is never progression-locked by default", () => {

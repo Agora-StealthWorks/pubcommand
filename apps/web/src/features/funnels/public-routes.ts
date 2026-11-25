@@ -6,7 +6,7 @@ import { classifyTraffic, clientIpOf, deviceOf, isClickKind, isPageKind } from "
 import { ensureStart, recordWatch, rememberKey } from "../../../../../modules/funnels/viewer";
 import { eventBoxEvent, icsFile } from "../../../../../modules/funnels/calendar";
 import { sessionEvent, upcomingSessions } from "./calendar-view";
-import { effectiveStart } from "../../../../../modules/funnels/state";
+import { effectiveStart, keyUnlocks } from "../../../../../modules/funnels/state";
 import { emailConsent, funnelBranding, funnelRules } from "./data";
 import { sendConfirmation, unsubscribeOptin, unsubscribeSecret } from "./emails";
 import { acceptsEmailOptin, homeBlocks } from "./site-data";
@@ -80,7 +80,7 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
 
   if (kind === "view") {
     const key = typeof body.key === "string" ? body.key.slice(0, 40) : "";
-    if (day && key && funnel.progression === "url_key" && key === day.unlockKey) {
+    if (day && key && keyUnlocks(funnel) && key === day.unlockKey) {
       viewer = rememberKey(viewer, day.id);
       unlocked = true;
     }

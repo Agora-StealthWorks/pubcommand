@@ -57,6 +57,8 @@ export type FunnelCheckInput = {
   closeMode: CloseMode;
   closeRedirectUrl: string | null;
   progression: Progression;
+  /** Scheduled / watch %: email links (?k=) can also force-unlock modules. */
+  keyForceUnlock?: boolean;
   buildMode: "as_you_go" | "prebuilt";
   livestreamUrl: string | null;
   privacyUrl: string | null;
@@ -140,6 +142,7 @@ export function checkFunnel(input: FunnelCheckInput): CheckResult {
     if (reveal === "video_time" && text) warnings.push(`${label}: text modules have no video, so a call to action timed to the video never appears.`);
     else if (reveal === "video_time" && !hasVideo && !liveDay) warnings.push(`${label}: the call to action is timed to the video, but there is no video yet.`);
     if (input.progression === "url_key" && day.position > 1 && !day.unlockKey.trim()) errors.push(`${label}: it needs an unlock key.`);
+    else if (input.keyForceUnlock && (input.progression === "scheduled" || input.progression === "watch_percent") && day.position > 1 && !liveDay && !day.unlockKey.trim()) warnings.push(`${label}: it has no link key, so email links cannot force-unlock it.`);
   }
   if (missingCalendar.length) warnings.push(`Add to calendar uses a calendar link, but none is set for: ${missingCalendar.join(", ")}. No button shows there.`);
   const pageSlugs = new Set<string>();

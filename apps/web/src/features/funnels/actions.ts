@@ -143,6 +143,7 @@ export async function saveFunnel(formData: FormData) {
     data = {
       progression: pickOne(formData, "progression", PROGRESSIONS, "all_open"),
       lockFirstModule: bool(formData, "lockFirstModule"),
+      keyForceUnlock: bool(formData, "keyForceUnlock"),
       unlockCountdownMode: pickOne(formData, "unlockCountdownMode", ["day_of", "always", "off"] as const, "day_of"),
       unlockCountdownTitle: text(formData, "unlockCountdownTitle", 200) || "Unlocks in…",
       watchPercent: int(formData, "watchPercent", 80, 1, 100),

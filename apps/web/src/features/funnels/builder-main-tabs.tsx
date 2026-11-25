@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { describeReminders, parseReminders } from "../../../../../modules/funnels/calendar";
 import type { CheckResult } from "../../../../../modules/funnels/checks";
 import { linkItems, type LinkItem } from "../../../../../modules/funnels/links";
-import { PROGRESSION_LABELS, PROGRESSIONS, scheduledUnlock } from "../../../../../modules/funnels/state";
+import { keyUnlocks, PROGRESSION_LABELS, PROGRESSIONS, scheduledUnlock } from "../../../../../modules/funnels/state";
 import { formatZoned } from "../../../../../modules/funnels/time";
 import { PROGRESS_SOURCE, PROVIDER_LABELS, formatDuration, watchUrl } from "../../../../../modules/funnels/video";
 import { addDay, deleteDay, moveDay, saveDay, saveFunnel, setAgendaOnAllDays } from "./actions";
@@ -344,6 +344,7 @@ export function ProgressionTab({ funnel, canWrite }: { funnel: FunnelRow; canWri
             <Select name="progression" value={funnel.progression} options={PROGRESSIONS.map((value, index) => [value, `${"ABCD"[index]} · ${PROGRESSION_LABELS[value]}`])} />
           </Field>
           <Check name="lockFirstModule" label="Lock the first module too (set times and link keys)" defaultChecked={funnel.lockFirstModule} hint="Normally the first module opens when the funnel starts. Ticked, it follows the same rule as the others. Best with the Microsite type, so visitors land on the home page." />
+          <Check name="keyForceUnlock" label="Email links can force-unlock a module early (B and C)" defaultChecked={funnel.keyForceUnlock} hint="Each module gets a secret link (?k=…) for your emails. Opening it unlocks that module straight away, even before its time or watch percentage, and the browser remembers it. Without the link, the module still unlocks on its own rule." />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Percent of the previous video to watch" htmlFor="watchPercent" hint="Unlock by watching. Text modules count as read after 5 seconds open.">
               <Input id="watchPercent" name="watchPercent" type="number" min={1} max={100} defaultValue={funnel.watchPercent} />
@@ -623,6 +624,7 @@ function ModuleEditor({ funnel, day, days, smsForms, canWrite, local, zone, publ
   const followsProgression = (index > 0 || funnel.lockFirstModule) && !liveDay && funnel.progression !== "all_open";
   const unlockBy = day.unlockAt ? "time" : "offset";
   const offsetDate = !perViewer ? scheduledUnlock({ unlockAt: null, unlockOffsetHours: day.unlockOffsetHours }, funnel.startAt) : null;
+  const keyOpens = keyUnlocks(funnel);
   const keyLink = publicLink(publicUrl, `/day-${day.position}`, { k: day.unlockKey });
   const thumb = dayThumb(day, `/l/${funnel.slug}`, true);
   const resources = linkItems(day.resources);
@@ -782,9 +784,9 @@ function ModuleEditor({ funnel, day, days, smsForms, canWrite, local, zone, publ
                 </>
               )}
               {followsProgression && funnel.progression === "watch_percent" && index > 0 ? <p className="text-sm">Unlocks when {dayLabel(days[index - 1]!)} is watched {funnel.watchPercent}%.</p> : null}
-              {followsProgression && funnel.progression === "url_key" ? (
+              {followsProgression && keyOpens ? (
                 <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
-                  <LinkBox label="Unlock link (put it in this module's email)" value={keyLink} />
+                  <LinkBox label={funnel.progression === "url_key" ? "Unlock link (put it in this module's email)" : "Force-unlock link (opens it early; put it in this module's email)"} value={keyLink} />
                   <Field label="Link key" htmlFor="unlockKey">
                     <Input id="unlockKey" name="unlockKey" defaultValue={day.unlockKey} maxLength={40} />
                   </Field>
