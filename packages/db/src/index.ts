@@ -56,3 +56,4 @@ export {
 export { ensureBuiltInMemberRoles, ensureBuiltInMemberRolesForAll, ensureBuiltInRolesForAll, ensureOwnerPermissions } from "./roles";
 export { changeOwnPassword, memberPasswordFacts, resetForgottenPassword, setMemberPassword, updateOwnName } from "./passwords";
 export { createAgentMember, createPlatformAgent, removeAgentMember, type CreatedAgent } from "./agents";
+export { loadBrandLook, syncAllBrandLooks, syncBrandLook, type BrandLookValues } from "./brand-look";

@@ -7,6 +7,7 @@ import { deleteTheme, saveTheme } from "@/features/forms/actions";
 import { listThemes, previewTheme } from "@/features/forms/data";
 import { formsAccess } from "@/features/forms/guard";
 import { FormHeader } from "@/features/forms/renderer";
+import { ensureBrandTheme } from "@/features/forms/brand-theme";
 
 export default async function FormThemesPage({
   params,
@@ -21,6 +22,8 @@ export default async function FormThemesPage({
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
   const { ctx, canWrite } = access;
+  // Every brand has a theme in its brand look (Settings → Brands), kept in step with it.
+  if (canWrite) await ensureBrandTheme(ctx.resolved.id, ctx.brand);
   const themes = await listThemes(ctx.resolved.id, ctx.brand.id);
   const editing = themes.find((theme) => theme.id === query.edit) ?? null;
   const showForm = canWrite && (editing || query.edit === "new" || themes.length === 0);
@@ -47,6 +50,7 @@ export default async function FormThemesPage({
                 <span className="h-5 w-5 shrink-0 rounded" style={{ background: theme.barColor }} aria-hidden />
                 <span className="h-5 w-5 shrink-0 rounded" style={{ background: theme.accentColor }} aria-hidden />
                 <span className="[overflow-wrap:anywhere] min-w-0 flex-1 text-sm font-semibold">{theme.name}</span>
+                {theme.followBrand ? <Badge>Brand look</Badge> : null}
                 {theme.isDefault ? <Badge tone="accent">Default</Badge> : null}
               </span>
               <span className="mt-1 block truncate text-xs text-muted">{theme.privacyPolicyUrl}</span>
@@ -83,6 +87,15 @@ export default async function FormThemesPage({
                 <Input id="theme-privacy" name="privacyPolicyUrl" type="url" required placeholder="https://" defaultValue={editing?.privacyPolicyUrl ?? ""} />
                 <p className="mt-1 text-xs text-muted">Shown under the submit button of every form using this theme. It cannot be turned off.</p>
               </div>
+              <label className="flex items-start gap-2 rounded-lg border border-line bg-canvas p-3 text-sm">
+                <input type="checkbox" name="followBrand" defaultChecked={editing ? editing.followBrand : false} className="mt-1 h-4 w-4" />
+                <span>
+                  <span className="font-semibold">Use the brand look</span>
+                  <span className="block text-muted">
+                    Header and button colors, logo and logo size come from {ctx.brand.name}&apos;s branding (Settings → Brands) and update when it changes. The logo and color fields below are then ignored.
+                  </span>
+                </span>
+              </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="theme-logo">Logo image</Label>

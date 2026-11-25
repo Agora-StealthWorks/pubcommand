@@ -1,6 +1,6 @@
 "use server";
 
-import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
+import { appendOrgAudit, syncBrandLook, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { BRANDING_FIELDS, EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, firstError, parseFields, uniqueSlug, type FieldValues } from "../../../../../modules/pubsetup/fields";
@@ -212,12 +212,19 @@ export async function saveBrandDefaults(formData: FormData) {
   if (existing) await db.pubBrandBranding.updateMany({ where: { id: existing.id }, data });
   else await db.pubBrandBranding.create({ data: { organizationId: ctx.resolved.id, brandId: ctx.brand.id, ...data } });
   await audit(ctx, "pubsetup.brand.branding", "brand", ctx.brand.id);
+  // Form themes and Mini-Blogs that use the brand look pick up the new colors, logo and size now.
+  const synced = await syncBrandLook(ctx.resolved.id, ctx.brand.id).catch((error: unknown) => {
+    console.error("[pubsetup] brand look sync failed", error);
+    return { themes: 0, sites: 0 };
+  });
   const base = { organizationId: ctx.resolved.id, brandId: ctx.brand.id, actorId: ctx.actorId };
   after(async () => {
     await refreshAllPublications(base);
     await notifyBrandSites(base.organizationId, base.brandId);
   });
-  redirect(withMessage(back, "notice", withNote("Brand defaults saved. Publications that leave a field blank use these.", logos.note)));
+  const followers = synced.themes + synced.sites;
+  const followNote = followers ? " Form themes and Mini-Blogs that use the brand look were updated." : "";
+  redirect(withMessage(back, "notice", withNote(`Brand defaults saved. Publications that leave a field blank use these.${followNote}`, logos.note)));
 }
 
 // ── Editors ────────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@
     "ensure-superadmin": "tsx prisma/ensure-superadmin.ts",
     "ensure-plans": "tsx prisma/ensure-plans.ts",
     "ensure-roles": "tsx prisma/ensure-roles.ts",
+    "ensure-brand-look": "tsx prisma/ensure-brand-look.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

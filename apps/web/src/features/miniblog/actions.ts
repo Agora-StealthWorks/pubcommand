@@ -1,6 +1,6 @@
 "use server";
 
-import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
+import { appendOrgAudit, syncBrandLook, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { miniBlogPath } from "../../../../../modules/miniblog/paths";
@@ -12,7 +12,6 @@ import { bool, color, int, optional, storeLogo, text, url, zoned } from "./form-
 import { syncPostLinks } from "./links";
 import { miniblogAction, miniblogWriteCtx, orgPublicUrl, withMessage, type MiniBlogCtx } from "./guard";
 import { richFromInput } from "./sanitize";
-import { brandLook } from "../pubsetup/brand-look";
 
 function audit(ctx: MiniBlogCtx, action: string, targetType: string, targetId: string, metadata?: Prisma.InputJsonValue) {
   return appendOrgAudit(ctx.resolved.id, { actorId: ctx.actorId, action, targetType, targetId, metadata });
@@ -45,9 +44,8 @@ export async function createSite(formData: FormData) {
   const ctx = await miniblogAction("/mini-blog", "miniblog.write");
   const name = text(formData, "name", 120) || "Mini-Blog";
   const db = tenantDb(ctx.resolved.id);
-  // Starts in the brand's look (Settings → Brands): header and accent colors and the logo.
-  // Everything stays editable in the Mini-Blog's settings.
-  const look = await brandLook(ctx.resolved.id, ctx.brand, { headerColor: "#111827", accentColor: "#1d4ed8" });
+  // Starts in the brand look (Settings → Brands): header and accent colors, logo and logo size,
+  // kept in step with the branding until "Use the brand look" is turned off in its settings.
   const site = await db.textSite.create({
     data: {
       organizationId: ctx.resolved.id,
@@ -56,18 +54,11 @@ export async function createSite(formData: FormData) {
       slug: await uniqueSiteSlug(ctx.resolved.id, name),
       programName: name,
       companyName: ctx.brand.name,
-      headerBg: look.headerColor,
-      accentColor: look.accentColor,
+      followBrand: true,
       createdById: ctx.actorId,
     },
   });
-  if (look.logo && look.logo.data.length <= 3 * 1024 * 1024) {
-    const asset = await db.funnelAsset.create({
-      data: { organizationId: ctx.resolved.id, ownerId: site.id, kind: "logo", filename: look.logo.filename.slice(0, 200), mimeType: look.logo.mime, size: look.logo.data.length, data: look.logo.data },
-      select: { id: true },
-    });
-    await db.textSite.updateMany({ where: { id: site.id }, data: { logoAssetId: asset.id } });
-  }
+  await syncBrandLook(ctx.resolved.id, ctx.brand.id, { siteIds: [site.id] });
   await audit(ctx, "miniblog.site.created", "text_site", site.id);
   redirect(`/mini-blog/${site.id}?tab=settings`);
 }
@@ -101,9 +92,12 @@ export async function saveSite(formData: FormData) {
       archivesEnabled: bool(formData, "archivesEnabled"),
       calendarCode: optional(formData, "calendarCode", 40),
       brainSyncEnabled: bool(formData, "brainSyncEnabled"),
+      followBrand: bool(formData, "followBrand"),
       ...(logo && "id" in logo ? { logoAssetId: logo.id } : bool(formData, "removeLogo") ? { logoAssetId: null } : {}),
     },
   });
+  // "Use the brand look": colors, logo and logo size come from Settings → Brands.
+  if (bool(formData, "followBrand")) await syncBrandLook(ctx.resolved.id, ctx.brand.id, { siteIds: [site.id] });
   await audit(ctx, "miniblog.site.updated", "text_site", site.id);
   redirect(withMessage(back, "notice", "Saved."));
 }

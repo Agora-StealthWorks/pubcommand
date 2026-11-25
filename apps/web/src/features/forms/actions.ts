@@ -1,7 +1,7 @@
 "use server";
 
 import { can } from "@pubcommand/core";
-import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
+import { appendOrgAudit, syncBrandLook, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { getOrgContext } from "@/lib/org";
@@ -24,7 +24,7 @@ import type { EndRule, FieldDef } from "../../../../../modules/forms/types";
 import { UUID_RE, asLayout, loadForm } from "./data";
 import { mirrorResponse } from "./mirror";
 import { runFormSummary } from "./server";
-import { brandLook } from "../pubsetup/brand-look";
+import { ensureBrandTheme } from "./brand-theme";
 
 type Permission = "forms.read" | "forms.write" | "forms.export";
 
@@ -102,33 +102,6 @@ async function writeFields(organizationId: string, formId: string, fields: Field
   }
 }
 
-/**
- * The brand's first form gets a default theme in the brand's look (logo, header and button
- * colors from Settings → Brands). It is an ordinary theme: edit it in Forms → Themes.
- */
-async function createBrandTheme(ctx: Ctx): Promise<string> {
-  const db = tenantDb(ctx.resolved.id);
-  const look = await brandLook(ctx.resolved.id, ctx.brand, { headerColor: "#0b1220", accentColor: "#1d4ed8" });
-  const logo = look.logo && look.logo.data.length <= MAX_LOGO_BYTES
-    ? await db.formFile.create({ data: { organizationId: ctx.resolved.id, kind: "logo", filename: look.logo.filename.slice(0, 200), mimeType: look.logo.mime, size: look.logo.data.length, data: look.logo.data } })
-    : null;
-  const theme = await db.formTheme.create({
-    data: {
-      organizationId: ctx.resolved.id,
-      brandId: ctx.brand.id,
-      name: `${ctx.brand.name} default`.slice(0, 120),
-      barColor: look.headerColor,
-      accentColor: look.accentColor,
-      companyName: look.companyName,
-      logoFileId: logo?.id ?? null,
-      privacyPolicyUrl: "",
-      isDefault: true,
-    },
-  });
-  await audit(ctx, "forms.theme.created", "form_theme", theme.id);
-  return theme.id;
-}
-
 export async function createForm(formData: FormData) {
   const ctx = await formsContext("forms.write");
   const db = tenantDb(ctx.resolved.id);
@@ -136,7 +109,7 @@ export async function createForm(formData: FormData) {
   const folderIdRaw = text(formData, "folderId", 40);
   const folder = UUID_RE.test(folderIdRaw) ? await db.formFolder.findFirst({ where: { id: folderIdRaw, brandId: ctx.brand.id } }) : null;
   const themes = await db.formTheme.findMany({ where: { brandId: ctx.brand.id, deletedAt: null }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }], select: { id: true } });
-  const themeId = folder?.defaultThemeId ?? themes[0]?.id ?? (await createBrandTheme(ctx));
+  const themeId = folder?.defaultThemeId ?? themes[0]?.id ?? (await ensureBrandTheme(ctx.resolved.id, ctx.brand));
   const form = await db.form.create({
     data: {
       organizationId: ctx.resolved.id,
@@ -350,6 +323,7 @@ export async function saveTheme(formData: FormData) {
     companyName: text(formData, "companyName", 200),
     footerText: text(formData, "footerText", 500) || null,
     isDefault: formData.get("isDefault") === "on",
+    followBrand: formData.get("followBrand") === "on",
   };
   const file = formData.get("logo");
   let logoFileId: string | null | undefined;
@@ -371,6 +345,8 @@ export async function saveTheme(formData: FormData) {
     const created = await db.formTheme.create({ data: { ...data, organizationId: ctx.resolved.id, brandId: ctx.brand.id, logoFileId: logoFileId ?? null } });
     id = created.id;
   }
+  // "Use the brand look": colors, logo and logo size come from Settings → Brands.
+  if (data.followBrand) await syncBrandLook(ctx.resolved.id, ctx.brand.id, { themeIds: [id!] });
   await audit(ctx, existing ? "forms.theme.updated" : "forms.theme.created", "form_theme", id!);
   const returnTo = text(formData, "returnTo", 200);
   if (returnTo.startsWith("/forms/") && !returnTo.startsWith("//")) redirect(returnTo);
