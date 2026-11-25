@@ -31,8 +31,8 @@ Edits are stored in `platform_settings` under the key `system_email_copy` (one e
 
 Every system email uses the same template (`pubcommandSystemEmail` in `packages/core/src/email-layout.ts`):
 
-1. A skinny black bar across the top with the white "By Agora StealthWorks" logo centred (`/brand/agora-stealthworks-white.png`).
-2. The PubCommand masthead: the PubCommand logo centred on white over a violet rule.
+1. The PubCommand masthead: the PubCommand logo centred on white.
+2. Directly under it, a skinny black bar with the white "By Agora StealthWorks" logo centred (`/brand/agora-stealthworks-white.png`).
 3. The heading, paragraphs, a violet button, the link spelled out, and the footnote, on a lilac page.
 4. A footer: "PubCommand by Agora StealthWorks · pubcommand.com".
 

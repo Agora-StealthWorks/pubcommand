@@ -29,12 +29,12 @@ export type EmailLayoutInput = {
   /** Lines under the card (plain text): who it's from, how to reach them. */
   footer?: string[] | null;
   /**
-   * A skinny bar across the very top of the card, above the header, with a logo centred in it
+   * A skinny bar across the card directly under the header, with a logo centred in it
    * (PubCommand's system emails: black, with the white Agora StealthWorks logo). Without an image
    * the alt text is shown in small capitals.
    */
-  topBar?: { background: string; imageUrl?: string | null; alt: string; textColor?: string | null } | null;
-  /** Centre the logo / wordmark in a white masthead with a rule under it, instead of top-left. */
+  headerBar?: { background: string; imageUrl?: string | null; alt: string; textColor?: string | null } | null;
+  /** Centre the logo / wordmark in a white masthead (with a rule under it when ruleColor is set), instead of top-left. */
   masthead?: { ruleColor?: string | null } | null;
 };
 
@@ -76,25 +76,26 @@ export function renderEmailLayout(input: EmailLayoutInput): { html: string; text
     : band
       ? `<span style="font-size:20px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:${wordmarkColor}">${name}</span>`
       : `<span style="font-size:18px;font-weight:700;color:${wordmarkColor}">${name}</span>`;
-  const topBar = input.topBar ?? null;
-  const topBarImage = safeUrl(topBar?.imageUrl);
-  const topBarRow = topBar
-    ? `<tr><td align="center" style="padding:9px 16px;background:${safeColor(topBar.background, "#000000")};border-radius:12px 12px 0 0;line-height:0;font-size:0">${
-        topBarImage
-          ? `<img src="${escapeEmailHtml(topBarImage)}" alt="${escapeEmailHtml(topBar.alt)}" height="18" style="display:inline-block;height:18px;width:auto;max-width:200px;border:0;outline:none;text-decoration:none">`
-          : `<span style="font-size:11px;line-height:18px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:${safeColor(topBar.textColor, "#ffffff")}">${escapeEmailHtml(topBar.alt)}</span>`
+  const headerBar = input.headerBar ?? null;
+  const headerBarImage = safeUrl(headerBar?.imageUrl);
+  const headerBarRow = headerBar
+    ? `<tr><td align="center" style="padding:9px 16px;background:${safeColor(headerBar.background, "#000000")};line-height:0;font-size:0">${
+        headerBarImage
+          ? `<img src="${escapeEmailHtml(headerBarImage)}" alt="${escapeEmailHtml(headerBar.alt)}" height="18" style="display:inline-block;height:18px;width:auto;max-width:200px;border:0;outline:none;text-decoration:none">`
+          : `<span style="font-size:11px;line-height:18px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:${safeColor(headerBar.textColor, "#ffffff")}">${escapeEmailHtml(headerBar.alt)}</span>`
       }</td></tr>`
     : "";
   // The first row of the card carries its rounded top corners.
   const roundTop = (first: boolean) => (first ? "border-radius:12px 12px 0 0;" : "");
-  const accentRow = accent ? `<tr><td style="height:6px;line-height:6px;font-size:0;background:${accent};${roundTop(!topBar)}">&nbsp;</td></tr>` : "";
-  const firstHeader = !topBar && !accent;
+  const accentRow = accent ? `<tr><td style="height:6px;line-height:6px;font-size:0;background:${accent};${roundTop(true)}">&nbsp;</td></tr>` : "";
+  const firstHeader = !accent;
   const masthead = input.masthead ?? null;
+  const mastheadRule = masthead?.ruleColor ? `border-bottom:3px solid ${safeColor(masthead.ruleColor, "#e4e7ec")};` : "";
   const headerRow = masthead
-    ? `${topBarRow}${accentRow}<tr><td align="center" style="padding:24px 32px 22px;${band ? `background:${band};` : ""}border-bottom:3px solid ${safeColor(masthead.ruleColor, "#e4e7ec")};${roundTop(firstHeader)}">${header}</td></tr>`
+    ? `${accentRow}<tr><td align="center" style="padding:24px 32px 22px;${band ? `background:${band};` : ""}${mastheadRule}${roundTop(firstHeader)}">${header}</td></tr>${headerBarRow}`
     : band
-      ? `${topBarRow}${accentRow}<tr><td style="padding:22px 32px;background:${band};${roundTop(firstHeader)}">${header}</td></tr>`
-      : `${topBarRow}${accentRow}<tr><td style="padding:28px 32px 0">${header}</td></tr>`;
+      ? `${accentRow}<tr><td style="padding:22px 32px;background:${band};${roundTop(firstHeader)}">${header}</td></tr>${headerBarRow}`
+      : `${accentRow}<tr><td style="padding:28px 32px ${headerBar ? "24px" : "0"}">${header}</td></tr>${headerBarRow}`;
   const footerHtml = input.footer?.length
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px"><tr><td align="center" style="padding:16px 32px 0;font-family:${font};font-size:12px;line-height:18px;color:#667085">${input.footer.map((line) => escapeEmailHtml(line)).join("<br>")}</td></tr></table>`
     : "";
@@ -149,8 +150,8 @@ export const PUBCOMMAND_OWNER = "Agora StealthWorks";
 /**
  * PubCommand's branded template for system emails sent from PubCommand itself
  * (password reset, invites, sign-in links), never an organization's own mail:
- * a skinny black bar with the white "By Agora StealthWorks" logo, the PubCommand
- * masthead (logo centred over a violet rule), a violet button on a lilac page, and a
+ * the PubCommand masthead (logo centred on white), a skinny black bar under it with the
+ * white "By Agora StealthWorks" logo, a violet button on a lilac page, and a
  * PubCommand footer. `origin` is the site the link points at; the logos are served from it.
  */
 export function pubcommandSystemEmail(input: {
@@ -170,8 +171,8 @@ export function pubcommandSystemEmail(input: {
     button: { ...input.button, color: PUBCOMMAND_EMAIL_BRAND.violet },
     footnote: input.footnote ?? null,
     look: { pageBackground: PUBCOMMAND_EMAIL_BRAND.lilac, headerText: PUBCOMMAND_EMAIL_BRAND.indigo },
-    topBar: { background: "#000000", imageUrl: base ? `${base}/brand/agora-stealthworks-white.png` : null, alt: `By ${PUBCOMMAND_OWNER}` },
-    masthead: { ruleColor: PUBCOMMAND_EMAIL_BRAND.violet },
+    headerBar: { background: "#000000", imageUrl: base ? `${base}/brand/agora-stealthworks-white.png` : null, alt: `By ${PUBCOMMAND_OWNER}` },
+    masthead: {},
     footer: [`PubCommand by ${PUBCOMMAND_OWNER} · pubcommand.com`, "This is an account email from PubCommand. You get it because of an action on your PubCommand account."],
   });
   return { subject: input.subject, ...body };

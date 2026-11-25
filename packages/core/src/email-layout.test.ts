@@ -45,12 +45,13 @@ describe("email layout", () => {
     expect(email.text).not.toMatch(/sign-in link/i);
   });
 
-  it("puts the black Agora StealthWorks bar above the PubCommand masthead, and names the owner in the footer", () => {
+  it("puts the black Agora StealthWorks bar under the PubCommand masthead, and names the owner in the footer", () => {
     const email = passwordResetEmail({ link: "https://app.pubcommand.com/reset-password?token=t", origin: "https://app.pubcommand.com", minutes: 30 });
     const bar = email.html.indexOf("agora-stealthworks-white.png");
     const masthead = email.html.indexOf("logo-light.png");
     expect(bar).toBeGreaterThan(-1);
-    expect(masthead).toBeGreaterThan(bar);
+    expect(masthead).toBeGreaterThan(-1);
+    expect(bar).toBeGreaterThan(masthead);
     expect(email.html).toContain("background:#000000");
     expect(email.html).toContain('alt="By Agora StealthWorks"');
     expect(email.html).toContain("PubCommand by Agora StealthWorks");
