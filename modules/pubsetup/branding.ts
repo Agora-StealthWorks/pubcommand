@@ -14,7 +14,18 @@ export const BRANDING_KEYS = [
   "headingFont",
   "bodyFont",
   "tagline",
+  "logoSize",
 ] as const;
+
+/** Logo size choices (header logo height in pixels). */
+export const LOGO_SIZES = { Small: 28, Medium: 40, Large: 56, "Extra large": 72 } as const;
+export type LogoSize = keyof typeof LOGO_SIZES;
+export const LOGO_SIZE_NAMES = Object.keys(LOGO_SIZES) as LogoSize[];
+
+/** Header logo height in pixels for a stored size (unknown or empty: Medium). */
+export function logoHeightPx(size: string | null | undefined): number {
+  return LOGO_SIZES[(size ?? "") as LogoSize] ?? LOGO_SIZES.Medium;
+}
 
 export type BrandingKey = (typeof BRANDING_KEYS)[number];
 export type BrandingValues = Partial<Record<BrandingKey, string | null>>;
@@ -40,6 +51,7 @@ export function platformDefaults(_brandName: string): Record<BrandingKey, string
     headingFont: "Georgia",
     bodyFont: "Arial",
     tagline: "",
+    logoSize: "Medium",
   };
 }
 

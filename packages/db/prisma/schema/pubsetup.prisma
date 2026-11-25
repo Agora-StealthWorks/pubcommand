@@ -70,6 +70,8 @@ model CalendarPublication {
   backgroundColor     String?                @map("background_color")
   headingFont         String?                @map("heading_font")
   bodyFont            String?                @map("body_font")
+  /// Small | Medium | Large | Extra large. Null inherits the brand default.
+  logoSize            String?                @map("logo_size")
   // Email branding: no longer edited in Publication Setup (kept, additive-only policy).
   emailHeaderFilename String?                @map("email_header_filename")
   emailHeaderMime     String?                @map("email_header_mime")
@@ -160,6 +162,8 @@ model PubBrandBranding {
   backgroundColor     String?  @map("background_color")
   headingFont         String?  @map("heading_font")
   bodyFont            String?  @map("body_font")
+  /// Small | Medium | Large | Extra large. Null = platform default (Medium).
+  logoSize            String?  @map("logo_size")
   logoFilename        String?  @map("logo_filename")
   logoMime            String?  @map("logo_mime")
   logoData            Bytes?   @map("logo_data")

@@ -187,6 +187,12 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                 </div>
               </Section>
               <Section title="Look">
+                <Check
+                  name="followBrand"
+                  label="Use the brand look"
+                  defaultChecked={site.followBrand}
+                  hint={`Header and button colors, logo and logo size come from ${ctx.brand.name}'s branding (Settings → Brands) and update when it changes. The fields below are then ignored.`}
+                />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Logo upload" htmlFor="logo" hint={site.logoAssetId ? "A logo is uploaded. Upload another to replace it." : "PNG, JPG, WebP or GIF up to 3 MB."}>
                     <input id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="block w-full text-sm" />
