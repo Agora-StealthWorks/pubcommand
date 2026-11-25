@@ -131,6 +131,22 @@ export async function markSessionMfa(sessionId: string, userId: string) {
   await writeGate({ sid: sessionId, uid: userId, role: staff.role, mfa: true });
 }
 
+/**
+ * Reissues the staff pass for the current session after checking the database.
+ * Returns "staff" when a pass was written, "anonymous" with no session, "not_staff" otherwise.
+ */
+export async function refreshGate(): Promise<"staff" | "anonymous" | "not_staff"> {
+  const { user, session } = await readSession();
+  if (!user || !session) return "anonymous";
+  const staff = await readStaff(user.id);
+  if (!staff) {
+    await writeGate(null);
+    return "not_staff";
+  }
+  await writeGate({ sid: session.id, uid: user.id, role: staff.role, mfa: session.mfaVerified || !staffTwoFactorRequired() });
+  return "staff";
+}
+
 export function loginDestination(input: { staff: boolean; next: string | null; requestHost: string }) {
   const root = rootDomain();
   if (input.staff && staffTwoFactorRequired()) {

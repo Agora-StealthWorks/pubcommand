@@ -65,6 +65,7 @@ model Funnel {
   lockedWatchMsg         String          @default("Watch at least {percent}% of {prev_day} to unlock {day}.") @map("locked_watch_msg")
   lockedKeyMsg           String          @default("{day} unlocks from the link in your email.") @map("locked_key_msg")
   lockedLiveMsg          String          @default("{day} goes live on {unlock_date}.") @map("locked_live_msg")
+  lockedPassedMsg        String          @default("{day} is no longer available. {next_day} is open now.") @map("locked_passed_msg")
   comingSoonTitle        String          @default("Coming soon") @map("coming_soon_title")
   comingSoonMessage      String          @default("This video will be available shortly. Check back soon!") @map("coming_soon_message")
   replayPendingTitle     String          @default("The replay is on its way") @map("replay_pending_title")
@@ -125,6 +126,12 @@ model Funnel {
   emailReplyTo           String?         @map("email_reply_to")
   /// The first module follows scheduled / link-key progression too.
   lockFirstModule        Boolean         @default(false) @map("lock_first_module")
+  /// Scheduled / watch % progression: each module's ?k= link (from an email) also unlocks it early.
+  keyForceUnlock         Boolean         @default(false) @map("key_force_unlock")
+  /// A module locks again once the viewer has a later module open (B, C and D; never live modules).
+  lockPassedModules      Boolean         @default(false) @map("lock_passed_modules")
+  /// With lockPassedModules: passed modules drop out of the navigation strip instead of showing locked.
+  hidePassedModules      Boolean         @default(false) @map("hide_passed_modules")
   /// Live: where the front door goes between sessions: hybrid | recent | next
   betweenSessions        String          @default("hybrid") @map("between_sessions")
   /// Live: countdown in the video box on the calendar day of a session.

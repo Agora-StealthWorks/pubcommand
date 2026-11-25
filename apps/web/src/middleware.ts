@@ -2,7 +2,7 @@ import { GATE_COOKIE, SESSION_COOKIE } from "@pubcommand/auth/edge";
 import { decideAdminAccess, resolveSite, type PlatformRole } from "@pubcommand/core";
 import { NextResponse, type NextRequest } from "next/server";
 import { customDomainResponse, stripCustomDomainHeaders } from "./features/domains/middleware";
-import { openGateSync } from "./lib/gate-sync";
+import { GATE_RETRY_COOKIE, openGateSync } from "./lib/gate-sync";
 
 export async function middleware(request: NextRequest) {
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
@@ -45,7 +45,14 @@ export async function middleware(request: NextRequest) {
       hasSession: Boolean(request.cookies.get(SESSION_COOKIE)?.value),
       staffRole: (gate?.role as PlatformRole | undefined) ?? null,
       mfaVerified: Boolean(gate?.mfa),
+      gateRetried: Boolean(request.cookies.get(GATE_RETRY_COOKIE)?.value),
     });
+    if (decision.type === "refresh") {
+      const refresh = request.nextUrl.clone();
+      refresh.pathname = "/api/auth/gate";
+      refresh.search = `?next=${encodeURIComponent(pathname + search)}`;
+      return NextResponse.redirect(refresh);
+    }
     if (decision.type === "reject") {
       return new NextResponse("Platform staff only.", {
         status: 403,

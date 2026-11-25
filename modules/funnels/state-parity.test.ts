@@ -3,7 +3,7 @@
  * progression A/B/C/D, live sessions and the between-sessions front door.
  */
 import { describe, expect, it } from "vitest";
-import { computeDayStates, dayKey, earlierPendingSession, entryDecision, isClosed, type DayRules, type FunnelRules, type ViewerFacts } from "./state";
+import { computeDayStates, dayKey, earlierPendingSession, entryDecision, isClosed, keyUnlocks, type DayRules, type FunnelRules, type ViewerFacts } from "./state";
 
 const HOUR = 3_600_000;
 // 4 pm Eastern on Mon 12 Oct 2026 (EDT, UTC-4).
@@ -121,6 +121,31 @@ describe("progression", () => {
     expect(computeDayStates(rules, modules, nobody({ keys: ["m2"] }), at(1))[1]!.kind).toBe("video");
     expect(computeDayStates(rules, modules, nobody(), at(1), { m2: "secret2" })[1]!.kind).toBe("video");
     expect(computeDayStates(rules, modules, nobody(), at(1), { m2: "guess" })[1]!.kind).toBe("locked");
+  });
+
+  it("B + force-unlock: an email link opens a module before its time; without it the schedule still applies", () => {
+    const rules = funnel({ timing: "per_viewer", startAt: null, progression: "scheduled", keyForceUnlock: true });
+    const viewer = nobody({ start: T0.getTime() });
+    expect(computeDayStates(rules, modules, viewer, at(1))[1]).toMatchObject({ kind: "locked", reason: "scheduled" });
+    expect(computeDayStates(rules, modules, viewer, at(1), { m2: "secret2" })[1]!.kind).toBe("video");
+    expect(computeDayStates(rules, modules, { ...viewer, keys: ["m3"] }, at(1))[2]!.kind).toBe("video");
+    expect(computeDayStates(rules, modules, viewer, at(1), { m2: "guess" })[1]!.kind).toBe("locked");
+    expect(computeDayStates(rules, modules, viewer, at(25))[1]!.kind).toBe("video");
+  });
+
+  it("C + force-unlock: an email link skips the watch requirement", () => {
+    const rules = funnel({ progression: "watch_percent", keyForceUnlock: true });
+    expect(computeDayStates(rules, modules, nobody(), at(1))[1]!.kind).toBe("locked");
+    expect(computeDayStates(rules, modules, nobody({ keys: ["m2"] }), at(1))[1]!.kind).toBe("video");
+  });
+
+  it("without force-unlock, keys do nothing under B or C", () => {
+    const rules = funnel({ progression: "scheduled" });
+    expect(computeDayStates(rules, modules, nobody({ keys: ["m2"] }), at(1), { m2: "secret2" })[1]!.kind).toBe("locked");
+    expect(keyUnlocks({ progression: "scheduled" })).toBe(false);
+    expect(keyUnlocks({ progression: "scheduled", keyForceUnlock: true })).toBe(true);
+    expect(keyUnlocks({ progression: "all_open", keyForceUnlock: true })).toBe(false);
+    expect(keyUnlocks({ progression: "url_key" })).toBe(true);
   });
 
   it("module 1 is never progression-locked by default", () => {
@@ -304,5 +329,69 @@ describe("new funnel design", () => {
     expect(normalizeDesign({})).toEqual(DEFAULT_DESIGN);
     expect(DEFAULT_DESIGN.header).toMatchObject({ logoAlign: "center", logoLink: "home" });
     expect(DEFAULT_DESIGN.nav.fade).toBe("locked");
+  });
+});
+
+describe("lock passed modules", () => {
+  const passed = (nextPosition: number) => ({ kind: "locked", reason: "passed", unlockAt: null, nextPosition });
+
+  it("B: each module locks again once the next one opens; only the newest is open", () => {
+    const rules = funnel({ progression: "scheduled", lockPassedModules: true });
+    expect(kinds(computeDayStates(rules, modules, nobody(), at(1)))).toEqual(["video", "locked", "locked"]);
+    const day2 = computeDayStates(rules, modules, nobody(), at(25));
+    expect(day2[0]).toEqual(passed(2));
+    expect(day2[1]!.kind).toBe("video");
+    expect(day2[2]).toMatchObject({ kind: "locked", reason: "scheduled" });
+    const day3 = computeDayStates(rules, modules, nobody(), at(49));
+    expect(day3.slice(0, 2)).toEqual([passed(3), passed(3)]);
+    expect(day3[2]!.kind).toBe("video");
+  });
+
+  it("off by default: earlier modules stay open", () => {
+    expect(kinds(computeDayStates(funnel({ progression: "scheduled" }), modules, nobody(), at(49)))).toEqual(["video", "video", "video"]);
+  });
+
+  it("C: the previous module passes once the next is unlocked by watching", () => {
+    const rules = funnel({ progression: "watch_percent", lockPassedModules: true });
+    expect(computeDayStates(rules, modules, nobody({ watched: { m1: 50 } }), at(1))[0]!.kind).toBe("video");
+    const states = computeDayStates(rules, modules, nobody({ watched: { m1: 90 } }), at(1));
+    expect(states[0]).toEqual(passed(2));
+    expect(states[1]!.kind).toBe("video");
+  });
+
+  it("D and force-unlock: a key that jumps ahead passes every earlier open module", () => {
+    const keyed = funnel({ progression: "url_key", lockPassedModules: true });
+    expect(computeDayStates(keyed, modules, nobody({ keys: ["m3"] }), at(1))[0]).toEqual(passed(3));
+    const forced = funnel({ timing: "per_viewer", startAt: null, progression: "scheduled", keyForceUnlock: true, lockPassedModules: true });
+    const states = computeDayStates(forced, modules, nobody({ start: T0.getTime() }), at(1), { m2: "secret2" });
+    expect(states[0]).toEqual(passed(2));
+    expect(states[1]!.kind).toBe("video");
+  });
+
+  it("a later module that is only 'coming soon' does not pass the one before it", () => {
+    const rules = funnel({ progression: "scheduled", lockPassedModules: true });
+    const states = computeDayStates(rules, [day(1), day(2, { hasVideo: false }), day(3)], nobody(), at(25));
+    expect(kinds(states)).toEqual(["video", "coming_soon", "locked"]);
+  });
+
+  it("live modules never pass and never pass another", () => {
+    const live = funnel({ mode: "live", progression: "scheduled", lockPassedModules: true });
+    const days = [day(1), day(2, { isLive: true, liveStartAt: at(2), liveEndAt: at(3) }), day(3)];
+    const states = computeDayStates(live, days, nobody(), at(49));
+    expect(states[0]).toEqual(passed(3));
+    expect(states[1]!.kind).toBe("video");
+    expect(states[2]!.kind).toBe("video");
+  });
+
+  it("the front door goes to the newest open module", () => {
+    const rules = funnel({ progression: "scheduled", lockPassedModules: true });
+    expect(entryDecision(rules, modules, nobody(), at(1))).toEqual({ kind: "day", position: 1 });
+    expect(entryDecision(rules, modules, nobody(), at(25))).toEqual({ kind: "day", position: 2 });
+    expect(entryDecision(rules, modules, nobody(), at(49))).toEqual({ kind: "day", position: 3 });
+  });
+
+  it("closed still beats passed", () => {
+    const rules = funnel({ progression: "scheduled", lockPassedModules: true });
+    expect(kinds(computeDayStates(rules, modules, nobody(), at(24 * 8)))).toEqual(["closed", "closed", "closed"]);
   });
 });

@@ -207,6 +207,7 @@ describe("closing and the entry router", () => {
 
   it("fills locked-day message tokens", () => {
     expect(fillLockMessage("Watch {percent}% of {prev_day} to unlock {day} ({unlock_date})", { day: "Day 2", prevDay: "Day 1", percent: 80 })).toBe("Watch 80% of Day 1 to unlock Day 2 (soon)");
+    expect(fillLockMessage("{day} is no longer available. {next_day} is open now.", { day: "Day 1", nextDay: "Day 3", percent: 80 })).toBe("Day 1 is no longer available. Day 3 is open now.");
   });
 
   it("decides the CTA server-side except for video time", () => {
@@ -348,6 +349,10 @@ describe("videos, checks and exports", () => {
     );
     const ok = checkFunnel({ ...input, mode: "evergreen", startAt: T0, endAt: at(5), closeMode: "page", privacyUrl: "https://x.example/privacy", optinMode: "none", buildMode: "as_you_go", days: [input.days[0]!] });
     expect(ok.errors).toEqual([]);
+    const passedWarnings = (extra: Partial<FunnelCheckInput>) => checkFunnel({ ...input, ...extra }).warnings.filter((warning) => warning.includes("Lock each module again"));
+    expect(passedWarnings({ progression: "all_open", lockPassedModules: true })).toEqual([expect.stringContaining("does nothing with A")]);
+    expect(passedWarnings({ progression: "scheduled", hidePassedModules: true })).toEqual([expect.stringContaining("only works with")]);
+    expect(passedWarnings({ progression: "scheduled", lockPassedModules: true, hidePassedModules: true })).toEqual([]);
   });
 
   it("neutralizes spreadsheet formulas but keeps phone numbers", () => {

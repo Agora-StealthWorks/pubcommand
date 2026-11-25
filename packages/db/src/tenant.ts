@@ -90,16 +90,20 @@ export function createTenantClient(client: PrismaClient, orgId: string) {
             throw new TenantIsolationError(`${model} is not available on the tenant client`);
           }
           const scoped = scopeArgs(model, operation, args as QueryArgs, orgId);
-          return client.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`;
-            const delegateName = `${model.charAt(0).toLowerCase()}${model.slice(1)}`;
-            const txRecord = tx as unknown as Record<string, Record<string, (value: unknown) => Promise<unknown>>>;
-            const delegate = txRecord[delegateName];
-            const run = delegate?.[operation];
-            if (!run) throw new TenantIsolationError(`Unsupported tenant operation ${model}.${operation}`);
-            const result = await run.call(delegate, scoped);
-            return filterResult(model, operation, result, orgId);
-          });
+          const delegateName = `${model.charAt(0).toLowerCase()}${model.slice(1)}`;
+          const clientRecord = client as unknown as Record<string, Record<string, (value: unknown) => Prisma.PrismaPromise<unknown>>>;
+          const delegate = clientRecord[delegateName];
+          const run = delegate?.[operation];
+          if (!run) throw new TenantIsolationError(`Unsupported tenant operation ${model}.${operation}`);
+          // A batch transaction, not an interactive one: BEGIN, the org setting, the query
+          // and COMMIT go to the database together on one connection. The interactive form
+          // held a pooled connection across four round trips per query and timed out (5 s)
+          // under load. set_config(..., true) is still local to this transaction.
+          const [, result] = await client.$transaction([
+            client.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`,
+            run.call(delegate, scoped),
+          ]);
+          return filterResult(model, operation, result, orgId);
         },
       },
     },

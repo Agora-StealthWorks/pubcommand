@@ -9,10 +9,15 @@
  *   2. live now          a live session is running: send people to the room
  *   3. not started       the funnel's start is still ahead
  *   4. live upcoming     a live day whose session has not begun
- *   5. progression lock  scheduled / watch % / URL key (never day 1, never live days)
+ *   5. progression lock  scheduled / watch % / URL key (never day 1, never live days);
+ *                        with keyForceUnlock the link key also opens a scheduled / watch % lock
  *   6. video             the day's video is in
  *   7. replay pending    a live day after its session, replay not uploaded yet
  *   8. coming soon       build-as-you-go: no video yet
+ *
+ * Then, with lockPassedModules, a module whose video is open locks again ("passed")
+ * once a LATER module's video is open, so a viewer only ever has the newest one.
+ * Live modules never pass and never make another module pass.
  */
 
 export const FUNNEL_MODES = ["evergreen", "live"] as const;
@@ -60,6 +65,18 @@ export type FunnelRules = {
   /** The first module follows scheduled / link-key progression too, instead of opening at the start. */
   lockFirstModule?: boolean;
   /**
+   * Scheduled / watch % progression: a module's secret link (?k=…) also opens it
+   * early, so an email can force-unlock it before its time. Link-key progression
+   * always works this way.
+   */
+  keyForceUnlock?: boolean;
+  /**
+   * A module locks again once a later module's video is open for this viewer (the
+   * nav shows it locked, or hides it; see the Funnel row's hidePassedModules).
+   * Live modules are left alone.
+   */
+  lockPassedModules?: boolean;
+  /**
    * Live funnels, where the front door goes between sessions:
    *   hybrid (default)  the most recent session, until the calendar day of the next one; that day, the next one
    *   recent            always the most recent session (its replay / replay pending)
@@ -95,12 +112,12 @@ export type ViewerFacts = {
   keys: string[];
 };
 
-export type LockReason = "not_started" | "live_upcoming" | "scheduled" | "watch" | "key";
+export type LockReason = "not_started" | "live_upcoming" | "scheduled" | "watch" | "key" | "passed";
 
 export type DayState =
   | { kind: "closed" }
   | { kind: "live"; url: string | null }
-  | { kind: "locked"; reason: LockReason; unlockAt: Date | null; prevPosition?: number }
+  | { kind: "locked"; reason: LockReason; unlockAt: Date | null; prevPosition?: number; nextPosition?: number }
   | { kind: "video" }
   | { kind: "replay_pending" }
   | { kind: "coming_soon" };
@@ -177,13 +194,21 @@ function progressionLock(
       const watched = viewer.watched[previous.id] ?? 0;
       return watched >= funnel.watchPercent ? null : { kind: "locked", reason: "watch", unlockAt: null, prevPosition: previous.position };
     }
-    case "url_key": {
-      if (viewer.keys.includes(day.id)) return null;
-      const presented = presentedKeys[day.id];
-      if (presented && day.unlockKey && presented === day.unlockKey) return null;
-      return { kind: "locked", reason: "key", unlockAt: null };
-    }
+    case "url_key":
+      return hasKey(day, viewer, presentedKeys) ? null : { kind: "locked", reason: "key", unlockAt: null };
   }
+}
+
+/** The viewer holds this day's link key: remembered in the cookie, or the ?k= on this request. */
+function hasKey(day: DayRules, viewer: ViewerFacts, presentedKeys: Record<string, string>): boolean {
+  if (viewer.keys.includes(day.id)) return true;
+  const presented = presentedKeys[day.id];
+  return Boolean(presented && day.unlockKey && presented === day.unlockKey);
+}
+
+/** Does a module's link key open it under this funnel's rule? */
+export function keyUnlocks(funnel: { progression: string; keyForceUnlock?: boolean | null }): boolean {
+  return funnel.progression === "url_key" || (Boolean(funnel.keyForceUnlock) && (funnel.progression === "scheduled" || funnel.progression === "watch_percent"));
 }
 
 export function orderDays<T extends { position: number }>(days: readonly T[]): T[] {
@@ -205,7 +230,7 @@ export function computeDayStates(
   if (isClosed(funnel, viewer, now)) return ordered.map(() => ({ kind: "closed" }));
   const start = effectiveStart(funnel, viewer, now);
   const beforeStart = Boolean(start) && now < start!;
-  return ordered.map((day, index) => {
+  const states = ordered.map((day, index): DayState => {
     const liveDay = isLiveDay(funnel, day);
     // Progression applies to every module but the first (unless lockFirstModule); never to live days.
     const followsProgression = (index > 0 || Boolean(funnel.lockFirstModule)) && !liveDay;
@@ -221,7 +246,7 @@ export function computeDayStates(
       const own = funnel.progression === "scheduled" && followsProgression ? scheduledUnlock(day, start) ?? start : start;
       return { kind: "locked", reason: "not_started", unlockAt: own };
     }
-    if (followsProgression) {
+    if (followsProgression && !(keyUnlocks(funnel) && hasKey(day, viewer, presentedKeys))) {
       const lock = progressionLock(funnel, day, ordered[index - 1], viewer, start, now, presentedKeys);
       if (lock) return lock;
     }
@@ -229,6 +254,34 @@ export function computeDayStates(
     if (liveDay) return { kind: "replay_pending" };
     return { kind: "coming_soon" };
   });
+  return funnel.lockPassedModules ? lockPassed(funnel, ordered, states) : states;
+}
+
+/**
+ * lockPassedModules: every non-live module with its video open locks ("passed") when a
+ * later non-live module has its video open too. It points at the newest open one.
+ */
+function lockPassed(funnel: FunnelRules, ordered: readonly DayRules[], states: DayState[]): DayState[] {
+  let newest = -1;
+  for (let index = ordered.length - 1; index >= 0; index -= 1) {
+    if (states[index]!.kind === "video" && !isLiveDay(funnel, ordered[index]!)) {
+      newest = index;
+      break;
+    }
+  }
+  if (newest <= 0) return states;
+  const nextPosition = ordered[newest]!.position;
+  return states.map((state, index) =>
+    index < newest && state.kind === "video" && !isLiveDay(funnel, ordered[index]!) ? { kind: "locked", reason: "passed", unlockAt: null, nextPosition } : state,
+  );
+}
+
+/** The newest module a viewer can watch when earlier ones have passed, or undefined. */
+export function newestOpenModule(days: readonly DayRules[], states: readonly DayState[]): DayRules | undefined {
+  const ordered = orderDays(days);
+  const passed = states.find((state) => state.kind === "locked" && state.reason === "passed");
+  if (!passed || passed.kind !== "locked" || !passed.nextPosition) return undefined;
+  return ordered.find((day) => day.position === passed.nextPosition);
 }
 
 /** Open = the visitor may see this day's page content (not locked, not closed). */
@@ -276,6 +329,9 @@ export function entryDecision(funnel: FunnelRules, days: readonly DayRules[], vi
       rule === "recent" ? recent ?? next : rule === "next" ? next ?? recent : next && dayKey(next.liveStartAt!, zone) === dayKey(now, zone) ? next : recent ?? next;
     if (pick) return { kind: "day", position: pick.position };
   }
+  // Earlier modules have passed: the front door goes to the one that is open now.
+  const newest = newestOpenModule(ordered, states);
+  if (newest) return { kind: "day", position: newest.position };
   return { kind: "day", position: ordered[0]?.position ?? 1 };
 }
 
@@ -312,11 +368,12 @@ export function nextSession(funnel: FunnelRules, days: readonly DayRules[], now:
     .sort((a, b) => a.liveStartAt!.getTime() - b.liveStartAt!.getTime())[0];
 }
 
-/** Fill a locked-day message: {day} {prev_day} {percent} {unlock_date}. */
-export function fillLockMessage(template: string, tokens: { day: string; prevDay?: string; percent: number; unlockDate?: string }): string {
+/** Fill a locked-day message: {day} {prev_day} {next_day} {percent} {unlock_date}. */
+export function fillLockMessage(template: string, tokens: { day: string; prevDay?: string; nextDay?: string; percent: number; unlockDate?: string }): string {
   return template
     .replaceAll("{day}", tokens.day)
     .replaceAll("{prev_day}", tokens.prevDay ?? "the previous video")
+    .replaceAll("{next_day}", tokens.nextDay ?? "the next video")
     .replaceAll("{percent}", String(tokens.percent))
     .replaceAll("{unlock_date}", tokens.unlockDate ?? "soon");
 }
