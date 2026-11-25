@@ -6,7 +6,7 @@ import { OrgShell } from "@/components/org-shell";
 import { Denied } from "@/components/ui";
 import { rootDomain } from "@/lib/auth";
 import { getOrgContext } from "@/lib/org";
-import { rawPrisma } from "@pubcommand/db";
+import { rawPrisma, tenantDb } from "@pubcommand/db";
 import { loadSwitcher } from "@/features/navigation/load";
 
 export const dynamic = "force-dynamic";
@@ -64,10 +64,16 @@ export default async function OrgLayout({
   }
   if (ctx.kind === "forbidden") return <Denied title="You are not a member of this organization" />;
 
-  const [target, switcher] = await Promise.all([
+  const [target, switcher, logos] = await Promise.all([
     ctx.impersonatingHere ? rawPrisma().user.findUnique({ where: { id: ctx.impersonatingHere.targetUserId } }) : null,
     loadSwitcher({ userId: ctx.auth.user.id, session: ctx.auth.session, here: { kind: "org", slug: ctx.resolved.slug, name: ctx.resolved.name } }),
+    // Brands with a logo (Settings → Brands → Brand defaults), shown in the sidebar.
+    tenantDb(ctx.resolved.id).pubBrandBranding.findMany({
+      where: { OR: [{ logoMime: { not: null } }, { logoOnDarkMime: { not: null } }] },
+      select: { brandId: true, updatedAt: true },
+    }),
   ]);
+  const brandLogos = Object.fromEntries(logos.map((row) => [row.brandId, `/brand-logo/${row.brandId}?v=${row.updatedAt.getTime()}`]));
   return (
     <OrgShell
       organization={ctx.resolved}
@@ -78,6 +84,7 @@ export default async function OrgLayout({
       email={target?.email ?? ctx.auth.user.email}
       impersonating={target ? { targetEmail: target.email } : null}
       switcher={switcher}
+      brandLogos={brandLogos}
     >
       {children}
     </OrgShell>
