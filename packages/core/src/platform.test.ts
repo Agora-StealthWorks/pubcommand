@@ -65,6 +65,16 @@ describe("platform staff", () => {
     ).toBe(true);
   });
 
+  it("lets platform AI agents reach only the MCP server and its OAuth endpoints without a session", () => {
+    for (const pathname of ["/api/mcp", "/api/oauth/token", "/api/oauth/register", "/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/api/mcp", "/.well-known/oauth-authorization-server"]) {
+      expect(decideAdminAccess({ pathname, hasSession: false, staffRole: null, mfaVerified: false })).toEqual({ type: "allow" });
+    }
+    // The consent screen and every other page still need a staff session.
+    for (const pathname of ["/agents/connect", "/agents", "/api/mcpx", "/api/oauthx", "/.well-known/other"]) {
+      expect(decideAdminAccess({ pathname, hasSession: false, staffRole: null, mfaVerified: false })).toEqual({ type: "login" });
+    }
+  });
+
   it("rejects a non-staff session on the admin host and holds staff at 2FA", () => {
     expect(
       decideAdminAccess({ pathname: "/orgs", hasSession: true, staffRole: null, mfaVerified: false }),

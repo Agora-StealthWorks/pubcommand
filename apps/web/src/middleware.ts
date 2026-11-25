@@ -70,9 +70,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
-  // OAuth discovery for AI agent connectors (MCP server at /api/mcp on organization hosts).
+  // OAuth discovery for AI agent connectors (MCP server at /api/mcp on organization hosts, and on
+  // the admin host for platform agents).
   const discoveryPath =
-    site.kind !== "org"
+    site.kind !== "org" && site.kind !== "admin"
       ? null
       : pathname === "/.well-known/oauth-protected-resource" || pathname.startsWith("/.well-known/oauth-protected-resource/")
         ? "/api/oauth/protected-resource"

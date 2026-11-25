@@ -18,6 +18,13 @@ model AiAgent {
   platform       String
   /// How it connects: "oauth" (signed in through the MCP connector by its owner) or "key" (an API key).
   connection     String    @default("key")
+  /// "organization": a member of organizationId, on that organization's host.
+  /// "platform": a super admin's agent on the admin console host (admin.<root>/api/mcp). It is stored
+  /// under the console organization (pubcommand-console) but is no member of anything: it gets the
+  /// Master Brain, platform monitoring and, with allowAdminActions, a few audited admin actions.
+  scope          String    @default("organization")
+  /// Platform agents only: may make admin changes (suspend, plan, app access, invite, run jobs).
+  allowAdminActions Boolean @default(false) @map("allow_admin_actions")
   /// Paused agents cannot call the MCP server; their tokens are kept.
   pausedAt       DateTime? @map("paused_at")
   /// Removed agents: membership disabled, tokens revoked. The row stays so authored content keeps its label.

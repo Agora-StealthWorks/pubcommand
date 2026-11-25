@@ -103,6 +103,16 @@ export function decideAdminAccess(input: {
   if (pathIs(input.pathname, "/api/auth") || input.pathname === "/api/health") {
     return { type: "allow" };
   }
+  // Platform AI agents: the MCP server and its OAuth endpoints check their own tokens (no session).
+  if (
+    pathIs(input.pathname, "/api/mcp") ||
+    pathIs(input.pathname, "/api/oauth") ||
+    pathIs(input.pathname, "/.well-known/oauth-protected-resource") ||
+    pathIs(input.pathname, "/.well-known/oauth-authorization-server") ||
+    input.pathname === "/.well-known/openid-configuration"
+  ) {
+    return { type: "allow" };
+  }
   if (!input.staffRole) {
     // Signing in and "Forgot your password?" work on every host, including this one.
     if (input.pathname === "/login" || input.pathname === "/reset-password") return { type: "allow" };

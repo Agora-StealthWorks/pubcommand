@@ -41,9 +41,16 @@ The MCP server is `POST /api/mcp`: Streamable HTTP, stateless, JSON responses. C
 ## Tools
 
 `whoami`, `list_brands`, Websites (`list_websites`, `list_editors`, `list_website_posts`,
-`get_website_post`, `create_website_post`, `update_website_post`) and Mini-Blog
+`get_website_post`, `create_website_post`, `update_website_post`), Mini-Blog
 (`list_miniblogs`, `list_miniblog_posts`, `get_miniblog_post`, `create_miniblog_post`,
-`update_miniblog_post`). An app's tools are listed only when the app is on and the agent can
+`update_miniblog_post`) and the Brain (`search_brain`, `read_brain_note`, `list_brain_notes`,
+`save_brain_note`).
+
+The Brain tools see what a person of that brand sees: the brand's notes and other brands'
+SHARED notes (`modules/knowledge/visibility.ts`). They need `knowledge.read`, and `save_brain_note`
+also needs `knowledge.write`. Saved notes are private to the brand, carry source `ai-agent`, and
+learn up into the Master Brain like any taught note. An agent can update only notes it saved
+itself. No tool calls PubCommand's LLM: the agent's own AI reads the search results. An app's tools are listed only when the app is on and the agent can
 read it. Each call checks the agent's permission in the post's brand.
 
 Each tool call is logged in `ai_agent_calls` (the agent's Activity list, plus a limit of
@@ -71,3 +78,34 @@ Approvals and Activity. Public pages and the websites JSON API show only a post'
 `agents.manage` (in the Settings manifest, admin) lets someone see and manage every agent and
 change the publishing setting. Without it, a member manages only their own agents. Approving
 needs `websites.publish` or `miniblog.publish` in the post's brand.
+
+## Platform agents (super admins only)
+
+A SUPER_ADMIN can add **platform agents** in the admin console under **AI Agents**
+(`admin.<root>/agents`). The same page lists every organization's agents with their calls and
+errors from the last 24 hours. A platform agent connects to the console host's MCP server,
+`admin.<root>/api/mcp`, by OAuth (the consent screen is `/agents/connect` in the console) or
+with a `pca_` key.
+
+- **Storage.** It is an `ai_agents` row with `scope = "platform"`, stored under the console
+  organization (`pubcommand-console`), so tokens, activity, OAuth codes and rate limits reuse the
+  agent tables. It has no membership and takes no seat anywhere.
+- **Gatekeeping.** Only an active SUPER_ADMIN (with a ready 2FA session when required) can add,
+  connect or change one. It stops working as soon as its owner is not an active SUPER_ADMIN. A
+  platform token is invalid on organization hosts, and an organization token is invalid on the
+  admin host. The admin host middleware lets only `/api/mcp`, `/api/oauth/*` and the OAuth
+  discovery documents through without a staff session.
+- **Tools** (`features/agents/platform-tools.ts`):
+  - Master Brain: `search_master_brain`, `read_master_note`, `list_master_brain`,
+    `save_master_note`.
+  - Any organization's Brain: `search_brain`, `read_brain_note` and `list_brain_notes` with
+    `organization`.
+  - Monitoring: `platform_overview`, `list_organizations`, `get_organization`, `list_users`,
+    `platform_audit_log`, `organization_audit_log`, `list_job_runs`, `ai_usage`,
+    `list_ai_agents`.
+  - Admin changes, only when the agent's **Can make admin changes** is on (default on, can be
+    switched off per agent): `suspend_organization` (and resume), `change_organization_plan`,
+    `set_organization_app_access`, `add_organization_member` and `run_job`. Each one needs a
+    `reason` and is written to the platform audit log under the agent's name.
+  - Deliberately left out: deleting or purging anything, passwords, 2FA, impersonation, staff
+    changes and domains.

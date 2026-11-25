@@ -2,71 +2,20 @@ import { agentPlatformLabel } from "@pubcommand/core";
 import { rawPrisma, tenantDb } from "@pubcommand/db";
 import { agentCan, pickBrand, type AgentContext } from "./context";
 import { agentSettings } from "./data";
+import { PLATFORM_TOOLS } from "./platform-tools";
+import { ToolError, UUID, date, limit, oneOf, str, strings, uuid, type Tool } from "./tool-kit";
 import { PostError, saveTextPostAsAgent, saveWebPostAsAgent } from "./posts";
 import { siteEditors } from "../websites/data";
+import { folderCounts, searchNotes } from "../brain/search";
+import { getVisibleNote, notesInFolder, recentNotes } from "../brain/notes";
+import { teachBrain } from "../brain/teach";
 
 /**
  * The MCP tools an agent can call. Each checks the agent's own permissions (its role and
  * per-app access) in the brand it works in, exactly as the app checks a person's.
  */
 
-export class ToolError extends Error {}
-
-type JsonSchema = Record<string, unknown>;
-export type ToolResult = { data: unknown; targetType?: string; targetId?: string };
-type Tool = {
-  name: string;
-  title: string;
-  description: string;
-  inputSchema: JsonSchema;
-  readOnly: boolean;
-  /** Shown in tools/list only when this returns true. */
-  available: (ctx: AgentContext) => boolean;
-  run: (ctx: AgentContext, args: Record<string, unknown>) => Promise<ToolResult>;
-};
-
-// ── argument readers ────────────────────────────────────────────────────────
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function str(args: Record<string, unknown>, key: string, max = 300): string | undefined {
-  const value = args[key];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") throw new ToolError(`${key} must be a string.`);
-  return value.slice(0, max);
-}
-function uuid(args: Record<string, unknown>, key: string, required = true): string | undefined {
-  const value = str(args, key, 40)?.trim();
-  if (!value) {
-    if (required) throw new ToolError(`${key} is required.`);
-    return undefined;
-  }
-  if (!UUID.test(value)) throw new ToolError(`${key} must be an id from a list_ tool.`);
-  return value.toLowerCase();
-}
-function strings(args: Record<string, unknown>, key: string): string[] | undefined {
-  const value = args[key];
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) throw new ToolError(`${key} must be a list of strings.`);
-  return (value as string[]).slice(0, 30).map((item) => item.slice(0, 60));
-}
-function date(args: Record<string, unknown>, key: string): Date | undefined {
-  const value = str(args, key, 40);
-  if (!value) return undefined;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) throw new ToolError(`${key} must be an ISO 8601 date-time, e.g. 2026-12-01T14:00:00Z.`);
-  return parsed;
-}
-function limit(args: Record<string, unknown>, fallback = 20): number {
-  const value = Number(args.limit ?? fallback);
-  return Number.isFinite(value) ? Math.max(1, Math.min(100, Math.round(value))) : fallback;
-}
-function oneOf<T extends string>(args: Record<string, unknown>, key: string, allowed: readonly T[], fallback?: T): T | undefined {
-  const value = str(args, key, 40);
-  if (value === undefined || value === "") return fallback;
-  if (!(allowed as readonly string[]).includes(value)) throw new ToolError(`${key} must be one of: ${allowed.join(", ")}.`);
-  return value as T;
-}
+export { ToolError };
 
 const brandArg = { brand: { type: "string", description: "Brand id, slug or name (see list_brands). Defaults to your first brand." } };
 
@@ -181,7 +130,7 @@ function wrapPostError<T>(promise: Promise<T>): Promise<T> {
 
 // ── tools ───────────────────────────────────────────────────────────────────
 
-const TOOLS: Tool[] = [
+const ORG_TOOLS: Tool[] = [
   {
     name: "whoami",
     title: "Who am I",
@@ -206,13 +155,23 @@ const TOOLS: Tool[] = [
         }));
       return {
         data: {
-          organization: ctx.organization.name,
+          ...(ctx.scope === "platform"
+            ? {
+                kind: "Platform agent (PubCommand staff). You see the whole platform: Master Brain, organizations, users, audit logs, jobs, AI usage. You can read any organization's Brain (organization argument).",
+                admin_changes: ctx.allowAdminActions ? "Allowed: suspend/resume, plan, app access, invite, run jobs. Each needs a reason and is audited." : "Not allowed for this agent (read-only).",
+              }
+            : {}),
+          organization: ctx.scope === "platform" ? "PubCommand platform" : ctx.organization.name,
           agent: ctx.agent.name,
           platform: agentPlatformLabel(ctx.agent.platform),
           owner: owner?.name || owner?.email || null,
-          brands: ctx.brands.map((item) => ({ id: item.id, name: item.name, slug: item.slug })),
-          apps,
-          publishing: allowPublishing ? "Your publishes go live (if you have publish rights)." : "Your publishes wait for a person's approval in AI Agents → Approvals.",
+          ...(ctx.scope === "organization"
+            ? {
+                brands: ctx.brands.map((item) => ({ id: item.id, name: item.name, slug: item.slug })),
+                apps: [...apps, ...(entitled(ctx, "knowledge") ? [{ app: "Brain", read: agentCan(ctx, "knowledge.read", brand), write: agentCan(ctx, "knowledge.write", brand), publish: false }] : [])],
+                publishing: allowPublishing ? "Your publishes go live (if you have publish rights)." : "Your publishes wait for a person's approval in AI Agents → Approvals.",
+              }
+            : {}),
         },
       };
     },
@@ -508,8 +467,167 @@ const TOOLS: Tool[] = [
   ),
 ];
 
+
+// ── Brain (the organization's knowledge) ────────────────────────────────────
+
+type BrainTarget = { organizationId: string; organizationName: string; brandId: string; brandName: string; own: boolean };
+
+/**
+ * Which Brain a tool reads: a brand of the agent's organization (it needs knowledge.read there).
+ * Platform agents may also name another organization (slug or id) to read its brands' Brains.
+ */
+async function brainTarget(ctx: AgentContext, args: Record<string, unknown>): Promise<BrainTarget> {
+  const wantedOrg = str(args, "organization", 100)?.trim();
+  if (wantedOrg && ctx.scope === "platform") {
+    const org = await rawPrisma().organization.findFirst({
+      where: { deletedAt: null, OR: [{ slug: wantedOrg.toLowerCase() }, ...(UUID.test(wantedOrg) ? [{ id: wantedOrg.toLowerCase() }] : [])] },
+      select: { id: true, name: true },
+    });
+    if (!org) throw new ToolError("No organization with that slug or id. Call list_organizations.");
+    const brands = await tenantDb(org.id).brand.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, slug: true } });
+    const wanted = str(args, "brand", 100)?.trim().toLowerCase();
+    const brand = wanted ? brands.find((item) => item.id === wanted || item.slug === wanted || item.name.toLowerCase() === wanted) : brands[0];
+    if (!brand) throw new ToolError(wanted ? `No brand "${wanted}" in ${org.name}. Brands: ${brands.map((item) => item.name).join(", ") || "none"}.` : `${org.name} has no brands.`);
+    return { organizationId: org.id, organizationName: org.name, brandId: brand.id, brandName: brand.name, own: false };
+  }
+  if (wantedOrg) throw new ToolError("organization is only for platform agents. You work in your own organization.");
+  const brand = brandOrFail(ctx, args);
+  if (!entitled(ctx, "knowledge")) throw new ToolError("The Brain is not turned on for this organization.");
+  if (!agentCan(ctx, "knowledge.read", brand.id)) throw new ToolError("You do not have permission for that (knowledge.read). Ask an admin to change your access in AI Agents.");
+  return { organizationId: ctx.organization.id, organizationName: ctx.organization.name, brandId: brand.id, brandName: brand.name, own: true };
+}
+
+const orgArg = { organization: { type: "string", description: "Platform agents only: another organization's slug or id, to read its Brain." } };
+
+function noteRow(note: { id: string; title: string; folder: string | null; source: string; visibility: string; updatedAt: Date }) {
+  return { id: note.id, title: note.title, folder: note.folder, source: note.source, shared: note.visibility === "SHARED", updated_at: note.updatedAt.toISOString() };
+}
+
+const BRAIN_TOOLS: Tool[] = [
+  {
+    name: "search_brain",
+    title: "Search the Brain",
+    description:
+      "Full-text search of the organization's Brain (its knowledge base: research, promos, lessons, notes) for one brand: that brand's notes plus other brands' shared notes. Returns titles and snippets; read a note in full with read_brain_note.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "Words to look for." }, ...brandArg, folder: { type: "string", description: "Only this folder." }, limit: { type: "integer", minimum: 1, maximum: 50 }, ...orgArg },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    readOnly: true,
+    available: (ctx) => ctx.scope === "platform" || readable(ctx, "knowledge"),
+    run: async (ctx, args) => {
+      const target = await brainTarget(ctx, args);
+      const query = str(args, "query", 300)?.trim();
+      if (!query) throw new ToolError("query is required.");
+      const folder = str(args, "folder", 200)?.trim() || null;
+      const max = Math.min(limit(args, 15), 50);
+      const scope = { kind: "brand" as const, brandId: target.brandId };
+      let hits = await searchNotes({ organizationId: target.organizationId, scope, query, mode: "all", limit: max, folder });
+      if (hits.length < Math.min(3, max)) {
+        const seen = new Set(hits.map((hit) => hit.id));
+        const more = await searchNotes({ organizationId: target.organizationId, scope, query, mode: "any", limit: max, folder });
+        hits = [...hits, ...more.filter((hit) => !seen.has(hit.id))].slice(0, max);
+      }
+      return {
+        data: {
+          brain: `${target.organizationName} · ${target.brandName}`,
+          results: hits.map((hit) => ({ ...noteRow(hit), snippet: hit.snippet.replace(/[«»]/g, "") })),
+        },
+      };
+    },
+  },
+  {
+    name: "read_brain_note",
+    title: "Read a Brain note",
+    description: "One Brain note in full (Markdown body).",
+    inputSchema: { type: "object", properties: { note_id: { type: "string" }, ...brandArg, ...orgArg }, required: ["note_id"], additionalProperties: false },
+    readOnly: true,
+    available: (ctx) => ctx.scope === "platform" || readable(ctx, "knowledge"),
+    run: async (ctx, args) => {
+      const target = await brainTarget(ctx, args);
+      const note = await getVisibleNote(target.organizationId, { kind: "brand", brandId: target.brandId }, uuid(args, "note_id")!);
+      if (!note) throw new ToolError("No note with that id in this Brain.");
+      return { data: { ...noteRow(note), body: note.body }, targetType: "knowledge_page", targetId: note.id };
+    },
+  },
+  {
+    name: "list_brain_notes",
+    title: "List Brain notes",
+    description: "The newest notes of a brand's Brain, or the notes of one folder, plus the folder list with counts.",
+    inputSchema: { type: "object", properties: { ...brandArg, folder: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 }, ...orgArg }, additionalProperties: false },
+    readOnly: true,
+    available: (ctx) => ctx.scope === "platform" || readable(ctx, "knowledge"),
+    run: async (ctx, args) => {
+      const target = await brainTarget(ctx, args);
+      const scope = { kind: "brand" as const, brandId: target.brandId };
+      const folder = str(args, "folder", 200)?.trim();
+      const [notes, folders] = await Promise.all([
+        folder ? notesInFolder(target.organizationId, scope, folder, limit(args, 50)) : recentNotes(target.organizationId, scope, limit(args, 20)),
+        folderCounts(target.organizationId, scope),
+      ]);
+      return {
+        data: {
+          brain: `${target.organizationName} · ${target.brandName}`,
+          folders: folders.sort((a, b) => b.count - a.count).map((row) => ({ folder: row.folder ?? "Top level", notes: row.count })),
+          notes: notes.map(noteRow),
+        },
+      };
+    },
+  },
+  {
+    name: "save_brain_note",
+    title: "Save a Brain note",
+    description:
+      "Add a note to a brand's Brain (private to that brand), or update a note you added before (note_id from this tool). Use it to record research, findings and lessons for the team. Needs Brain write access.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        body: { type: "string", description: "Markdown." },
+        folder: { type: "string", description: "e.g. Research/Gold" },
+        note_id: { type: "string", description: "To update a note you saved earlier." },
+        ...brandArg,
+      },
+      required: ["title", "body"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    available: (ctx) => ctx.scope === "organization" && readable(ctx, "knowledge"),
+    run: async (ctx, args) => {
+      const target = await brainTarget(ctx, { ...args, organization: undefined });
+      if (!agentCan(ctx, "knowledge.write", target.brandId)) throw new ToolError("You do not have permission for that (knowledge.write). Ask an admin to change your access in AI Agents.");
+      const title = str(args, "title", 200)?.replace(/\s+/g, " ").trim();
+      const body = str(args, "body", 200_000)?.trim();
+      if (!title || !body) throw new ToolError("title and body are required.");
+      const folder = str(args, "folder", 200)?.trim() || undefined;
+      const db = tenantDb(target.organizationId);
+      const prefix = `agent:${ctx.agent.id}:`;
+      let sourceRef = `${prefix}${crypto.randomUUID()}`;
+      const noteId = uuid(args, "note_id", false);
+      if (noteId) {
+        const existing = await db.knowledgePage.findFirst({ where: { id: noteId, brandId: target.brandId, deletedAt: null } });
+        if (!existing || !existing.sourceRef?.startsWith(prefix)) throw new ToolError("You can only update notes you saved. Save a new note instead.");
+        sourceRef = existing.sourceRef;
+      }
+      await teachBrain({ organizationId: target.organizationId, brandId: target.brandId, sourceRef, title, body, folder, source: "ai-agent", actorId: ctx.agent.userId });
+      const saved = await db.knowledgePage.findFirst({ where: { sourceRef, deletedAt: null }, select: { id: true } });
+      if (!saved) throw new ToolError("The Brain could not save that note. Try again.");
+      return { data: { id: saved.id, title, brain: `${target.organizationName} · ${target.brandName}`, message: noteId ? "Note updated." : "Note saved." }, targetType: "knowledge_page", targetId: saved.id };
+    },
+  },
+];
+
+/** Organization content tools are for organization agents; platform agents get whoami and the Brain/platform tools. */
+const forOrganizations = (tool: Tool): Tool => (tool.name === "whoami" ? tool : { ...tool, available: (ctx) => ctx.scope === "organization" && tool.available(ctx) });
+
+function allTools(): Tool[] {
+  return [...ORG_TOOLS.map(forOrganizations), ...BRAIN_TOOLS, ...PLATFORM_TOOLS];
+}
+
 export function toolsFor(ctx: AgentContext) {
-  return TOOLS.filter((tool) => tool.available(ctx)).map((tool) => ({
+  return allTools().filter((tool) => tool.available(ctx)).map((tool) => ({
     name: tool.name,
     title: tool.title,
     description: tool.description,
@@ -519,5 +637,5 @@ export function toolsFor(ctx: AgentContext) {
 }
 
 export function findTool(ctx: AgentContext, name: string): Tool | null {
-  return TOOLS.find((tool) => tool.name === name && tool.available(ctx)) ?? null;
+  return allTools().find((tool) => tool.name === name && tool.available(ctx)) ?? null;
 }

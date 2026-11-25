@@ -1,6 +1,7 @@
 import { can, type AccessScope, type AccessSubject } from "@pubcommand/core";
-import { loadAccessSubject, rawPrisma, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
+import { loadAccessSubject, loadSuperAdminSubject, rawPrisma, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
 import { moduleRegistry } from "@pubcommand/modules";
+import { CONSOLE_ORG_SLUG, ensureConsoleOrganization } from "@/lib/console-workspace";
 import { currentRequest } from "@/lib/request";
 import { RATE_WINDOW_MS, bearerToken, hashToken, rateAllowed, tokenKind } from "./tokens";
 
@@ -9,8 +10,16 @@ import { RATE_WINDOW_MS, bearerToken, hashToken, rateAllowed, tokenKind } from "
  * and its token must belong to that same organization: a token of another organization is
  * simply not found. Every read and write then goes through tenantDb(organizationId), and every
  * permission check through the agent's own membership (its role, per-app access, exclusions).
+ *
+ * Platform agents (scope "platform") call the admin console host instead (admin.<root>/api/mcp).
+ * They belong to a SUPER_ADMIN, are stored under the console organization, and get the console
+ * workspace's apps with full access plus the platform tools (features/agents/platform-tools.ts).
  */
 export type AgentContext = {
+  /** "platform": a super admin's agent on the admin host. */
+  scope: "organization" | "platform";
+  /** Platform agents: may make admin changes. */
+  allowAdminActions: boolean;
   organization: { id: string; slug: string; name: string };
   origin: string;
   host: string;
@@ -22,13 +31,27 @@ export type AgentContext = {
 
 export type AgentAuthFailure = { ok: false; status: 401 | 403 | 404 | 429; error: string; agentId?: string; organizationId?: string };
 
-/** The organization this host serves (org hosts and custom domains), or null. */
+/**
+ * The organization this host serves (org hosts and custom domains), or null. On the admin
+ * console host it is the console organization, which holds the platform agents.
+ */
 export async function hostOrganization() {
   const request = await currentRequest();
+  if (request.site.kind === "admin") {
+    await ensureConsoleOrganization();
+    const resolved = await resolveOrgBySlug(CONSOLE_ORG_SLUG);
+    return resolved && !resolved.redirected ? { resolved, request, platform: true as const } : null;
+  }
   if (request.site.kind !== "org") return null;
   const resolved = await resolveOrgBySlug(request.site.slug);
   if (!resolved || resolved.redirected) return null;
-  return { resolved, request };
+  return { resolved, request, platform: false as const };
+}
+
+/** A platform agent's owner must still be an active SUPER_ADMIN. */
+async function ownerIsSuperAdmin(userId: string): Promise<boolean> {
+  const staff = await rawPrisma().platformStaff.findUnique({ where: { userId }, include: { user: { select: { disabledAt: true, deletedAt: true } } } });
+  return Boolean(staff && !staff.disabledAt && staff.role === "SUPER_ADMIN" && !staff.user.disabledAt && !staff.user.deletedAt);
 }
 
 export async function authenticateAgent(request: Request): Promise<{ ok: true; ctx: AgentContext } | AgentAuthFailure> {
@@ -46,13 +69,22 @@ export async function authenticateAgent(request: Request): Promise<{ ok: true; c
   }
   const agent = await db.aiAgent.findFirst({ where: { id: token.agentId } });
   if (!agent || agent.removedAt) return { ok: false, status: 401, error: "This agent was removed." };
+  // A platform agent works only on the admin host, an organization agent only on its organization's.
+  if ((agent.scope === "platform") !== host.platform) return { ok: false, status: 401, error: "That token is not valid, expired, or was revoked." };
   if (agent.pausedAt) return { ok: false, status: 403, error: "This agent is paused. Ask an admin to resume it in AI Agents.", agentId: agent.id, organizationId: resolved.id };
   const user = await rawPrisma().user.findUnique({ where: { id: agent.userId }, select: { disabledAt: true, deletedAt: true } });
   if (!user || user.disabledAt || user.deletedAt) return { ok: false, status: 401, error: "This agent's account is turned off." };
-  // The owner must still be an active member: an agent never outlives its person's access.
-  const owner = await db.membership.findFirst({ where: { userId: agent.ownerUserId, status: "ACTIVE" }, select: { id: true } });
-  if (!owner) return { ok: false, status: 403, error: "This agent's owner is no longer an active member.", agentId: agent.id, organizationId: resolved.id };
-  const subject = await loadAccessSubject(resolved.id, agent.userId, moduleRegistry.permissionModules());
+  // The owner must still have their access: an agent never outlives its person's.
+  if (host.platform) {
+    if (!(await ownerIsSuperAdmin(agent.ownerUserId))) return { ok: false, status: 403, error: "This agent's owner is no longer an active super admin.", agentId: agent.id, organizationId: resolved.id };
+  } else {
+    const owner = await db.membership.findFirst({ where: { userId: agent.ownerUserId, status: "ACTIVE" }, select: { id: true } });
+    if (!owner) return { ok: false, status: 403, error: "This agent's owner is no longer an active member.", agentId: agent.id, organizationId: resolved.id };
+  }
+  // Platform agents get the console workspace with every permission, like super admins in the console.
+  const subject = host.platform
+    ? await loadSuperAdminSubject(resolved.id, agent.userId, moduleRegistry.permissionModules())
+    : await loadAccessSubject(resolved.id, agent.userId, moduleRegistry.permissionModules());
   if (!subject) return { ok: false, status: 403, error: "This agent is not an active member of the organization.", agentId: agent.id, organizationId: resolved.id };
   const recent = await db.aiAgentCall.count({ where: { agentId: agent.id, createdAt: { gte: new Date(Date.now() - RATE_WINDOW_MS) }, status: { not: "rate_limited" } } });
   if (!rateAllowed(recent)) return { ok: false, status: 429, error: "Too many requests. Slow down and try again in a minute.", agentId: agent.id, organizationId: resolved.id };
@@ -63,6 +95,8 @@ export async function authenticateAgent(request: Request): Promise<{ ok: true; c
   return {
     ok: true,
     ctx: {
+      scope: host.platform ? "platform" : "organization",
+      allowAdminActions: host.platform && agent.allowAdminActions,
       organization: { id: resolved.id, slug: resolved.slug, name: resolved.name },
       origin: host.request.origin,
       host: host.request.host,

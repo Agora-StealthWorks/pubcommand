@@ -86,3 +86,48 @@ export async function removeAgentMember(input: { organizationId: string; agentId
     });
   });
 }
+
+/**
+ * A platform agent: a SUPER_ADMIN's agent on the admin console host. It is stored under the
+ * console organization (`consoleOrganizationId`, so its tokens, activity and OAuth codes reuse
+ * the agent tables) but gets no membership anywhere. Only an active SUPER_ADMIN can own one,
+ * and it stops working if its owner stops being one.
+ */
+export async function createPlatformAgent(input: {
+  consoleOrganizationId: string;
+  ownerUserId: string;
+  name: string;
+  platform: AgentPlatform;
+  connection: "oauth" | "key";
+  allowAdminActions: boolean;
+  actorId: string;
+}): Promise<{ agentId: string; userId: string }> {
+  if (!isAgentPlatform(input.platform)) throw new Error("Choose the agent's AI platform.");
+  const name = input.name.trim().replace(/\s+/g, " ").slice(0, 80);
+  if (!name) throw new Error("Give the agent a name.");
+  return rawPrisma().$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`;
+    const staff = await tx.platformStaff.findUnique({ where: { userId: input.ownerUserId }, include: { user: true } });
+    if (!staff || staff.disabledAt || staff.role !== "SUPER_ADMIN" || staff.user.disabledAt || staff.user.deletedAt) throw new Error("Only an active super admin can own a platform agent.");
+    const agentId = randomUUID();
+    const user = await tx.user.create({ data: { email: agentEmail(agentId), name, passwordHash: null } });
+    await tx.aiAgent.create({
+      data: {
+        id: agentId,
+        organizationId: input.consoleOrganizationId,
+        userId: user.id,
+        ownerUserId: input.ownerUserId,
+        name,
+        platform: input.platform,
+        connection: input.connection,
+        scope: "platform",
+        allowAdminActions: input.allowAdminActions,
+        createdById: input.actorId,
+      },
+    });
+    await tx.platformAuditLog.create({
+      data: { actorId: input.actorId, action: "agents.platform_agent.created", targetType: "ai_agent", targetId: agentId, metadata: { name, platform: input.platform, allowAdminActions: input.allowAdminActions } },
+    });
+    return { agentId, userId: user.id };
+  });
+}

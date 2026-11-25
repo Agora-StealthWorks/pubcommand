@@ -22,6 +22,8 @@ const TOOLS = [
   ["create_website_post · update_website_post", "Write, edit, publish or schedule posts and pages."],
   ["list_miniblogs · list_miniblog_posts · get_miniblog_post", "Read Mini-Blogs and their posts."],
   ["create_miniblog_post · update_miniblog_post", "Write, edit and publish Mini-Blog posts."],
+  ["search_brain · read_brain_note · list_brain_notes", "Search and read the Brain: the brand's notes plus other brands' shared notes."],
+  ["save_brain_note", "Add research and lessons to the brand's Brain (needs Brain write access)."],
 ];
 
 export default async function AgentsHelpPage({ params }: { params: Promise<{ slug: string }> }) {

@@ -15,6 +15,7 @@ export function AgentKeyForm({
   owners,
   roles,
   me,
+  adminToggle,
 }: {
   action: (previous: NewKeyState, formData: FormData) => Promise<NewKeyState>;
   mcpUrl: string;
@@ -25,6 +26,8 @@ export function AgentKeyForm({
   owners?: Option[];
   roles?: Option[];
   me?: string;
+  /** Platform agents: the "Can make admin changes" switch. */
+  adminToggle?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   const [copied, setCopied] = useState(false);
@@ -103,6 +106,15 @@ export function AgentKeyForm({
                   </select>
                 </div>
               </div>
+            ) : null}
+            {adminToggle ? (
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="allowAdminActions" defaultChecked className="mt-1 h-4 w-4" />
+                <span>
+                  <span className="font-semibold">Can make admin changes</span>
+                  <span className="block text-muted">Suspend or resume organizations, change plans and app access, invite people, run jobs. Each needs a reason and is audited.</span>
+                </span>
+              </label>
             ) : null}
           </>
         )}

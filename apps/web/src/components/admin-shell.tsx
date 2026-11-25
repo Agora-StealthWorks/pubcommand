@@ -6,7 +6,7 @@ import { CommandPalette } from "./command-palette";
 import { SiteSwitcher } from "./site-switcher";
 import { switcherPaletteItems, type SwitcherModel } from "@/features/navigation/switcher";
 
-const links: { href: string; label: string; permissions: string[] }[] = [
+const links: { href: string; label: string; permissions: string[]; superAdminOnly?: boolean }[] = [
   { href: "/", label: "Overview", permissions: [PLATFORM_PERMISSIONS.viewOrgs] },
   { href: "/orgs", label: "Organizations", permissions: [PLATFORM_PERMISSIONS.viewOrgs] },
   { href: "/users", label: "Users", permissions: [PLATFORM_PERMISSIONS.viewUsers] },
@@ -19,6 +19,7 @@ const links: { href: string; label: string; permissions: string[] }[] = [
   { href: "/intel/videos", label: "VidRipper", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
   { href: "/jobs", label: "Jobs", permissions: [PLATFORM_PERMISSIONS.manageJobs] },
   { href: "/audit", label: "Audit", permissions: [PLATFORM_PERMISSIONS.viewAudit] },
+  { href: "/agents", label: "AI Agents", permissions: [PLATFORM_PERMISSIONS.manageStaff], superAdminOnly: true },
 ];
 
 export function AdminShell({
@@ -34,7 +35,7 @@ export function AdminShell({
   switcher: SwitcherModel;
   children: React.ReactNode;
 }) {
-  const visible = links.filter((link) => link.permissions.some((permission) => platformCan(role, permission)));
+  const visible = links.filter((link) => (!link.superAdminOnly || role === "SUPER_ADMIN") && link.permissions.some((permission) => platformCan(role, permission)));
   return (
     <>
       <AppFrame
