@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import {
   defaultOrganizationPlaces,
   isAlwaysOnModule,
+  isNiche,
   firstAdminMembershipStatus,
   organizationAdminRoleGrants,
   parseEmailAddress,
@@ -78,6 +79,8 @@ export async function provisionOrganization(input: {
   actorId: string;
   actorEmail: string;
   permissionKeys: readonly string[];
+  /** The first brand's niche (finance, health, general). Picks the niche's default apps. */
+  niche?: string | null;
   /** Every app id in the catalog. With a saved default-apps setting, apps outside it start switched off. */
   catalogModuleIds?: readonly string[];
 }): Promise<ProvisionedOrganization> {
@@ -90,6 +93,7 @@ export async function provisionOrganization(input: {
     throw new Error("Use 3-40 lowercase letters, numbers, or hyphens.");
   }
   const status = firstAdminMembershipStatus(draft.adminEmail, input.actorEmail);
+  const niche = isNiche(input.niche) ? input.niche : "general";
   try {
     return await rawPrisma().$transaction(async (tx) => {
       const plan = await tx.plan.findUnique({ where: { id: draft.planId }, include: { modules: true } });
@@ -117,7 +121,7 @@ export async function provisionOrganization(input: {
         },
       });
       const brand = await tx.brand.create({
-        data: { organizationId: organization.id, name: places.brand.name, slug: places.brand.slug },
+        data: { organizationId: organization.id, name: places.brand.name, slug: places.brand.slug, niche },
       });
       await tx.workspace.create({
         data: {
@@ -132,7 +136,7 @@ export async function provisionOrganization(input: {
       // Admin → Plans → Default apps: apps outside the list start switched off (the org can turn
       // them on if its plan allows). Writing an "off" row for every catalog app also keeps them
       // off for the super admin, who otherwise sees every app.
-      const defaults = await readDefaultAppIds(tx);
+      const defaults = await readDefaultAppIds(tx, niche);
       if (defaults) for (const moduleId of input.catalogModuleIds ?? []) moduleIds.add(moduleId);
       const defaultOn = defaults ? new Set([...defaults, "settings"]) : null;
       await tx.organizationModule.createMany({

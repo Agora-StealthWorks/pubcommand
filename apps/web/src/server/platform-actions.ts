@@ -2,7 +2,9 @@
 
 import {
   PLATFORM_PERMISSIONS,
+  isNiche,
   isPlatformRole,
+  NICHE_LABELS,
   organizationInviteNotice,
   platformCan,
   validatePlanDraft,
@@ -149,6 +151,7 @@ export async function createOrganization(formData: FormData) {
       actorEmail: auth.user.email,
       permissionKeys: permissionKeys(),
       catalogModuleIds: catalogModuleIds(),
+      niche: String(formData.get("niche") ?? ""),
     });
   } catch (error) {
     redirect(`/orgs/new?error=${encodeURIComponent(failureMessage(error, "Could not create the organization."))}`);
@@ -301,12 +304,15 @@ export async function togglePlanModule(formData: FormData) {
 /** Admin → Plans → Default apps: the apps new organizations start with switched on. */
 export async function saveDefaultApps(formData: FormData) {
   const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageModules);
+  const niche = String(formData.get("niche") ?? "");
+  if (!isNiche(niche)) redirect("/plans?error=Unknown niche.");
   await saveDefaultAppIds({
     actorId: auth.user.id,
+    niche,
     moduleIds: formData.getAll("moduleId").map(String),
     allowedModuleIds: catalogModuleIds(),
   });
-  redirect("/plans?notice=Default apps saved. New organizations start with these switched on.");
+  redirect(`/plans?notice=${encodeURIComponent(`Default apps for ${NICHE_LABELS[niche]} saved. New organizations in that niche start with these switched on.`)}`);
 }
 
 export async function inviteStaff(formData: FormData) {

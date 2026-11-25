@@ -29,7 +29,7 @@ describe("default apps for new organizations", () => {
     await db.$disconnect();
   });
 
-  const create = async (slug: string) => {
+  const create = async (slug: string, niche = "general") => {
     const created = await provisionOrganization({
       name: "Default Apps",
       slug,
@@ -39,6 +39,7 @@ describe("default apps for new organizations", () => {
       actorEmail: emails[1]!,
       permissionKeys: ["settings.manage"],
       catalogModuleIds: ["knowledge", "editorial", "funnels", "settings"],
+      niche,
     });
     orgIds.push(created.organizationId);
     const rows = await db.organizationModule.findMany({ where: { organizationId: created.organizationId } });
@@ -51,9 +52,13 @@ describe("default apps for new organizations", () => {
     expect(await create(`defa-${suffix}`)).toEqual({ knowledge: true, editorial: true, settings: true });
   });
 
-  it("starts apps outside the saved default switched off, settings always on", async () => {
-    const saved = await saveDefaultAppIds({ actorId, moduleIds: ["knowledge", "made-up"], allowedModuleIds: ["knowledge", "editorial", "funnels"] });
+  it("starts apps outside the niche's saved default switched off, settings always on, and sets the brand niche", async () => {
+    const saved = await saveDefaultAppIds({ actorId, niche: "health", moduleIds: ["knowledge", "made-up"], allowedModuleIds: ["knowledge", "editorial", "funnels"] });
     expect(saved).toEqual(["knowledge"]);
-    expect(await create(`defb-${suffix}`)).toEqual({ knowledge: true, editorial: false, funnels: false, settings: true });
+    expect(await create(`defb-${suffix}`, "health")).toEqual({ knowledge: true, editorial: false, funnels: false, settings: true });
+    expect((await db.brand.findFirstOrThrow({ where: { organizationId: orgIds.at(-1) } })).niche).toBe("health");
+    // Finance has no saved default yet: every plan app starts on.
+    expect(await create(`defc-${suffix}`, "finance")).toEqual({ knowledge: true, editorial: true, settings: true });
+    expect(await readDefaultAppIds(undefined, "finance")).toBeNull();
   });
 });

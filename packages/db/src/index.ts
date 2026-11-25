@@ -24,7 +24,7 @@ export {
   updateUserProfile,
 } from "./accounts";
 export { createCatalogPlan, ensureDefaultPlans, insertPlanIfAbsent, setPlanArchived, updateCatalogPlan } from "./plans";
-export { readDefaultAppIds, saveDefaultAppIds } from "./platform-settings";
+export { readDefaultAppIds, readDefaultAppsByNiche, saveDefaultAppIds } from "./platform-settings";
 export { ensureSuperadmin } from "./superadmin";
 export { TenantIsolationError, createTenantClient, tenantDb, tenantModelNames, withOrgContext } from "./tenant";
 export {
