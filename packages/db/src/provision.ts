@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import {
   defaultOrganizationPlaces,
+  isAlwaysOnModule,
   firstAdminMembershipStatus,
   organizationAdminRoleGrants,
   parseEmailAddress,
@@ -8,6 +9,7 @@ import {
 } from "@pubcommand/core";
 import { rawPrisma } from "./client";
 import { slugAvailability } from "./platform";
+import { readDefaultAppIds } from "./platform-settings";
 import { ensureBuiltInMemberRoles, ensureOwnerPermissions } from "./roles";
 
 type AuditInput = {
@@ -76,6 +78,8 @@ export async function provisionOrganization(input: {
   actorId: string;
   actorEmail: string;
   permissionKeys: readonly string[];
+  /** Every app id in the catalog. With a saved default-apps setting, apps outside it start switched off. */
+  catalogModuleIds?: readonly string[];
 }): Promise<ProvisionedOrganization> {
   const draft = validateOrganizationDraft(input);
   if (!draft.ok) throw new Error(draft.message);
@@ -125,8 +129,14 @@ export async function provisionOrganization(input: {
       });
       const moduleIds = new Set(plan.modules.map((row) => row.moduleId));
       moduleIds.add("settings");
+      // Admin → Plans → Default apps: apps outside the list start switched off (the org can turn
+      // them on if its plan allows). Writing an "off" row for every catalog app also keeps them
+      // off for the super admin, who otherwise sees every app.
+      const defaults = await readDefaultAppIds(tx);
+      if (defaults) for (const moduleId of input.catalogModuleIds ?? []) moduleIds.add(moduleId);
+      const defaultOn = defaults ? new Set([...defaults, "settings"]) : null;
       await tx.organizationModule.createMany({
-        data: [...moduleIds].map((moduleId) => ({ organizationId: organization.id, moduleId, enabled: true })),
+        data: [...moduleIds].map((moduleId) => ({ organizationId: organization.id, moduleId, enabled: defaultOn ? defaultOn.has(moduleId) || isAlwaysOnModule(moduleId) : true })),
       });
       const roles = new Map<string, string>();
       for (const role of organizationAdminRoleGrants(input.permissionKeys)) {

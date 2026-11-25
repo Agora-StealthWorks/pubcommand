@@ -141,7 +141,7 @@ export async function inviteUser(formData: FormData) {
   await audit(ctx, "user.invited", "user", user.id, { email });
   const request = await currentRequest();
   const magicUrl = magicLinkUrl(request.origin, link.token);
-  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite" });
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", organizationName: ctx.resolved.name });
   const notice = exposeMagicLinkOnPage()
     ? `Invite created. Magic link: ${magicUrl}`
     : delivered === "sent"

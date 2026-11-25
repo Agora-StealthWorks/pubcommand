@@ -28,6 +28,7 @@ import {
   createCatalogPlan,
   provisionOrganization,
   rawPrisma,
+  saveDefaultAppIds,
   removeOrganizationMember as removeOrganizationMemberRecord,
   resetUserTwoFactor,
   revokeUserSessions,
@@ -111,11 +112,14 @@ function failureMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-async function inviteNotice(userId: string, email: string, lead: string) {
+async function inviteNotice(userId: string, email: string, lead: string, organizationId?: string | null) {
   const link = await createLoginLink(userId);
   const request = await currentRequest();
   const magicUrl = magicLinkUrl(request.origin, link.token);
-  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite" });
+  const organizationName = organizationId
+    ? ((await rawPrisma().organization.findUnique({ where: { id: organizationId }, select: { name: true } }))?.name ?? null)
+    : null;
+  const delivered = await deliverMagicLink({ to: email, url: magicUrl, kind: "invite", organizationName });
   return organizationInviteNotice({ lead, delivered, magicUrl, exposeOnPage: exposeMagicLinkOnPage() });
 }
 
@@ -144,6 +148,7 @@ export async function createOrganization(formData: FormData) {
       actorId: auth.user.id,
       actorEmail: auth.user.email,
       permissionKeys: permissionKeys(),
+      catalogModuleIds: catalogModuleIds(),
     });
   } catch (error) {
     redirect(`/orgs/new?error=${encodeURIComponent(failureMessage(error, "Could not create the organization."))}`);
@@ -151,7 +156,7 @@ export async function createOrganization(formData: FormData) {
   if (!created) redirect("/orgs/new?error=Could not create the organization.");
   let notice = "Organization created.";
   try {
-    notice = await inviteNotice(created.userId, created.adminEmail, "Organization created.");
+    notice = await inviteNotice(created.userId, created.adminEmail, "Organization created.", created.organizationId);
   } catch {
     notice = "Organization created. The sign-in email could not be sent.";
   }
@@ -177,7 +182,7 @@ export async function addOrganizationMember(formData: FormData) {
   let notice = "Member updated.";
   if (member.status === "INVITED") {
     try {
-      notice = await inviteNotice(member.userId, member.email, "Member invited.");
+      notice = await inviteNotice(member.userId, member.email, "Member invited.", organizationId);
     } catch {
       notice = "Member invited. The sign-in email could not be sent.";
     }
@@ -291,6 +296,17 @@ export async function togglePlanModule(formData: FormData) {
     metadata: { moduleId, enabled: String(enabled || moduleId === "settings") },
   });
   redirect("/plans?notice=Plan modules updated.");
+}
+
+/** Admin → Plans → Default apps: the apps new organizations start with switched on. */
+export async function saveDefaultApps(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageModules);
+  await saveDefaultAppIds({
+    actorId: auth.user.id,
+    moduleIds: formData.getAll("moduleId").map(String),
+    allowedModuleIds: catalogModuleIds(),
+  });
+  redirect("/plans?notice=Default apps saved. New organizations start with these switched on.");
 }
 
 export async function inviteStaff(formData: FormData) {
@@ -511,7 +527,7 @@ export async function addUserOrganization(formData: FormData) {
     });
     if (member.status === "INVITED") {
       try {
-        notice = await inviteNotice(member.userId, member.email, "Member invited.");
+        notice = await inviteNotice(member.userId, member.email, "Member invited.", organizationId);
       } catch {
         notice = "Member invited. The sign-in email could not be sent.";
       }

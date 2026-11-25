@@ -40,3 +40,14 @@ model MemberAppAccess {
   @@index([organizationId])
   @@map("member_app_access")
 }
+
+/// Platform-wide settings set by PubCommand staff in the admin console, one JSON value per key.
+/// Not a tenant table (no organizationId). Keys: "default_apps" = { enabled: string[] }.
+model PlatformSetting {
+  key         String   @id
+  value       Json
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}

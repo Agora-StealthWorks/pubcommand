@@ -1,4 +1,4 @@
-import { renderEmailLayout } from "@pubcommand/core";
+import { inviteEmail, signInLinkEmail } from "@pubcommand/core";
 export const DEFAULT_EMAIL_FROM = "login@pubcommand.com";
 
 export type MagicLinkDelivery = "sent" | "logged" | "failed";
@@ -38,6 +38,8 @@ export async function deliverMagicLink(input: {
   to: string;
   url: string;
   kind: "login" | "invite";
+  /** Invites: the organization they are joining, named in the subject and heading. */
+  organizationName?: string | null;
   env?: MailEnv;
   fetchImpl?: (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<MailResponse>;
   log?: (line: string) => void;
@@ -52,26 +54,14 @@ export async function deliverMagicLink(input: {
     return "logged";
   }
 
-  const subject = input.kind === "invite" ? "You're invited to PubCommand" : "Your PubCommand sign-in link";
-  let origin = "";
+  let origin: string | null = null;
   try {
     origin = new URL(input.url).origin;
   } catch {
-    origin = "";
+    origin = null;
   }
-  const body = renderEmailLayout({
-    senderName: "PubCommand",
-    logoUrl: origin ? `${origin}/brand/logo-light.png` : null,
-    heading: input.kind === "invite" ? "You're invited to PubCommand" : "Sign in to PubCommand",
-    paragraphs: [
-      input.kind === "invite"
-        ? "You have been invited to PubCommand. Use the button below to sign in, then set a password under Your account."
-        : "Use the button below to sign in to PubCommand.",
-      "The link works once and expires soon.",
-    ],
-    button: { label: input.kind === "invite" ? "Accept invite" : "Sign in" , url: input.url },
-    footnote: "If you did not expect this email, you can ignore it.",
-  });
+  const { subject, ...body } =
+    input.kind === "invite" ? inviteEmail({ link: input.url, origin, organizationName: input.organizationName }) : signInLinkEmail({ link: input.url, origin });
   const response = await (input.fetchImpl ?? fetch)("https://api.resend.com/emails", {
     method: "POST",
     headers: {
