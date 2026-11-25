@@ -123,3 +123,18 @@ with a `pca_` key.
     `reason` and is written to the platform audit log under the agent's name.
   - Deliberately left out: deleting or purging anything, passwords, 2FA, impersonation, staff
     changes and domains.
+  - Read anything (`features/agents/platform-audit-tools.ts`): `describe_data` lists every model and
+    its fields, and `query_records` / `count_records` read any model, in any organization or across
+    all of them, with a Prisma-style `where` that is checked field by field. Secrets are never
+    returned and cannot be filtered on (a filter could probe them): fields named like password,
+    secret, cipher, hash, totp, token or *Key, `Bytes` columns, and the `Session` model.
+  - Reviews: `security_review` (settings such as staff 2FA and exposed sign-in links, staff
+    without 2FA, row-level security on every organization table, disabled accounts with
+    sessions, stale agent keys, open forms without a privacy link, recent sensitive staff
+    actions) and `performance_review` (database size, largest and most-scanned tables, unused
+    indexes, connections and long-running queries, `pg_stat_statements` when enabled, job
+    durations and failures, agent tool latency, server memory).
+  - Audits: `audit_form` and `audit_funnel` (any organization: settings, fields or days, counts,
+    public link, problems found) and `audit_page` (loads a public page on the PubCommand domain,
+    its subdomains or an active custom domain, and checks status, speed, title, description,
+    headings, alt text, security headers and up to 25 of its own links, four at a time).
