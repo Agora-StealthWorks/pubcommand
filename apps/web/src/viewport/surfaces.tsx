@@ -448,7 +448,7 @@ export async function ViewportSurface({
     return (
       <div data-surface="admin-audit">
         {adminFrame(
-          "/audit",
+          "/usage/audit",
           <div>
             <PageHeader title="Platform audit" description="Append-only." />
             <WideTable headers={["When", "Action", "Target"]} rows={[["2026-11-15 12:00:00", "staff.invited", EMAIL]]} />

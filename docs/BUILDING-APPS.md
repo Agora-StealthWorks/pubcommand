@@ -144,3 +144,11 @@ Each slot runs once across all servers; failures are retried at the next slot; p
 ## Brain visibility (updated)
 
 The **main Brain is for PubCommand platform staff only** (Admin console). Organizations and brands never see it, never see a "main Brain" switch, and are never told their notes train it. Apps teach the brand's mini-brain with `teachBrain()`; propagation to the main Brain happens inside the Brain module. Best practices that flow down appear in a brand's Brain as ordinary notes.
+
+## Keep the Brain current
+
+Give the app a `modules/<app>/README.md` and update it whenever the app changes. It is synced into
+the Master Brain (Operations → How PubCommand works → Apps), which is how the Brain and the
+platform AI agents know what the app does. Log every user action with `appendOrgAudit()` and a
+real `targetType`, so the Usage page and the Operations Brain learn from it. See `CLAUDE.md`.
+

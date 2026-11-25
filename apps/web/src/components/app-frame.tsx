@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { UsageBeacon } from "@/features/usage/beacon";
 
 export function AppFrame({
   sidebar,
@@ -23,6 +24,7 @@ export function AppFrame({
 
   return (
     <div className="min-h-screen max-w-full bg-canvas text-ink">
+      <UsageBeacon />
       {banner}
       <div className="md:grid md:min-h-screen md:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="hidden border-r border-line bg-white md:sticky md:top-0 md:block md:h-screen md:overflow-y-auto">{sidebar}</aside>

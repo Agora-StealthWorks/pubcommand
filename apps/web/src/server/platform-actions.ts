@@ -12,6 +12,8 @@ import {
   hostnameConfirmationMatches,
   parseAppAccessChoice,
   passwordProblem,
+  idleTimeoutLabel,
+  parseIdleTimeoutChoice,
 } from "@pubcommand/core";
 import {
   addOrganizationMember as addOrganizationMemberRecord,
@@ -34,6 +36,7 @@ import {
   removeOrganizationMember as removeOrganizationMemberRecord,
   resetUserTwoFactor,
   revokeUserSessions,
+  setUserIdleTimeout,
   setOrganizationSuspended,
   setPlanArchived,
   setPlatformStaffAccess,
@@ -503,6 +506,20 @@ export async function signOutUserSessions(formData: FormData) {
   redirect(`${href}?notice=${encodeURIComponent("Signed out of all sessions.")}`);
 }
 
+export async function setUserIdleTimeoutAction(formData: FormData) {
+  const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
+  const userId = String(formData.get("userId") ?? "");
+  const href = userHref(userId);
+  const choice = parseIdleTimeoutChoice(String(formData.get("minutes") ?? ""));
+  if (!choice.ok) redirect(`${href}?error=${encodeURIComponent(choice.reason)}`);
+  try {
+    await setUserIdleTimeout({ actorId: auth.user.id, userId, minutes: choice.minutes });
+  } catch (error) {
+    redirect(`${href}?error=${encodeURIComponent(failureMessage(error, "Could not change the sign-out time."))}`);
+  }
+  redirect(`${href}?notice=${encodeURIComponent(`Signs out after ${idleTimeoutLabel(choice.minutes)} without activity.`)}`);
+}
+
 export async function setUserAccess(formData: FormData) {
   const { auth } = await staffMutation(PLATFORM_PERMISSIONS.manageUsers);
   const userId = String(formData.get("userId") ?? "");
@@ -613,7 +630,7 @@ export async function runJob(formData: FormData) {
   const { runJobNow } = await import("@/lib/jobs/runner");
   const result = await runJobNow(name, auth.user.id);
   await appendPlatformAudit({ actorId: auth.user.id, action: "job.run", targetType: "job", targetId: name });
-  redirect(result.ok ? `/jobs?notice=${encodeURIComponent(`${name} started.`)}` : `/jobs?error=${encodeURIComponent(result.reason ?? "Could not start.")}`);
+  redirect(result.ok ? `/usage/jobs?notice=${encodeURIComponent(`${name} started.`)}` : `/usage/jobs?error=${encodeURIComponent(result.reason ?? "Could not start.")}`);
 }
 
 // ── Per-organization app access ─────────────────────────────────────────────

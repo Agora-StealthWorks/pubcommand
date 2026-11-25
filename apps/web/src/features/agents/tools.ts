@@ -3,6 +3,7 @@ import { rawPrisma, tenantDb } from "@pubcommand/db";
 import { agentCan, pickBrand, type AgentContext } from "./context";
 import { agentSettings } from "./data";
 import { PLATFORM_TOOLS } from "./platform-tools";
+import { USAGE_TOOLS } from "./usage-tools";
 import { ToolError, UUID, date, limit, oneOf, str, strings, uuid, type Tool } from "./tool-kit";
 import { PostError, saveTextPostAsAgent, saveWebPostAsAgent } from "./posts";
 import { siteEditors } from "../websites/data";
@@ -623,7 +624,7 @@ const BRAIN_TOOLS: Tool[] = [
 const forOrganizations = (tool: Tool): Tool => (tool.name === "whoami" ? tool : { ...tool, available: (ctx) => ctx.scope === "organization" && tool.available(ctx) });
 
 function allTools(): Tool[] {
-  return [...ORG_TOOLS.map(forOrganizations), ...BRAIN_TOOLS, ...PLATFORM_TOOLS];
+  return [...ORG_TOOLS.map(forOrganizations), ...BRAIN_TOOLS, ...PLATFORM_TOOLS, ...USAGE_TOOLS];
 }
 
 export function toolsFor(ctx: AgentContext) {

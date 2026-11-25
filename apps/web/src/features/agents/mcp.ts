@@ -11,7 +11,10 @@ export const SERVER_INFO = { name: "pubcommand", title: "PubCommand", version: "
 export const SERVER_INSTRUCTIONS =
   "You are working inside PubCommand, a publishing platform, as a member of one organization. " +
   "Call whoami first to see your brands and permissions. Use list_ tools to find ids before creating or updating. " +
-  "Write post bodies as clean HTML. Publishing may be held for human approval; the tool result says so.";
+  "Write post bodies as clean HTML. Publishing may be held for human approval; the tool result says so. " +
+  "On the admin console (platform agents): how PubCommand works today is in the Operations Brain's reference notes " +
+  "(list_operations_brain with kind reference; start with \"How PubCommand works (start here)\"). Read them before explaining or monitoring the app, " +
+  "and record what you learn about how people use it, and anything that changed in the app, with save_operations_note.";
 
 type JsonRpcId = string | number | null;
 type JsonRpcRequest = { jsonrpc: "2.0"; id?: JsonRpcId; method: string; params?: Record<string, unknown> };

@@ -54,6 +54,6 @@ export async function registerAction(formData: FormData) {
           : `${org.name} is not taking sign-ups. Ask them for an invite.`,
     );
   }
-  await establishSession(result.userId);
+  await establishSession(result.userId, "registration");
   redirect("/");
 }
