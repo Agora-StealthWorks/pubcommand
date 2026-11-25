@@ -27,16 +27,17 @@ export type RendererMode = "public" | "embed" | "preview";
 
 const AUTO_ADVANCE_TYPES = new Set(["single_choice", "yes_no", "rating", "nps", "scale"]);
 
+/** The form's top bar: logo (or brand name) centered by default, like the Mini-Blog header. */
 export function FormHeader({ theme }: { theme: ResolvedTheme }) {
   const ink = contrastText(theme.barColor);
   const pad = Math.round(Math.max(10, theme.logoHeight * 0.3));
   return (
     <header style={{ background: theme.barColor, paddingTop: pad, paddingBottom: pad }} className="px-4">
-      <div className="mx-auto flex max-w-xl items-center" style={{ minHeight: theme.logoHeight }}>
+      <div className="mx-auto flex max-w-xl items-center justify-center" style={{ minHeight: theme.logoHeight }}>
         {theme.logoSrc ? (
           <img src={theme.logoSrc} alt={theme.brandName} style={{ height: theme.logoHeight, maxWidth: "100%" }} className="block w-auto object-contain" />
         ) : (
-          <span style={{ color: ink }} className="[overflow-wrap:anywhere] text-lg font-semibold tracking-tight">
+          <span style={{ color: ink }} className="text-center [overflow-wrap:anywhere] text-lg font-semibold tracking-tight">
             {theme.brandName}
           </span>
         )}
