@@ -182,7 +182,7 @@ export function LookEditor({
           <input id="logoHeight" name="logoHeight" type="range" min={16} max={120} value={logoHeight} disabled={disabled} onChange={(event) => setLogoHeight(Number(event.target.value))} className="mt-3 w-full accent-accent" />
         </div>
       </div>
-      {followBrand ? <p className="text-xs text-muted">“Use the brand look” is on, so the header and link colors, logo and logo size come from the brand when you save. Button color and page background stay yours. Turn it off to use your own header and link colors.</p> : null}
+      {followBrand ? <p className="text-xs text-muted">“Use the brand look” is on, so the header and link colors and the logo come from the brand when you save. Logo size, button color and page background stay yours. Turn it off to use your own header and link colors.</p> : null}
 
       <div>
         <p className="text-sm font-semibold">Live preview</p>

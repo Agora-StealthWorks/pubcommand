@@ -48,7 +48,11 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && Buffer.from(a).equals(Buffer.from(b));
 }
 
-/** Copy the brand's look into every following theme and Mini-Blog of the brand (or only the ids given). */
+/**
+ * Copy the brand's look into every following theme and Mini-Blog of the brand
+ * (or only the ids given). Themes take colors, logo and logo size; Mini-Blogs
+ * take colors and logo but keep their own logo size.
+ */
 export async function syncBrandLook(organizationId: string, brandId: string, only?: { themeIds?: string[]; siteIds?: string[] }): Promise<{ themes: number; sites: number }> {
   const db = tenantDb(organizationId);
   const look = await loadBrandLook(organizationId, brandId);
@@ -88,9 +92,10 @@ export async function syncBrandLook(organizationId: string, brandId: string, onl
         await db.funnelAsset.create({ data: { organizationId, ownerId: site.id, kind: "logo", filename: logo.filename.slice(0, 200), mimeType: logo.mime, size: logo.data.length, data: logo.data }, select: { id: true } })
       ).id;
     }
-    const changed = site.headerBg !== headerBg || site.accentColor !== accentColor || site.logoHeight !== look.logoHeight || site.logoAssetId !== logoAssetId || Boolean(site.logoUrl);
+    // The logo SIZE is the Mini-Blog's own (its Logo size slider); only a new Mini-Blog starts at the brand's.
+    const changed = site.headerBg !== headerBg || site.accentColor !== accentColor || site.logoAssetId !== logoAssetId || Boolean(site.logoUrl);
     if (!changed) continue;
-    await db.textSite.updateMany({ where: { id: site.id }, data: { headerBg, accentColor, logoHeight: look.logoHeight, logoAssetId, logoUrl: null } });
+    await db.textSite.updateMany({ where: { id: site.id }, data: { headerBg, accentColor, logoAssetId, logoUrl: null } });
     if (site.logoAssetId && site.logoAssetId !== logoAssetId) await db.funnelAsset.deleteMany({ where: { id: site.logoAssetId, ownerId: site.id } });
     sitesChanged += 1;
   }

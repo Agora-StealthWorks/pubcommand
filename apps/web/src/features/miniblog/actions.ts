@@ -1,6 +1,6 @@
 "use server";
 
-import { appendOrgAudit, syncBrandLook, tenantDb, type Prisma } from "@pubcommand/db";
+import { appendOrgAudit, loadBrandLook, syncBrandLook, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { miniBlogPath } from "../../../../../modules/miniblog/paths";
@@ -68,7 +68,8 @@ export async function createSite(formData: FormData) {
       theme: theme.id,
       headerBg: theme.headerBg,
       accentColor: theme.accent,
-      logoHeight: 34,
+      // Starts at the brand's logo size; after that the Mini-Blog's slider decides.
+      logoHeight: (await loadBrandLook(ctx.resolved.id, ctx.brand.id)).logoHeight,
       archivesEnabled: true,
       followBrand: true,
       createdById: ctx.actorId,

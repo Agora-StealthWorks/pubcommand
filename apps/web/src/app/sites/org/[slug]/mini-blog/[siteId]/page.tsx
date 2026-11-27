@@ -356,7 +356,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
                   name="followBrand"
                   label="Use the brand look"
                   defaultChecked={site.followBrand}
-                  hint={`Header and link colors, logo and logo size come from ${ctx.brand.name}'s branding (Settings → Brands) and update when it changes. The theme, button color and page background stay yours.`}
+                  hint={`Header and link colors and the logo come from ${ctx.brand.name}'s branding (Settings → Brands) and update when it changes. The theme, logo size, button color and page background stay yours.`}
                 />
                 <LookEditor
                   initial={{ theme: site.theme, headerBg: branding.headerBg, accentColor: branding.accentColor, logoHeight: branding.logoHeight, pageBg: site.pageBg, buttonColor: site.buttonColor }}
