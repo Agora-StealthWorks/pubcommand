@@ -57,7 +57,12 @@ The MCP server is `POST /api/mcp`: Streamable HTTP, stateless, JSON responses. C
 `whoami`, `list_brands`, Websites (`list_websites`, `list_editors`, `list_website_posts`,
 `get_website_post`, `create_website_post`, `update_website_post`), Mini-Blog
 (`list_miniblogs`, `list_miniblog_posts`, `get_miniblog_post`, `create_miniblog_post`,
-`update_miniblog_post`) and the Brain (`search_brain`, `read_brain_note`, `list_brain_notes`,
+`update_miniblog_post`), Publication Setup (`publication_fields`, `list_publications`,
+`get_publication`, `create_publication`, `update_publication`, `archive_publication`, `list_gurus`,
+`get_guru`, `create_guru`, `update_guru`, `link_guru`, `unlink_guru`; organization agents need
+`pubsetup.manage`, platform agents work in any organization and change things only with
+"Can make admin changes"; a guru's photo can be given as `photo_url`; see
+`modules/pubsetup/README.md`) and the Brain (`search_brain`, `read_brain_note`, `list_brain_notes`,
 `save_brain_note`).
 
 The Brain tools see what a person of that brand sees: the brand's notes and other brands'

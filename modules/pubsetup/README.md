@@ -10,6 +10,22 @@ The one place a publisher records each publication, its editors and its branding
 - `canManagePublications()` (`access.ts`) = plan entitles `pubsetup` **and** `can(…, "pubsetup.manage")`. Every page, action and route calls it (`features/pubsetup/guard.ts`).
 - Other apps read publications through `apps/web/src/features/pubsetup/read.ts` under **their own** permission checks.
 
+## AI agents
+
+AI agents can manage publications and gurus (editors / experts) through the MCP tools
+`publication_fields`, `list_publications`, `get_publication`, `create_publication`,
+`update_publication`, `archive_publication`, `list_gurus`, `get_guru`, `create_guru`,
+`update_guru`, `link_guru` and `unlink_guru` (`apps/web/src/features/agents/publication-tools.ts`).
+An organization agent needs the same right as a person (`pubsetup.manage`) in the brand. A
+platform agent works in any organization, and changes need its "Can make admin changes" switch.
+Saves use the same rules as the settings pages (`apps/web/src/features/pubsetup/records.ts`:
+required fields, unique codes and URL names, category checks, issue codes following a code
+change, audit entries, Brain and website refresh). A guru's photo can come from `photo_url`:
+PubCommand downloads it (public https addresses only; private and internal networks are refused,
+redirects re-checked; PNG, JPG, GIF, WebP or SVG recognized by their bytes; up to 3 MB) and keeps
+a copy (`features/agents/remote-image.ts`). Publication logos and covers are set on the settings
+pages.
+
 ## Data (models in `packages/db/prisma/schema/pubsetup.prisma`)
 
 | Table | What |
