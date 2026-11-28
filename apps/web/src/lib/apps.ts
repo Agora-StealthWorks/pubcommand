@@ -59,9 +59,9 @@ const CARDS: AppCard[] = [
   },
   {
     moduleId: "intel",
-    name: "Intel",
-    description: "Competitor emails and promos in your market.",
-    icon: "🔎",
+    name: "ISpy",
+    description: "What every publisher mails: internal, external and affiliate sends, new promos, reused copy and niche trends.",
+    icon: "🕵️",
     category: "Research & Knowledge",
   },
   {

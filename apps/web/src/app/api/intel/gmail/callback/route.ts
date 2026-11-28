@@ -6,7 +6,11 @@ import { after } from "next/server";
 import { authSecret, gmailEnv, gmailRedirectUri, loadBrand, saveGmailConnection, syncGmailAccount } from "@/features/intel/gmail";
 import { drainExtractions } from "@/features/intel/server";
 import { readSession, readStaff, rootDomain, staffReady } from "@/lib/auth";
-import { exchangeCode, gmailClient, verifyState, type FetchLike } from "../../../../../../../../modules/intel/index";
+import { exchangeCode, gmailClient, verifyState, type FetchLike, type OAuthState } from "../../../../../../../../modules/intel/index";
+import { PLATFORM_PERMISSIONS, platformCan } from "@pubcommand/core";
+import { appendPlatformAudit } from "@pubcommand/db";
+import { ISPY_GMAIL_STATE_SLUG, saveIspyGmail, syncIspyGmail } from "@/features/ispy/providers/gmail";
+import { afterIngest } from "@/features/ispy/pipeline";
 
 const fetchImpl: FetchLike = (url, init) => fetch(url, { ...init, cache: "no-store", signal: AbortSignal.timeout(30_000) });
 
@@ -23,6 +27,8 @@ export async function GET(request: Request) {
   const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.host).split(",")[0]!.trim();
   const state = verifyState(url.searchParams.get("state") ?? "", authSecret());
   if (!state) return plain("This Gmail connection link has expired or is not valid. Go back to Intel → Gmail and press Connect Gmail again.");
+  // The ISpy console connects its legacy inboxes through this same registered redirect URL.
+  if (state.orgSlug === ISPY_GMAIL_STATE_SLUG) return ispyGmailCallback(url, host, state);
 
   const back = (flash: { error?: string; notice?: string }) => {
     const search = new URLSearchParams(flash as Record<string, string>).toString();
@@ -69,6 +75,35 @@ export async function GET(request: Request) {
     after(async () => {
       await syncGmailAccount({ organizationId: state.organizationId, accountId: saved.id, actorId: state.userId });
       await drainExtractions({ organizationId: state.organizationId, brand, actorId: state.userId });
+    });
+    return back({ notice: `${profile.emailAddress} connected. The first sync (last 30 days) is running.` });
+  } catch (error) {
+    return back({ error: error instanceof Error ? error.message : "Connecting Gmail failed." });
+  }
+}
+
+async function ispyGmailCallback(url: URL, host: string, state: OAuthState) {
+  const back = (flash: { error?: string; notice?: string }) =>
+    Response.redirect(buildSiteUrl({ rootDomain: rootDomain(), requestHost: host, site: { kind: "admin" }, pathname: "/ispy/inboxes", search: `?${new URLSearchParams(flash as Record<string, string>).toString()}` }), 303);
+  const googleError = url.searchParams.get("error");
+  if (googleError) return back({ error: googleError === "access_denied" ? "Gmail was not connected: access was declined." : `Google returned an error: ${googleError}` });
+  const code = url.searchParams.get("code");
+  if (!code) return back({ error: "Google did not return a code. Try connecting again." });
+  const { user, session } = await readSession();
+  if (cookieDomain(rootDomain()) && (!user || user.id !== state.userId)) return back({ error: "Sign in as the person who started the connection, then try again." });
+  const staff = await readStaff(state.userId);
+  if (!staff || !staffReady(staff, session) || !platformCan(staff.role, PLATFORM_PERMISSIONS.manageIspy)) return back({ error: "You need the platform.ispy.manage permission to connect ISpy inboxes." });
+  const env = gmailEnv();
+  if (!env) return back({ error: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set." });
+  try {
+    const tokens = await exchangeCode(fetchImpl, env, { code, redirectUri: gmailRedirectUri(host) });
+    const profile = await gmailClient(fetchImpl, tokens.accessToken).profile();
+    const saved = await saveIspyGmail({ email: profile.emailAddress, tokens, feed: state.brandId === "HEALTH" ? "HEALTH" : "FINPUB" });
+    if ("error" in saved) return back({ error: saved.error });
+    await appendPlatformAudit({ actorId: state.userId, action: "ispy.inbox.gmail_connected", targetType: "ispy_inbox", targetId: saved.id });
+    after(async () => {
+      const out = await syncIspyGmail(saved.id);
+      if (out.emailIds.length) await afterIngest(out.emailIds, out.copyIds);
     });
     return back({ notice: `${profile.emailAddress} connected. The first sync (last 30 days) is running.` });
   } catch (error) {

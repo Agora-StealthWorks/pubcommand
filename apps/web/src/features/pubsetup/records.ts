@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { EDITOR_FIELDS, EDITOR_ROLES, PUBLICATION_FIELDS, firstError, parseFields, uniqueSlug, type FieldDef, type FieldValues, type FormLike } from "../../../../../modules/pubsetup/fields";
 import { notifyBrandSites } from "../websites/api";
 import { refreshEditor, refreshPublication } from "./teach";
+import { provisionIspyPublication } from "../ispy/provision";
 
 /**
  * Saving publications and editors (gurus): the rules Settings → Publication Setup and AI agents
@@ -153,6 +154,9 @@ export async function savePublicationRecord(scope: PubsetupScope, formData: Reco
     const created = await db.calendarPublication.create({ data: { organizationId: scope.organizationId, brandId: scope.brandId, ...data, ...images, createdById: scope.actorId }, select: { id: true } });
     publicationId = created.id;
     await audit(scope, "pubsetup.publication.created", "calendar_publication", created.id, { code });
+    // An org with ISpy gets the new publication in the shared registry with its own inbox.
+    const name = data.name;
+    after(() => provisionIspyPublication({ organizationId: scope.organizationId, brandId: scope.brandId, calendarPublicationId: created.id, name, actorId: scope.actorId }));
   }
   scheduleRefresh(scope, [publicationId], await linkedEditorIds(scope.organizationId, publicationId));
   return { ok: true, id: publicationId, name: data.name, created: !existing };

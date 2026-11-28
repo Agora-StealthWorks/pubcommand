@@ -13,6 +13,12 @@ import { intelDigest } from "./intel-digest";
 import { intelGmailSync } from "./intel-gmail-sync";
 import { intelRadar } from "./intel-radar";
 import { intelVideoCapture } from "./intel-video-capture";
+import { ispyDigest } from "./ispy-digest";
+import { ispyGmailSync } from "./ispy-gmail-sync";
+import { ispyImportLegacy } from "./ispy-import-legacy";
+import { ispyInboxPoll } from "./ispy-inbox-poll";
+import { ispyPromoScan } from "./ispy-promo-scan";
+import { ispyTrends } from "./ispy-trends";
 import { jobRunsCleanup } from "./job-runs-cleanup";
 import { knowledgeConflictCheck } from "./knowledge-conflict-check";
 import { knowledgeIndustryLens } from "./knowledge-industry-lens";
@@ -56,6 +62,12 @@ export const JOBS: JobDefinition[] = [
   intelGmailSync,
   intelRadar,
   intelVideoCapture,
+  ispyDigest,
+  ispyGmailSync,
+  ispyImportLegacy,
+  ispyInboxPoll,
+  ispyPromoScan,
+  ispyTrends,
   jobRunsCleanup,
   knowledgeConflictCheck,
   knowledgeIndustryLens,

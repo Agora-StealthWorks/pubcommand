@@ -18,6 +18,8 @@ export const PLATFORM_PERMISSIONS = {
   manageBrain: "platform.brain.manage",
   /** Edit the copy of PubCommand's own system emails (invites, sign-in links, password resets). Super admin only. */
   manageSystemEmails: "platform.emails.manage",
+  /** ISpy: the shared publisher registry, inboxes, routing rules, list approvals, reports, access and import. */
+  manageIspy: "platform.ispy.manage",
   /** Delete, restore and purge organizations, delete accounts, remove domains. Super admin only. */
   deleteData: "platform.data.delete",
 } as const;
@@ -49,6 +51,7 @@ const PLATFORM_ROLE_PERMISSIONS: Record<PlatformRole, readonly PlatformPermissio
     PLATFORM_PERMISSIONS.viewAudit,
     PLATFORM_PERMISSIONS.manageJobs,
     PLATFORM_PERMISSIONS.manageBrain,
+    PLATFORM_PERMISSIONS.manageIspy,
   ],
 };
 

@@ -54,8 +54,21 @@ async function execute(job: JobDefinition, runId: string, scheduledFor: Date, tr
   }
 }
 
+/**
+ * Which jobs this server runs: JOBS_INCLUDE / JOBS_EXCLUDE are comma-separated name
+ * prefixes ("ispy."). The ISpy Railway service sets JOBS_INCLUDE=ispy. and the web
+ * service JOBS_EXCLUDE=ispy., so ISpy's slow work never runs on the web server.
+ * JobRun slot claims keep two servers from running the same slot either way.
+ */
+export function jobsForThisServer(jobs: JobDefinition[], env: Record<string, string | undefined> = process.env): JobDefinition[] {
+  const list = (value: string | undefined) => (value ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+  const include = list(env.JOBS_INCLUDE);
+  const exclude = list(env.JOBS_EXCLUDE);
+  return jobs.filter((job) => (!include.length || include.some((p) => job.name.startsWith(p))) && !exclude.some((p) => job.name.startsWith(p)));
+}
+
 /** One pass: run every job whose latest slot has no run yet. Exported for tests. */
-export async function tick(now = new Date(), jobs: JobDefinition[] = JOBS): Promise<string[]> {
+export async function tick(now = new Date(), jobs: JobDefinition[] = jobsForThisServer(JOBS)): Promise<string[]> {
   const ran: string[] = [];
   for (const job of jobs) {
     if (inFlight.has(job.name)) continue;
@@ -103,5 +116,5 @@ export function startJobRunner() {
   };
   setTimeout(loop, 15_000);
   setInterval(loop, TICK_MS).unref?.();
-  console.info(`[jobs] runner started with ${JOBS.length} job(s)`);
+  console.info(`[jobs] runner started with ${jobsForThisServer(JOBS).length} of ${JOBS.length} job(s)`);
 }

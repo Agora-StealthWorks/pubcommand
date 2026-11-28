@@ -1,0 +1,569 @@
+// ISpy: one shared competitor-email dataset for every organization that has the app.
+// These are platform tables: no organization_id column, so the tenant client cannot
+// reach them, and row-level security only allows app.bypass_rls. Every read and write
+// goes through ispyDb() in apps/web/src/features/ispy/db.ts. The one exception is
+// IspyAnalyzerSend, which belongs to an organization (its Promo Analyzer copy).
+//
+// String columns hold the small enums (feed, type, status...) so adding a value needs
+// no migration; the allowed values live in modules/ispy/types.ts.
+
+/// A company or a group of companies. A group (Oxford Group) is a publisher whose
+/// children point at it through parentId.
+model IspyPublisher {
+  id                   String               @id @default(uuid()) @db.Uuid
+  parentId             String?              @map("parent_id") @db.Uuid
+  /// FINPUB | HEALTH
+  feed                 String               @default("FINPUB")
+  name                 String
+  /// INTERNAL | COMPETITOR | AFFILIATE | UNKNOWN | GROUP
+  type                 String               @default("COMPETITOR")
+  domains              String[]             @default([])
+  fromAddresses        String[]             @default([]) @map("from_addresses")
+  website              String?
+  notes                String?
+  isConfirmed          Boolean              @default(false) @map("is_confirmed")
+  /// Affiliates: brand slugs whose own pages are house ads, never the promo.
+  excludeBrands        String[]             @default([]) @map("exclude_brands")
+  linkedOrganizationId String?              @map("linked_organization_id") @db.Uuid
+  linkedBrandId        String?              @map("linked_brand_id") @db.Uuid
+  hideFromOtherOrgs    Boolean              @default(false) @map("hide_from_other_orgs")
+  legacyId             String?              @unique @map("legacy_id")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+  deletedAt            DateTime?            @map("deleted_at")
+  parent               IspyPublisher?       @relation("IspyPublisherTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children             IspyPublisher[]      @relation("IspyPublisherTree")
+  publications         IspyPublication[]
+  lists                IspyList[]
+  inboxes              IspyInbox[]
+  gurus                IspyGuru[]
+  advertisers          IspyAdvertiser[]
+  rules                IspyRoutingRule[]
+
+  @@index([feed, type])
+  @@index([parentId])
+  @@index([linkedOrganizationId])
+  @@map("ispy_publishers")
+}
+
+/// A newsletter brand inside a publisher (Trade of the Day). Lists hang off it.
+model IspyPublication {
+  id                          String            @id @default(uuid()) @db.Uuid
+  publisherId                 String            @map("publisher_id") @db.Uuid
+  name                        String
+  aliases                     String[]          @default([])
+  linkedBrandId               String?           @map("linked_brand_id") @db.Uuid
+  linkedOrganizationId        String?           @map("linked_organization_id") @db.Uuid
+  linkedCalendarPublicationId String?           @unique @map("linked_calendar_publication_id") @db.Uuid
+  notes                       String?
+  createdAt                   DateTime          @default(now()) @map("created_at")
+  updatedAt                   DateTime          @updatedAt @map("updated_at")
+  deletedAt                   DateTime?         @map("deleted_at")
+  publisher                   IspyPublisher     @relation(fields: [publisherId], references: [id], onDelete: Cascade)
+  lists                       IspyList[]
+  inboxes                     IspyInbox[]
+  gurus                       IspyGuruPublication[]
+  rules                       IspyRoutingRule[]
+
+  @@index([publisherId])
+  @@index([linkedOrganizationId])
+  @@map("ispy_publications")
+}
+
+model IspyList {
+  id               String            @id @default(uuid()) @db.Uuid
+  publisherId      String            @map("publisher_id") @db.Uuid
+  publicationId    String?           @map("publication_id") @db.Uuid
+  name             String
+  /// FREE_EDITORIAL | PAID_EDITORIAL | HOTLIST | MARKETING_FILE
+  category         String            @default("FREE_EDITORIAL")
+  synonyms         String[]          @default([])
+  isIgnored        Boolean           @default(false) @map("is_ignored")
+  editorialPubCode String?           @map("editorial_pub_code")
+  dedicatedPubCode String?           @map("dedicated_pub_code")
+  notes            String?
+  legacyId         String?           @unique @map("legacy_id")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  deletedAt        DateTime?         @map("deleted_at")
+  publisher        IspyPublisher     @relation(fields: [publisherId], references: [id], onDelete: Cascade)
+  publication      IspyPublication?  @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  inboxes          IspyInbox[]
+  gurus            IspyGuruList[]
+  emails           IspyEmail[]
+
+  @@index([publisherId])
+  @@index([publicationId])
+  @@map("ispy_lists")
+}
+
+/// An address that receives mail: a legacy Gmail inbox, an affiliate seed, or a
+/// MachineMail inbox at publisher (catch-all), publication or list level.
+model IspyInbox {
+  id               String           @id @default(uuid()) @db.Uuid
+  /// GMAIL_LEGACY | MACHINEMAIL | MANUAL
+  provider         String
+  /// PUBLISHER_CATCHALL | PUBLICATION | LIST | LEGACY
+  level            String
+  address          String           @unique
+  externalId       String?          @map("external_id")
+  feed             String           @default("FINPUB")
+  publisherId      String?          @map("publisher_id") @db.Uuid
+  publicationId    String?          @map("publication_id") @db.Uuid
+  listId           String?          @map("list_id") @db.Uuid
+  affiliateSeed    Boolean          @default(false) @map("affiliate_seed")
+  /// PENDING_SIGNUP | ACTIVE | SILENT | RETIRED | ERROR
+  status           String           @default("ACTIVE")
+  statusNote       String?          @map("status_note")
+  /// Legacy Gmail OAuth (AES-encrypted with AUTH_SECRET, like Intel's Gmail accounts).
+  refreshTokenEnc  String?          @map("refresh_token_enc")
+  accessTokenEnc   String?          @map("access_token_enc")
+  tokenExpiresAt   DateTime?        @map("token_expires_at")
+  historyId        String?          @map("history_id")
+  syncCursor       String?          @map("sync_cursor")
+  lastSyncAt       DateTime?        @map("last_sync_at")
+  lastSyncError    String?          @map("last_sync_error")
+  lastMessageAt    DateTime?        @map("last_message_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  publisher        IspyPublisher?   @relation(fields: [publisherId], references: [id], onDelete: SetNull)
+  publication      IspyPublication? @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  list             IspyList?        @relation(fields: [listId], references: [id], onDelete: SetNull)
+  emails           IspyEmail[]      @relation("IspyEmailInbox")
+  received         IspyEmail[]      @relation("IspyEmailReceivedInbox")
+
+  @@index([listId])
+  @@index([publicationId])
+  @@index([provider, status])
+  @@map("ispy_inboxes")
+}
+
+/// One routing rule. Conditions are AND-ed; see modules/ispy/routing.ts.
+model IspyRoutingRule {
+  id            String           @id @default(uuid()) @db.Uuid
+  publisherId   String?          @map("publisher_id") @db.Uuid
+  publicationId String?          @map("publication_id") @db.Uuid
+  priority      Int              @default(100)
+  conditions    Json
+  /// ROUTE | AFFILIATE | IGNORE
+  action        String           @default("ROUTE")
+  listId        String?          @map("list_id") @db.Uuid
+  enabled       Boolean          @default(true)
+  /// STAFF | CANDIDATE | IMPORTED | AUTOMATIC
+  origin        String           @default("STAFF")
+  hits          Int              @default(0)
+  lastHitAt     DateTime?        @map("last_hit_at")
+  createdById   String?          @map("created_by_id") @db.Uuid
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  publisher     IspyPublisher?   @relation(fields: [publisherId], references: [id], onDelete: Cascade)
+  publication   IspyPublication? @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, priority])
+  @@map("ispy_routing_rules")
+}
+
+/// A list ISpy thinks it found. Lists are never created automatically: staff approve.
+model IspyListCandidate {
+  id             String    @id @default(uuid()) @db.Uuid
+  key            String    @unique
+  publisherId    String?   @map("publisher_id") @db.Uuid
+  publicationId  String?   @map("publication_id") @db.Uuid
+  proposedName   String    @map("proposed_name")
+  proposedType   String    @default("FREE_EDITORIAL") @map("proposed_type")
+  signals        Json      @default("[]")
+  proposedRule   Json?     @map("proposed_rule")
+  sampleEmailIds String[]  @default([]) @map("sample_email_ids")
+  emailCount     Int       @default(0) @map("email_count")
+  /// PENDING | APPROVED | MERGED | REJECTED
+  status         String    @default("PENDING")
+  decidedById    String?   @map("decided_by_id") @db.Uuid
+  decidedAt      DateTime? @map("decided_at")
+  resultListId   String?   @map("result_list_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("ispy_list_candidates")
+}
+
+model IspyGuru {
+  id               String                @id @default(uuid()) @db.Uuid
+  name             String
+  feed             String                @default("FINPUB")
+  aliases          String[]              @default([])
+  publisherId      String?               @map("publisher_id") @db.Uuid
+  notes            String?
+  isIgnored        Boolean               @default(false) @map("is_ignored")
+  isSecondaryVoice Boolean               @default(false) @map("is_secondary_voice")
+  /// Secondary publishers (set by hand only), by id.
+  secondaryPublisherIds String[]         @default([]) @map("secondary_publisher_ids")
+  primaryGuruIds   String[]              @default([]) @map("primary_guru_ids")
+  legacyId         String?               @unique @map("legacy_id")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  publisher        IspyPublisher?        @relation(fields: [publisherId], references: [id], onDelete: SetNull)
+  publications     IspyGuruPublication[]
+  lists            IspyGuruList[]
+
+  @@unique([feed, name])
+  @@map("ispy_gurus")
+}
+
+model IspyGuruPublication {
+  guruId        String          @map("guru_id") @db.Uuid
+  publicationId String          @map("publication_id") @db.Uuid
+  /// lead | co-editor | contributor | analyst | guest
+  role          String          @default("lead")
+  guru          IspyGuru        @relation(fields: [guruId], references: [id], onDelete: Cascade)
+  publication   IspyPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@id([guruId, publicationId])
+  @@map("ispy_guru_publications")
+}
+
+model IspyGuruList {
+  guruId    String   @map("guru_id") @db.Uuid
+  listId    String   @map("list_id") @db.Uuid
+  isPrimary Boolean  @default(false) @map("is_primary")
+  isIgnored Boolean  @default(false) @map("is_ignored")
+  guru      IspyGuru @relation(fields: [guruId], references: [id], onDelete: Cascade)
+  list      IspyList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@id([guruId, listId])
+  @@map("ispy_guru_lists")
+}
+
+/// One send: an email as it arrived in one inbox.
+model IspyEmail {
+  id               String           @id @default(uuid()) @db.Uuid
+  feed             String           @default("FINPUB")
+  dedupeKey        String           @unique @map("dedupe_key")
+  inboxId          String?          @map("inbox_id") @db.Uuid
+  receivedInboxId  String?          @map("received_inbox_id") @db.Uuid
+  providerMessageId String?         @map("provider_message_id")
+  publisherId      String?          @map("publisher_id") @db.Uuid
+  publicationId    String?          @map("publication_id") @db.Uuid
+  listId           String?          @map("list_id") @db.Uuid
+  routedByRuleId   String?          @map("routed_by_rule_id") @db.Uuid
+  /// ROUTED | UNSORTED | CANDIDATE | IGNORED
+  routeStatus      String           @default("UNSORTED") @map("route_status")
+  routeReason      String?          @map("route_reason")
+  /// INTERNAL | EXTERNAL | AFFILIATE (relative to the sending publisher; "internal"
+  /// for an org is computed at read time from the publication link)
+  sendKind         String           @default("EXTERNAL") @map("send_kind")
+  /// EDITORIAL | PROMO | INTERNAL_LIFT | EXTERNAL_LIFT | WELCOME | OTHER
+  emailType        String           @default("OTHER") @map("email_type")
+  subject          String
+  fromName         String?          @map("from_name")
+  fromAddress      String           @map("from_address")
+  toAddress        String?          @map("to_address")
+  receivedAt       DateTime         @map("received_at")
+  htmlBody         String?          @map("html_body")
+  textBody         String           @default("") @map("text_body")
+  snippet          String           @default("")
+  links            Json             @default("[]")
+  placement        String?
+  rawKey           String?          @map("raw_key")
+  rawSize          Int              @default(0) @map("raw_size")
+  providerMeta     Json?            @map("provider_meta")
+  /// The message's headers (trimmed), so routing rules can be tested and re-run later.
+  headers          Json             @default("{}")
+  espName          String?          @map("esp_name")
+  campaignId       String?          @map("campaign_id")
+  listIdHeader     String?          @map("list_id_header")
+  authResults      Json?            @map("auth_results")
+  sendingIp        String?          @map("sending_ip")
+  spamScore        Float?           @map("spam_score")
+  copyId           String?          @map("copy_id") @db.Uuid
+  copyMatch        String?          @map("copy_match")
+  promoId          String?          @map("promo_id") @db.Uuid
+  /// NONE | PENDING | DONE | NO_PROMO | FAILED
+  promoScanStatus  String           @default("PENDING") @map("promo_scan_status")
+  promoScanError   String?          @map("promo_scan_error")
+  gurus            String[]         @default([])
+  topics           String[]         @default([])
+  /// Teaching status for a linked org's Brain: NONE | DONE | SKIPPED
+  orgBrainStatus   String           @default("NONE") @map("org_brain_status")
+  legacyId         String?          @unique @map("legacy_id")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  inbox            IspyInbox?       @relation("IspyEmailInbox", fields: [inboxId], references: [id], onDelete: SetNull)
+  receivedInbox    IspyInbox?       @relation("IspyEmailReceivedInbox", fields: [receivedInboxId], references: [id], onDelete: SetNull)
+  list             IspyList?        @relation(fields: [listId], references: [id], onDelete: SetNull)
+  copy             IspyCopy?        @relation(fields: [copyId], references: [id], onDelete: SetNull)
+  promo            IspyPromo?       @relation(fields: [promoId], references: [id], onDelete: SetNull)
+
+  @@index([feed, receivedAt])
+  @@index([publisherId, receivedAt])
+  @@index([publicationId, receivedAt])
+  @@index([listId, receivedAt])
+  @@index([copyId])
+  @@index([promoId])
+  @@index([routeStatus])
+  @@index([campaignId])
+  @@index([promoScanStatus])
+  @@map("ispy_emails")
+}
+
+/// A creative: one email body, however many times and with whatever subject it was sent.
+model IspyCopy {
+  id              String       @id @default(uuid()) @db.Uuid
+  feed            String       @default("FINPUB")
+  copyHash        String       @map("copy_hash")
+  /// 64-bit SimHash as a 16-char hex string, plus four 16-bit bands for lookups.
+  simhash         String
+  band0           Int
+  band1           Int
+  band2           Int
+  band3           Int
+  normalized      String
+  title           String
+  emailType       String       @default("OTHER") @map("email_type")
+  typeOverridden  Boolean      @default(false) @map("type_overridden")
+  extraction      Json?
+  extractionStatus String      @default("NONE") @map("extraction_status")
+  extractionError String?      @map("extraction_error")
+  deepAnalysis    Json?        @map("deep_analysis")
+  promoId         String?      @map("promo_id") @db.Uuid
+  advertiserId    String?      @map("advertiser_id") @db.Uuid
+  firstSeenAt     DateTime     @map("first_seen_at")
+  lastSeenAt      DateTime     @map("last_seen_at")
+  firstSeenKind   String       @default("EXTERNAL") @map("first_seen_kind")
+  sendCount       Int          @default(0) @map("send_count")
+  listCount       Int          @default(0) @map("list_count")
+  affiliateCount  Int          @default(0) @map("affiliate_count")
+  subjectCount    Int          @default(0) @map("subject_count")
+  mergedIntoId    String?      @map("merged_into_id") @db.Uuid
+  brainSyncedAt   DateTime?    @map("brain_synced_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  emails          IspyEmail[]
+
+  @@index([feed, copyHash])
+  @@index([feed, band0])
+  @@index([feed, band1])
+  @@index([feed, band2])
+  @@index([feed, band3])
+  @@index([lastSeenAt])
+  @@map("ispy_copies")
+}
+
+/// The company whose promo a landing page belongs to (not the mailer, for affiliate sends).
+model IspyAdvertiser {
+  id             String         @id @default(uuid()) @db.Uuid
+  domain         String         @unique
+  label          String
+  labelConfirmed Boolean        @default(false) @map("label_confirmed")
+  isPlatform     Boolean        @default(false) @map("is_platform")
+  publisherId    String?        @map("publisher_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  publisher      IspyPublisher? @relation(fields: [publisherId], references: [id], onDelete: SetNull)
+  promos         IspyPromo[]
+
+  @@map("ispy_advertisers")
+}
+
+model IspyLandingPage {
+  id                String     @id @default(uuid()) @db.Uuid
+  canonicalKey      String     @unique @map("canonical_key")
+  url               String
+  finalUrl          String     @map("final_url")
+  status            Int        @default(0)
+  hops              Int        @default(0)
+  relCanonical      String?    @map("rel_canonical")
+  ogUrl             String?    @map("og_url")
+  headline          String?
+  headlineSource    String?    @map("headline_source")
+  siteName          String?    @map("site_name")
+  description       String?
+  text              String     @default("")
+  textHash          String?    @map("text_hash")
+  simhash           String?
+  videoIds          String[]   @default([]) @map("video_ids")
+  kind              String     @default("VSL")
+  snapshotKey       String?    @map("snapshot_key")
+  /// FOUND | NOT_DETECTED | UNREADABLE
+  transcriptStatus  String     @default("NOT_DETECTED") @map("transcript_status")
+  transcriptUrl     String?    @map("transcript_url")
+  transcriptLinkText String?   @map("transcript_link_text")
+  transcriptText    String?    @map("transcript_text")
+  fetchedAt         DateTime   @default(now()) @map("fetched_at")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  promoId           String?    @map("promo_id") @db.Uuid
+  promo             IspyPromo? @relation(fields: [promoId], references: [id], onDelete: SetNull)
+
+  @@index([promoId])
+  @@map("ispy_landing_pages")
+}
+
+model IspyPromo {
+  id              String              @id @default(uuid()) @db.Uuid
+  feed            String              @default("FINPUB")
+  canonicalKey    String              @unique @map("canonical_key")
+  contentKey      String?             @map("content_key")
+  landingUrl      String              @map("landing_url")
+  landingHost     String              @map("landing_host")
+  advertiserId    String              @map("advertiser_id") @db.Uuid
+  advertiserLabel String?             @map("advertiser_label")
+  headline        String?
+  headlineSource  String?             @map("headline_source")
+  /// VSL | LEAD_GEN | EQUITY_RAISE | EVENT
+  kind            String              @default("VSL")
+  lastStatus      Int?                @map("last_status")
+  videoIds        String[]            @default([]) @map("video_ids")
+  simhash         String?
+  isInternal      Boolean             @default(false) @map("is_internal")
+  firstSeenOn     DateTime            @map("first_seen_on") @db.Date
+  lastSeenOn      DateTime            @map("last_seen_on") @db.Date
+  daysDetected    Int                 @default(1) @map("days_detected")
+  sendCount       Int                 @default(0) @map("send_count")
+  affiliateCount  Int                 @default(0) @map("affiliate_count")
+  mergedIntoId    String?             @map("merged_into_id") @db.Uuid
+  legacyId        String?             @unique @map("legacy_id")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  advertiser      IspyAdvertiser      @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  aliases         IspyPromoAlias[]
+  sightings       IspyPromoSighting[]
+  landingPages    IspyLandingPage[]
+  emails          IspyEmail[]
+
+  @@index([feed, lastSeenOn])
+  @@index([feed, firstSeenOn])
+  @@index([contentKey])
+  @@index([advertiserId])
+  @@map("ispy_promos")
+}
+
+/// Another key (URL canonical, content key, video id) that means the same promo.
+model IspyPromoAlias {
+  key       String    @id
+  promoId   String    @map("promo_id") @db.Uuid
+  /// URL | CANONICAL | CONTENT | VIDEO | MERGE
+  source    String
+  createdAt DateTime  @default(now()) @map("created_at")
+  promo     IspyPromo @relation(fields: [promoId], references: [id], onDelete: Cascade)
+
+  @@index([promoId])
+  @@map("ispy_promo_aliases")
+}
+
+model IspyPromoSighting {
+  id            String    @id @default(uuid()) @db.Uuid
+  promoId       String    @map("promo_id") @db.Uuid
+  emailId       String    @map("email_id") @db.Uuid
+  day           DateTime  @db.Date
+  publisherId   String?   @map("publisher_id") @db.Uuid
+  listId        String?   @map("list_id") @db.Uuid
+  sendKind      String    @default("EXTERNAL") @map("send_kind")
+  subject       String
+  rawUrl        String    @map("raw_url")
+  isFirstEver   Boolean   @default(false) @map("is_first_ever")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  promo         IspyPromo @relation(fields: [promoId], references: [id], onDelete: Cascade)
+
+  @@unique([promoId, emailId])
+  @@index([day])
+  @@index([publisherId])
+  @@map("ispy_promo_sightings")
+}
+
+/// A page staff removed as "not a promo": url:<canonicalKey> or content:<contentKey>.
+model IspyPromoBlock {
+  matchKey  String   @id @map("match_key")
+  label     String?
+  createdById String? @map("created_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("ispy_promo_blocks")
+}
+
+/// Feedback from org admins or staff: "not a promo" or "duplicate of".
+model IspyReport {
+  id            String    @id @default(uuid()) @db.Uuid
+  /// NOT_A_PROMO | DUPLICATE
+  kind          String
+  /// EMAIL | COPY | PROMO
+  targetType    String    @map("target_type")
+  targetId      String    @map("target_id") @db.Uuid
+  duplicateOfId String?   @map("duplicate_of_id") @db.Uuid
+  note          String?
+  reporterId    String?   @map("reporter_id") @db.Uuid
+  reporterOrgId String?   @map("reporter_org_id") @db.Uuid
+  /// OPEN | APPLIED | DISMISSED
+  status        String    @default("OPEN")
+  decidedById   String?   @map("decided_by_id") @db.Uuid
+  decidedAt     DateTime? @map("decided_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@map("ispy_reports")
+}
+
+model IspyTopic {
+  id          String   @id @default(uuid()) @db.Uuid
+  feed        String   @default("FINPUB")
+  name        String
+  synonyms    String[] @default([])
+  isIgnored   Boolean  @default(false) @map("is_ignored")
+  isSecondary Boolean  @default(false) @map("is_secondary")
+  legacyId    String?  @unique @map("legacy_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([feed, name])
+  @@map("ispy_topics")
+}
+
+model IspyTrendWeek {
+  id        String   @id @default(uuid()) @db.Uuid
+  feed      String
+  weekStart DateTime @map("week_start") @db.Date
+  stats     Json
+  narrative String?
+  model     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([feed, weekStart])
+  @@map("ispy_trend_weeks")
+}
+
+/// Staff override of an organization's feeds (default: by brand niche).
+model IspyFeedAccess {
+  orgId     String   @map("org_id") @db.Uuid
+  feed      String
+  /// ALLOWED | BLOCKED
+  mode      String
+  updatedById String? @map("updated_by_id") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([orgId, feed])
+  @@map("ispy_feed_access")
+}
+
+/// One key/value of ISpy settings (digest, silence threshold, inbox domain).
+model IspySetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ispy_settings")
+}
+
+/// An organization's copy of an ISpy promo/copy in its own Promo Analyzer.
+model IspyAnalyzerSend {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  /// PROMO | COPY | EMAIL
+  targetType     String   @map("target_type")
+  targetId       String   @map("target_id") @db.Uuid
+  promoId        String   @map("promo_id") @db.Uuid
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([organizationId, targetType, targetId])
+  @@map("ispy_analyzer_sends")
+}
