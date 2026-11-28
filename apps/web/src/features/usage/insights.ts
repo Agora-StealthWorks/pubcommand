@@ -2,6 +2,7 @@ import { aiConfigured, runStructured } from "@pubcommand/ai";
 import { formatDuration } from "@pubcommand/core";
 import type { Prisma} from "@pubcommand/db";
 import { platformTx, rawPrisma } from "@pubcommand/db";
+import { funnelTrafficSummary } from "./funnel-traffic";
 import { listOpsNotes, upsertGeneratedOpsNote } from "./ops-brain";
 import { appIdentity } from "./stats";
 
@@ -86,6 +87,8 @@ Write for a marketing executive, not an engineer:
 - User behavior: how people actually work (which tools they lean on, workflows, timing, collaboration, AI agents' share).
 - Opportunities: concrete ideas to grow the business and to make PubCommand more useful, grounded in what you saw.
 - Notable work: the few most interesting things people built, and why they matter.
+
+When funnel traffic is given (people only, counted per funnel), read it like a marketer: which funnels and sources (utm values) bring visitors that opt in and click the offer, how mobile-heavy the traffic is, and where viewers drop off between episodes. Put those findings under marketing tactics, strategy trends and opportunities.
 
 Rules: only state what the log supports; say "light activity" rather than inventing. No software jargon (no table names, ids, routes, status codes, "audit"). Name organizations, not individual people or emails. Keep each bullet to one or two sentences. Empty lists are fine.`;
 
@@ -191,8 +194,8 @@ async function activityLog(start: Date, end: Date): Promise<{ text: string; coun
   return { text, count: rows.length, orgs: orgs.length };
 }
 
-async function writeNote(input: { key: string; kind: "daily" | "weekly"; fallbackTitle: string; prompt: string; stats: DayStats; periodStart: Date; periodEnd: Date; fallbackBody: string }) {
-  const numbers = numbersText(input.stats);
+async function writeNote(input: { key: string; kind: "daily" | "weekly"; fallbackTitle: string; prompt: string; stats: DayStats; periodStart: Date; periodEnd: Date; fallbackBody: string; funnels?: string }) {
+  const numbers = input.funnels ? `${numbersText(input.stats)}\n\n### Funnel traffic\n\n${input.funnels}` : numbersText(input.stats);
   let title = input.fallbackTitle;
   let body = `${input.fallbackBody}\n\n## The numbers\n\n${numbers}`;
   let model: string | null = null;
@@ -228,11 +231,12 @@ export async function writeDailyInsight(day: string): Promise<{ day: string; out
   const start = nyMidnight(day);
   const end = nyMidnight(addDays(day, 1));
   const stats = await periodStats(day, addDays(day, 1));
-  if (stats.actions === 0 && stats.activeUsers === 0 && stats.logins === 0) return { day, outcome: "skipped (no activity)" };
+  const funnels = await funnelTrafficSummary(start, end);
+  if (stats.actions === 0 && stats.activeUsers === 0 && stats.logins === 0 && !funnels) return { day, outcome: "skipped (no activity)" };
   const log = await activityLog(start, end);
-  const prompt = `Day: ${prettyDay(day)} (New York time).\n\nUsage numbers:\n${numbersText(stats)}\n\nWhat people did and made (${log.count} entries across ${log.orgs} organizations):\n\n${log.text || "(no changes recorded; people only browsed)"}\n\nWrite the daily read. The title is a short headline for the day (under 10 words).`;
+  const prompt = `Day: ${prettyDay(day)} (New York time).\n\nUsage numbers:\n${numbersText(stats)}\n\n${funnels ? `Funnel traffic (visitors to the public funnel pages; people only):\n${funnels}\n\n` : ""}What people did and made (${log.count} entries across ${log.orgs} organizations):\n\n${log.text || "(no changes recorded; people only browsed)"}\n\nWrite the daily read. The title is a short headline for the day (under 10 words).`;
   const fallbackBody = log.text ? `What people did and made:\n\n${log.text.slice(0, 40_000)}` : "People browsed but did not make or change anything.";
-  const result = await writeNote({ key: `daily:${day}`, kind: "daily", fallbackTitle: `Daily read · ${prettyDay(day)}`, prompt, stats, periodStart: start, periodEnd: end, fallbackBody });
+  const result = await writeNote({ key: `daily:${day}`, kind: "daily", fallbackTitle: `Daily read · ${prettyDay(day)}`, prompt, stats, periodStart: start, periodEnd: end, fallbackBody, funnels });
   return { day, ...result, activities: log.count };
 }
 
@@ -242,7 +246,8 @@ export async function writeWeeklyInsight(weekStart: string): Promise<{ week: str
   const start = nyMidnight(weekStart);
   const end = nyMidnight(weekEnd);
   const stats = await periodStats(weekStart, weekEnd);
-  if (stats.actions === 0 && stats.activeUsers === 0) return { week: weekStart, outcome: "skipped (no activity)" };
+  const funnels = await funnelTrafficSummary(start, end);
+  if (stats.actions === 0 && stats.activeUsers === 0 && !funnels) return { week: weekStart, outcome: "skipped (no activity)" };
   const dailies = await platformTx((tx) =>
     tx.opsBrainNote.findMany({ where: { kind: "daily", deletedAt: null, periodStart: { gte: start, lt: end } }, orderBy: { periodStart: "asc" }, select: { title: true, body: true } }),
   );
@@ -252,6 +257,7 @@ export async function writeWeeklyInsight(weekStart: string): Promise<{ week: str
   const prompt = [
     `Week of ${prettyDay(weekStart)} (New York time).`,
     `Usage numbers for the week:\n${numbersText(stats)}`,
+    funnels ? `Funnel traffic for the week (people only):\n${funnels}` : "",
     dailies.length ? `The week's daily reads:\n\n${dailies.map((note) => `# ${note.title}\n${note.body}`).join("\n\n").slice(0, MAX_PROMPT_CHARS)}` : `What people did and made:\n\n${log?.text ?? ""}`,
     previousBody ? `Last week's strategy note (to compare against and spot shifts):\n\n${previousBody.body.slice(0, 12_000)}` : "",
     "Write the weekly strategy note: the trends across the week and what changed from last week. The title is a short headline for the week (under 10 words).",
@@ -259,7 +265,7 @@ export async function writeWeeklyInsight(weekStart: string): Promise<{ week: str
     .filter(Boolean)
     .join("\n\n");
   const fallbackBody = dailies.length ? dailies.map((note) => `- ${note.title}`).join("\n") : "Light activity this week.";
-  const result = await writeNote({ key: `weekly:${weekStart}`, kind: "weekly", fallbackTitle: `Week of ${prettyDay(weekStart)}`, prompt, stats, periodStart: start, periodEnd: end, fallbackBody });
+  const result = await writeNote({ key: `weekly:${weekStart}`, kind: "weekly", fallbackTitle: `Week of ${prettyDay(weekStart)}`, prompt, stats, periodStart: start, periodEnd: end, fallbackBody, funnels });
   return { week: weekStart, ...result };
 }
 

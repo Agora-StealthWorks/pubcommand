@@ -42,6 +42,15 @@ work, opportunities and notable work. On Mondays it also writes a **weekly strat
 week's daily reads, compared with the previous week. Without an AI key it writes a factual digest.
 A note staff edit is never rewritten. These notes are never pushed to brands.
 
+**Funnel traffic.** The daily read and the weekly note also learn from visitors to every
+organization's public funnel pages (`features/usage/funnel-traffic.ts`, text built by
+`modules/funnels/brain-traffic.ts`). Only totals counted in the database are passed on: per funnel,
+visitors, page views, opt-ins and opt-in rate, offer clickers, device mix, how many viewers reached
+each module or episode, and visitors and opt-ins per tracked URL parameter value (utm_source,
+utm_campaign…). Automated traffic is left out. No visitor ids, emails, IP addresses or page URLs
+reach the Brain, and parameter values that look like an email address or a phone number are
+dropped. The figures appear under **The numbers → Funnel traffic** in each note.
+
 ## How PubCommand works (reference notes)
 
 The Operations Brain also holds the app's own documentation as **reference** notes, so the Brain
