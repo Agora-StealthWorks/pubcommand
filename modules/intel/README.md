@@ -1,4 +1,6 @@
-# Intel
+# iSpy (Intel)
+
+The app is called **iSpy** in the product (dashboard card, sidebar and page title). Its code, URLs (`/intel`) and permissions (`intel.*`) keep the name Intel.
 
 Competitor intelligence: what competing publishers send and promote. Route `/intel`. Permissions `intel.read` (view) and `intel.write` (change). Plan entitlement `intel`. Data belongs to the current brand.
 

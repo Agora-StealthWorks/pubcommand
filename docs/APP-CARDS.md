@@ -23,7 +23,7 @@ The platform console has an **App cards** page (`admin.pubcommand.com/app-cards`
 
 **New apps.** Any app module with pages but no built-in card (today: Billing) is listed with a "New app" badge and starts off the dashboards. Turning it on adds its card to dashboards and the app to the sidebar under **More apps**, for organizations that have it. This is how a newly built app gets a card without a code change.
 
-Defaults: the built-in apps are on, in the built-in order. Calendar, Brain, Wiki, Funnels, Mini-Blog, Forms, Intel (the "iSpy" artwork), Websites, Testimonials and Support Knowledge ship with artwork (`apps/web/public/brand/app-cards/`). Apps with neither an upload nor bundled artwork show a simple drawing.
+Defaults: the built-in apps are on, in the built-in order. Calendar, Brain, Wiki, Funnels, Mini-Blog, Forms, iSpy (the Intel app), Websites, Testimonials and Support Knowledge ship with artwork (`apps/web/public/brand/app-cards/`). Apps with neither an upload nor bundled artwork show a simple drawing.
 
 ## Where it lives
 

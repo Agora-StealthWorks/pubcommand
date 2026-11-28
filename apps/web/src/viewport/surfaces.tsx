@@ -617,7 +617,7 @@ export async function ViewportSurface({
         {orgFrame(
           "/intel",
           <div>
-            <PageHeader title="Intel" description="Competitor emails, AI extraction and the weekly Promo Radar." />
+            <PageHeader title="iSpy" description="Competitor emails, AI extraction and the weekly Promo Radar." />
             <ul className="divide-y divide-line rounded-lg border border-line bg-white">
               <li className="px-4 py-3">
                 <p className="text-sm font-semibold">The 3-minute morning habit most readers have never heard of</p>
