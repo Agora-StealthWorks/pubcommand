@@ -66,7 +66,7 @@ export default async function OrgLayout({
 
   const [target, switcher, logos] = await Promise.all([
     ctx.impersonatingHere ? rawPrisma().user.findUnique({ where: { id: ctx.impersonatingHere.targetUserId } }) : null,
-    loadSwitcher({ userId: ctx.auth.user.id, session: ctx.auth.session, here: { kind: "org", slug: ctx.resolved.slug, name: ctx.resolved.name } }),
+    loadSwitcher({ userId: ctx.auth.user.id, session: ctx.auth.session, here: { kind: "org", slug: ctx.resolved.slug, name: ctx.resolved.name, brandId: ctx.subject.membershipBrandId ?? ctx.brand?.id ?? null } }),
     // Brands with a logo (Settings → Brands → Brand defaults), shown in the sidebar.
     tenantDb(ctx.resolved.id).pubBrandBranding.findMany({
       where: { OR: [{ logoMime: { not: null } }, { logoOnDarkMime: { not: null } }] },

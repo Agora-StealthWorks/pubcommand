@@ -53,4 +53,30 @@ describe("site switcher", () => {
     expect(local.organizations[0]!.href).toBe("http://localhost:3159/?org=example-gazette");
     expect(local.chooser).toBeNull();
   });
+
+  it("lists an organization's brands under it, marking the one you work in, and adds them to ⌘K", () => {
+    const model = buildSwitcher({
+      here: { kind: "org", slug: "example-gazette", name: "Example Gazette", brandId: "b1" },
+      organizations: [
+        { slug: "example-gazette", name: "Example Gazette", brands: [{ id: "b1", name: "Daily" }, { id: "b2", name: "Weekly" }] },
+        { slug: "example-harbor", name: "Example Harbor", brands: [{ id: "b3", name: "Harbor News" }, { id: "b4", name: "Harbor Money" }], member: false },
+        { slug: "example-solo", name: "Example Solo", brands: [{ id: "b5", name: "Solo Brand" }] },
+      ],
+      staff: { ready: true },
+      rootDomain: "pubcommand.com",
+      requestHost: "example-gazette.pubcommand.com",
+    });
+    const [gazette, harbor, solo] = model.organizations;
+    expect(gazette!.brands).toEqual([
+      { key: "brand:example-gazette:b1", label: "Daily", href: "/switch-brand/b1", current: true },
+      { key: "brand:example-gazette:b2", label: "Weekly", href: "/switch-brand/b2", current: false },
+    ]);
+    expect(harbor!.hint).toBe("Super admin access");
+    expect(harbor!.brands?.[0]?.href).toBe("https://example-harbor.pubcommand.com/switch-brand/b3");
+    // One brand: no sub-list, the brand name is the hint.
+    expect(solo!.brands).toBeUndefined();
+    expect(solo!.hint).toBe("Solo Brand");
+    const brands = switcherPaletteItems(model).filter((item) => item.group === "Brands").map((item) => item.label);
+    expect(brands).toEqual(["Example Gazette · Weekly", "Example Harbor · Harbor News", "Example Harbor · Harbor Money"]);
+  });
 });
