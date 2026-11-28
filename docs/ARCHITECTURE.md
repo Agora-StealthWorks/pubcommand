@@ -50,9 +50,7 @@ Reserved organization slugs: `www`, `app`, `admin`, `api`, `platform`, `mail`, `
 
 ### Site switcher
 
-The dropdown under the logo on every signed-in sidebar (organization, console and picker) is how people move between places. It lists every organization you can open, with that organization's brands underneath when it has more than one (one brand shows as the organization's subtitle). The organization and brand you are in are ticked. A member limited to one brand sees only that brand. The super admin, once two-factor is done, sees every organization, not just their memberships; ones they are not a member of say "Super admin access". Below the list: the Platform console (staff), All workspaces, Your account and Sign out. With more than seven organizations and brands together, a search box filters by organization or brand name. The same places, brands included, are in the ⌘K palette.
-
-A brand link opens `/switch-brand/{brandId}` on that organization's host: it sets the `pc_brand` cookie (the same one the sidebar Brand picker sets) when you can use that brand, then opens the dashboard. Code: `features/navigation/switcher.ts` (pure model), `features/navigation/load.ts` (memberships, brands, staff), `components/site-switcher.tsx`.
+The dropdown under the logo on every signed-in sidebar (organization, console and picker) is how people move between places. It lists every organization you can open; the one you are in is ticked. The super admin, once two-factor is done, sees every organization, not just their memberships; ones they are not a member of say "Super admin access". Below the list: the Platform console (staff), All workspaces, Your account and Sign out. With more than seven organizations, a search box filters them by name. The same places are in the ⌘K palette. Brands are not in this dropdown: you pick the brand with the separate Brand picker below it. Code: `features/navigation/switcher.ts` (pure model), `features/navigation/load.ts` (memberships, staff), `components/site-switcher.tsx`.
 
 ## Staff and 2FA
 
