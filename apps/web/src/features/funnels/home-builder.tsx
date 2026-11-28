@@ -13,6 +13,8 @@ import {
   BLOCK_TYPES,
   BLOCK_WIDTHS,
   MAX_BLOCKS,
+  MAX_ITEMS,
+  MAX_TIERS,
   blockSummary,
   duplicateBlock,
   moveBlockBy,
@@ -27,10 +29,12 @@ import {
 import { utcToZonedLocal, zonedLocalToUtc } from "../../../../../modules/funnels/time";
 import { LivePreview, useDraftSaver } from "./live-preview";
 import { RichTextArea } from "./rich-text-area";
-import { discardDrafts, saveHomeDraft, saveHomePage, uploadFunnelImage } from "./site-actions";
+import { discardDrafts, saveHomeDraft, saveHomePage, saveOfferDraft, saveOfferSection, uploadFunnelImage } from "./site-actions";
 
 type Option = { value: string; label: string };
 export type HomeBuilderProps = {
+  /** home = the microsite home page; offer = the offer section under module pages (#offer). */
+  target?: "home" | "offer";
   funnelId: string;
   publicPath: string;
   timeZone: string;
@@ -134,7 +138,7 @@ function StyleFields({ block, set }: { block: Block; set: (style: Partial<BlockS
 }
 
 function targetOptions(props: HomeBuilderProps): Option[] {
-  return [{ value: "", label: "A web address…" }, ...props.modules.map((item) => ({ value: `module:${item.value}`, label: `Module: ${item.label}` })), ...props.pages.map((item) => ({ value: `page:${item.value}`, label: `Page: ${item.label}` }))];
+  return [{ value: "", label: "A web address…" }, { value: "#offer", label: "The offer section on this page" }, ...props.modules.map((item) => ({ value: `module:${item.value}`, label: `Module: ${item.label}` })), ...props.pages.map((item) => ({ value: `page:${item.value}`, label: `Page: ${item.label}` }))];
 }
 
 function TargetField({ id, label, value, onChange, props }: { id: string; label: string; value: string; onChange: (value: string) => void; props: HomeBuilderProps }) {
@@ -240,6 +244,7 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
             options={[
               { value: "start", label: "The funnel start" },
               { value: "end", label: "The funnel close" },
+              { value: "episode", label: "The episode on screen expires" },
               { value: "custom", label: "A set time" },
             ]}
             onChange={(target) => set({ target })}
@@ -344,7 +349,170 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
       );
     case "divider":
       return <p className="text-sm text-muted">A thin line. Use the style below for spacing.</p>;
+    case "pricing":
+      return (
+        <div className="space-y-3">
+          <TextInput id={id("heading")} label="Heading" value={block.heading} onChange={(heading) => set({ heading })} />
+          <ItemList
+            label="Packages"
+            max={MAX_TIERS}
+            items={block.tiers}
+            blank={{ name: "", price: "", was: "", badge: "", features: "", bonuses: "", buttonText: "Buy now", url: "", highlight: false }}
+            onChange={(tiers) => set({ tiers })}
+            render={(tier, put, at) => (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextInput id={id(`t${at}-name`)} label="Package name" value={tier.name} onChange={(name) => put({ name })} />
+                <TextInput id={id(`t${at}-badge`)} label="Badge" hint="e.g. Most popular. Empty = none." value={tier.badge} onChange={(badge) => put({ badge })} />
+                <TextInput id={id(`t${at}-price`)} label="Price" placeholder="$197" value={tier.price} onChange={(price) => put({ price })} />
+                <TextInput id={id(`t${at}-was`)} label="Was (crossed out)" placeholder="$314" value={tier.was} onChange={(was) => put({ was })} />
+                <Labelled label="What's included" htmlFor={id(`t${at}-features`)} hint="One per line." className="sm:col-span-2">
+                  <textarea id={id(`t${at}-features`)} rows={4} className="block w-full rounded-md border border-line px-3 py-2 text-sm" value={tier.features} onChange={(event) => put({ features: event.target.value })} />
+                </Labelled>
+                <Labelled label="Bonuses" htmlFor={id(`t${at}-bonuses`)} hint="One per line: Bonus name | $99 (value optional)." className="sm:col-span-2">
+                  <textarea id={id(`t${at}-bonuses`)} rows={4} className="block w-full rounded-md border border-line px-3 py-2 text-sm" value={tier.bonuses} onChange={(event) => put({ bonuses: event.target.value })} />
+                </Labelled>
+                <TextInput id={id(`t${at}-button`)} label="Button text" value={tier.buttonText} onChange={(buttonText) => put({ buttonText })} />
+                <TextInput id={id(`t${at}-url`)} label="Order link" type="url" placeholder="https://" value={tier.url} onChange={(url) => put({ url })} />
+                <Toggle label="Highlight this package" checked={tier.highlight} onChange={(highlight) => put({ highlight })} />
+              </div>
+            )}
+          />
+          <Labelled label="Line under the packages" htmlFor={id("footnote")} hint="Optional, e.g. the guarantee.">
+            <textarea id={id("footnote")} rows={2} className="block w-full rounded-md border border-line px-3 py-2 text-sm" value={block.footnote} onChange={(event) => set({ footnote: event.target.value })} />
+          </Labelled>
+        </div>
+      );
+    case "testimonials":
+      return (
+        <div className="space-y-3">
+          <TextInput id={id("heading")} label="Heading" value={block.heading} onChange={(heading) => set({ heading })} />
+          <ItemList
+            label="Testimonials"
+            max={MAX_ITEMS}
+            items={block.items}
+            blank={{ quote: "", name: "", role: "", rating: 5 }}
+            onChange={(items) => set({ items })}
+            render={(item, put, at) => (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Labelled label="Quote" htmlFor={id(`q${at}`)} className="sm:col-span-3">
+                  <textarea id={id(`q${at}`)} rows={3} className="block w-full rounded-md border border-line px-3 py-2 text-sm" value={item.quote} onChange={(event) => put({ quote: event.target.value })} />
+                </Labelled>
+                <TextInput id={id(`n${at}`)} label="Name" value={item.name} onChange={(name) => put({ name })} />
+                <TextInput id={id(`r${at}`)} label="Title / location" value={item.role} onChange={(role) => put({ role })} />
+                <SelectInput id={id(`s${at}`)} label="Stars" value={String(item.rating)} options={[0, 1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n ? "★".repeat(n) : "None" }))} onChange={(value) => put({ rating: Number(value) })} />
+              </div>
+            )}
+          />
+        </div>
+      );
+    case "logos":
+      return (
+        <div className="space-y-3">
+          <TextInput id={id("heading")} label="Heading" value={block.heading} onChange={(heading) => set({ heading })} />
+          <ItemList
+            label="Logos"
+            max={MAX_ITEMS}
+            items={block.items}
+            blank={{ assetId: "", src: "", alt: "" }}
+            onChange={(items) => set({ items })}
+            render={(item, put, at) => (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextInput id={id(`l${at}`)} label="Logo image address" type="url" placeholder="https://" hint="An https link to the logo image." value={item.src} onChange={(src) => put({ src, assetId: "" })} />
+                <TextInput id={id(`a${at}`)} label="Name (alt text)" value={item.alt} onChange={(alt) => put({ alt })} />
+              </div>
+            )}
+          />
+        </div>
+      );
+    case "faq":
+      return (
+        <div className="space-y-3">
+          <TextInput id={id("heading")} label="Heading" value={block.heading} onChange={(heading) => set({ heading })} />
+          <ItemList
+            label="Questions"
+            max={MAX_ITEMS}
+            items={block.items}
+            blank={{ q: "", a: "" }}
+            onChange={(items) => set({ items })}
+            render={(item, put, at) => (
+              <div className="space-y-3">
+                <TextInput id={id(`fq${at}`)} label="Question" value={item.q} onChange={(q) => put({ q })} />
+                <Labelled label="Answer" htmlFor={id(`fa${at}`)}>
+                  <textarea id={id(`fa${at}`)} rows={3} className="block w-full rounded-md border border-line px-3 py-2 text-sm" value={item.a} onChange={(event) => put({ a: event.target.value })} />
+                </Labelled>
+              </div>
+            )}
+          />
+        </div>
+      );
+    case "episodes":
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextInput id={id("heading")} label="Heading" value={block.heading} onChange={(heading) => set({ heading })} />
+          <TextInput id={id("button")} label="Button text" hint="Empty = no button." value={block.buttonText} onChange={(buttonText) => set({ buttonText })} />
+          <div className="sm:col-span-2">
+            <TargetField id={id("target")} label="Buttons go to" value={block.target} onChange={(target) => set({ target })} props={props} />
+          </div>
+          <p className="text-xs text-muted sm:col-span-2">Shows every module as a card (thumbnail, label, title).</p>
+        </div>
+      );
   }
+}
+
+/** A repeatable list of rows (packages, testimonials, logos, questions): edit, reorder, add, remove. */
+function ItemList<T extends Record<string, unknown>>({
+  label,
+  items,
+  blank,
+  max,
+  onChange,
+  render,
+}: {
+  label: string;
+  items: T[];
+  blank: T;
+  max: number;
+  onChange: (items: T[]) => void;
+  render: (item: T, put: (patch: Partial<T>) => void, index: number) => ReactNode;
+}) {
+  const put = (index: number, patch: Partial<T>) => onChange(items.map((item, at) => (at === index ? { ...item, ...patch } : item)));
+  const move = (index: number, delta: number) => {
+    const next = [...items];
+    const [moved] = next.splice(index, 1);
+    next.splice(Math.max(0, Math.min(next.length, index + delta)), 0, moved!);
+    onChange(next);
+  };
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-semibold">{label}</legend>
+      {items.map((item, index) => (
+        <div key={index} className="rounded-lg border border-line p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+              {label} {index + 1}
+            </span>
+            <span className="flex gap-1">
+              <button type="button" className={small} disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Move ${label} ${index + 1} up`}>
+                ↑
+              </button>
+              <button type="button" className={small} disabled={index === items.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${label} ${index + 1} down`}>
+                ↓
+              </button>
+              <button type="button" className={small} onClick={() => onChange(items.filter((_, at) => at !== index))}>
+                Remove
+              </button>
+            </span>
+          </div>
+          {render(item, (patch) => put(index, patch), index)}
+        </div>
+      ))}
+      {items.length < max ? (
+        <button type="button" className={small} onClick={() => onChange([...items, structuredClone(blank)])}>
+          + Add
+        </button>
+      ) : null}
+    </fieldset>
+  );
 }
 
 function BlockCard({
@@ -435,7 +603,8 @@ export function HomeBuilder(props: HomeBuilderProps) {
   const [dirty, setDirty] = useState(props.hasDraft);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-  const draft = useDraftSaver((payload: { blocks: Block[]; shell: boolean; title: string }) => saveHomeDraft(props.funnelId, payload));
+  const offer = props.target === "offer";
+  const draft = useDraftSaver((payload: { blocks: Block[]; shell: boolean; title: string }) => (offer ? saveOfferDraft(props.funnelId, { blocks: payload.blocks }) : saveHomeDraft(props.funnelId, payload)));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   const commit = (next: { blocks?: Block[]; shell?: boolean; title?: string }) => {
@@ -464,31 +633,40 @@ export function HomeBuilder(props: HomeBuilderProps) {
   const save = async () => {
     draft.cancel();
     setSaving(true);
-    const result = await saveHomePage(props.funnelId, { blocks, shell, title });
+    const result = offer ? await saveOfferSection(props.funnelId, { blocks }) : await saveHomePage(props.funnelId, { blocks, shell, title });
     setSaving(false);
     if (result.ok) {
       setDirty(false);
-      setMessage({ kind: "ok", text: "Saved. The home page is updated." });
+      setMessage({ kind: "ok", text: offer ? "Saved. The offer section is updated." : "Saved. The home page is updated." });
       router.refresh();
     } else setMessage({ kind: "error", text: result.error });
   };
 
   const discard = async () => {
-    await discardDrafts(props.funnelId, "home");
+    await discardDrafts(props.funnelId, offer ? "offer" : "home");
     window.location.reload();
   };
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="min-w-0 space-y-4">
-        <section className="rounded-xl border border-line bg-white p-4">
-          <h2 className="text-base font-semibold">Home page</h2>
-          <p className="mt-1 text-sm text-muted">Visitors to this microsite's link (or custom domain) land here. The modules and pages sit around it, and the close page takes over when the funnel closes.</p>
-          <fieldset disabled={!props.canWrite} className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Toggle label="Show the site header and module navigation above the blocks" checked={shell} onChange={(value) => commit({ shell: value })} />
-            <TextInput id="home-title" label="Browser title" hint="Empty = the funnel name." value={title} onChange={(value) => commit({ title: value })} />
-          </fieldset>
-        </section>
+        {offer ? (
+          <section className="rounded-xl border border-line bg-white p-4">
+            <h2 className="text-base font-semibold">Offer section</h2>
+            <p className="mt-1 text-sm text-muted">
+              Shown under every module's video (turn it off per module on the Modules tab). Buttons, the top bar and locked downloads can jump here with <code>#offer</code>. Pricing, testimonials, logos, FAQ and the episode grid live here.
+            </p>
+          </section>
+        ) : (
+          <section className="rounded-xl border border-line bg-white p-4">
+            <h2 className="text-base font-semibold">Home page</h2>
+            <p className="mt-1 text-sm text-muted">Visitors to this microsite's link (or custom domain) land here. The modules and pages sit around it, and the close page takes over when the funnel closes.</p>
+            <fieldset disabled={!props.canWrite} className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Toggle label="Show the site header and module navigation above the blocks" checked={shell} onChange={(value) => commit({ shell: value })} />
+              <TextInput id="home-title" label="Browser title" hint="Empty = the funnel name." value={title} onChange={(value) => commit({ title: value })} />
+            </fieldset>
+          </section>
+        )}
 
         {props.canWrite ? (
           <section className="rounded-xl border border-line bg-white p-4">
@@ -506,7 +684,7 @@ export function HomeBuilder(props: HomeBuilderProps) {
 
         <DndContext id="home-blocks" sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
           <SortableContext items={blocks.map((block) => block.id)} strategy={verticalListSortingStrategy}>
-            <ol className="space-y-2" aria-label="Home page blocks">
+            <ol className="space-y-2" aria-label={offer ? "Offer section blocks" : "Home page blocks"}>
               {blocks.map((block, index) => (
                 <BlockCard
                   key={block.id}
@@ -528,12 +706,12 @@ export function HomeBuilder(props: HomeBuilderProps) {
             </ol>
           </SortableContext>
         </DndContext>
-        {blocks.length === 0 ? <p className="rounded-xl border border-dashed border-line bg-white p-6 text-center text-sm text-muted">No blocks yet. Add a headline to start.</p> : null}
+        {blocks.length === 0 ? <p className="rounded-xl border border-dashed border-line bg-white p-6 text-center text-sm text-muted">{offer ? "No offer section yet. Add a Pricing block to start." : "No blocks yet. Add a headline to start."}</p> : null}
 
         {props.canWrite ? (
           <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-white/95 p-3 shadow-sm backdrop-blur">
             <button type="button" onClick={save} disabled={saving} className="inline-flex min-h-11 items-center rounded-md bg-accent px-4 text-sm font-semibold text-white disabled:opacity-60">
-              {saving ? "Saving…" : "Save home page"}
+              {saving ? "Saving…" : offer ? "Save offer section" : "Save home page"}
             </button>
             {dirty ? (
               <button type="button" onClick={discard} className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-4 text-sm font-semibold">

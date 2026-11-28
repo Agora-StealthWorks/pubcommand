@@ -18,6 +18,10 @@
  * Then, with lockPassedModules, a module whose video is open locks again ("passed")
  * once a LATER module's video is open, so a viewer only ever has the newest one.
  * Live modules never pass and never make another module pass.
+ *
+ * With an access window (accessHours), a non-live module that has opened locks again
+ * ("expired") that many hours later, and an open one carries its expiresAt (the episode
+ * countdown). Expiry sits between progression and "video" in the order above.
  */
 
 export const FUNNEL_MODES = ["evergreen", "live"] as const;
@@ -77,6 +81,13 @@ export type FunnelRules = {
    */
   lockPassedModules?: boolean;
   /**
+   * Episode access window (docuseries): each non-live module stays open this many hours
+   * after it opens for the viewer, then locks as "expired". Null / 0 = modules never expire.
+   * A module's open time is the start (first module, or all-open funnels) or its scheduled
+   * unlock; watch % and link-key modules have no fixed open time, so they never expire.
+   */
+  accessHours?: number | null;
+  /**
    * Live funnels, where the front door goes between sessions:
    *   hybrid (default)  the most recent session, until the calendar day of the next one; that day, the next one
    *   recent            always the most recent session (its replay / replay pending)
@@ -95,6 +106,8 @@ export type DayRules = {
   /** Scheduled progression: an exact moment, which wins over the offset. */
   unlockAt: Date | null;
   unlockKey: string;
+  /** Per-module override of the funnel's accessHours (null = use the funnel's). */
+  accessHours?: number | null;
   isLive: boolean;
   liveStartAt: Date | null;
   liveEndAt: Date | null;
@@ -112,13 +125,14 @@ export type ViewerFacts = {
   keys: string[];
 };
 
-export type LockReason = "not_started" | "live_upcoming" | "scheduled" | "watch" | "key" | "passed";
+export type LockReason = "not_started" | "live_upcoming" | "scheduled" | "watch" | "key" | "passed" | "expired";
 
 export type DayState =
   | { kind: "closed" }
   | { kind: "live"; url: string | null }
-  | { kind: "locked"; reason: LockReason; unlockAt: Date | null; prevPosition?: number; nextPosition?: number }
-  | { kind: "video" }
+  | { kind: "locked"; reason: LockReason; unlockAt: Date | null; prevPosition?: number; nextPosition?: number; expiredAt?: Date }
+  /** expiresAt: set when the funnel has an access window (accessHours). */
+  | { kind: "video"; expiresAt?: Date }
   | { kind: "replay_pending" }
   | { kind: "coming_soon" };
 
@@ -250,11 +264,27 @@ export function computeDayStates(
       const lock = progressionLock(funnel, day, ordered[index - 1], viewer, start, now, presentedKeys);
       if (lock) return lock;
     }
+    if (!liveDay) {
+      const expiresAt = accessExpiry(funnel, day, followsProgression, start);
+      if (expiresAt && now >= expiresAt) return { kind: "locked", reason: "expired", unlockAt: null, expiredAt: expiresAt };
+      if (expiresAt && day.hasVideo) return { kind: "video", expiresAt };
+    }
     if (day.hasVideo) return { kind: "video" };
     if (liveDay) return { kind: "replay_pending" };
     return { kind: "coming_soon" };
   });
   return funnel.lockPassedModules ? lockPassed(funnel, ordered, states) : states;
+}
+
+/**
+ * Episode access window: when an open, non-live module stops being available, or null
+ * when it never expires. The window runs from the moment the module opened for this viewer.
+ */
+export function accessExpiry(funnel: FunnelRules, day: DayRules, followsProgression: boolean, start: Date | null): Date | null {
+  const hours = day.accessHours && day.accessHours > 0 ? day.accessHours : funnel.accessHours && funnel.accessHours > 0 ? funnel.accessHours : 0;
+  if (!hours) return null;
+  const openedAt = !followsProgression || funnel.progression === "all_open" ? start : funnel.progression === "scheduled" ? scheduledUnlock(day, start) : null;
+  return openedAt ? new Date(openedAt.getTime() + hours * HOUR) : null;
 }
 
 /**
@@ -332,6 +362,19 @@ export function entryDecision(funnel: FunnelRules, days: readonly DayRules[], vi
   // Earlier modules have passed: the front door goes to the one that is open now.
   const newest = newestOpenModule(ordered, states);
   if (newest) return { kind: "day", position: newest.position };
+  // Episode access windows: the newest open episode; between episodes, the next one's
+  // countdown; once every episode has expired, the funnel is over for this viewer.
+  if (states.some((state) => state.kind === "locked" && state.reason === "expired")) {
+    for (let index = ordered.length - 1; index >= 0; index -= 1) {
+      if (isOpen(states[index]!)) return { kind: "day", position: ordered[index]!.position };
+    }
+    const upcoming = ordered.find((_, index) => {
+      const state = states[index]!;
+      return state.kind === "locked" && state.reason !== "expired";
+    });
+    if (upcoming) return { kind: "day", position: upcoming.position };
+    return { kind: "closed" };
+  }
   return { kind: "day", position: ordered[0]?.position ?? 1 };
 }
 

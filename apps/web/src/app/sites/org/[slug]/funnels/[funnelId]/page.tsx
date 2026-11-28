@@ -4,7 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { deleteFunnel, duplicateFunnel, publishFunnel } from "@/features/funnels/actions";
-import { DeadlineTab, DesignTab, HomeTab, HostsTab, PagesTab } from "@/features/funnels/builder-tabs";
+import { DeadlineTab, DesignTab, HomeTab, HostsTab, OfferTab, PagesTab } from "@/features/funnels/builder-tabs";
+import { AdvancedToggle } from "@/features/funnels/advanced-toggle";
 import { AgendaSettings, ChecksList, CloseTab, LandingTab, ModulesTab, ProgressionTab, ScheduleTab, SetupTab } from "@/features/funnels/builder-main-tabs";
 import { loadFunnelForBrand, orgTimezone, statusBadge, type FunnelRow, type NavItemRow } from "@/features/funnels/data";
 import { Field, LinkBox, Section } from "@/features/funnels/fields";
@@ -37,8 +38,26 @@ const TABS = [
   { key: "advanced", label: "Advanced" },
   { key: "delegates", label: "Delegates" },
   { key: "publish", label: "Publish" },
+  { key: "offer", label: "Offer section" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
+
+/**
+ * The builder's top-level groups: the tabs above, gathered into fewer places. Every tab
+ * keeps its own ?tab= key (links and saves still land on it); a group with more than one
+ * tab shows them as a second row.
+ */
+const GROUPS: { key: string; label: string; tabs: Tab[] }[] = [
+  { key: "setup", label: "Setup & publish", tabs: ["setup", "publish"] },
+  { key: "design", label: "Design", tabs: ["design"] },
+  { key: "schedule", label: "Schedule & access", tabs: ["schedule", "progression"] },
+  { key: "days", label: "Modules", tabs: ["days"] },
+  { key: "pages", label: "Pages", tabs: ["home", "waitlist", "pages", "hosts", "close"] },
+  { key: "deadline", label: "Countdowns & bars", tabs: ["deadline"] },
+  { key: "offer", label: "Offer section", tabs: ["offer"] },
+  { key: "forms", label: "Forms, SMS & email", tabs: ["sms", "emails"] },
+  { key: "advanced", label: "Advanced", tabs: ["advanced", "delegates"] },
+];
 
 /** Old tab names still open the right tab. */
 const ALIASES: Record<string, string> = { branding: "design", landing: "waitlist", messages: "progression" };
@@ -74,6 +93,9 @@ export default async function FunnelBuilderPage({
   const asked = ALIASES[query.tab ?? ""] ?? query.tab ?? "";
   const wanted = asked === "home" && !microsite ? "waitlist" : asked === "waitlist" && microsite ? "home" : asked;
   const tab: Tab = (tabs.map((item) => item.key) as readonly string[]).includes(wanted) ? (wanted as Tab) : "setup";
+  const available = new Set<string>(tabs.map((item) => item.key));
+  const groups = GROUPS.map((group) => ({ ...group, tabs: group.tabs.filter((key) => available.has(key)) })).filter((group) => group.tabs.length > 0);
+  const activeGroup = groups.find((group) => group.tabs.includes(tab)) ?? groups[0]!;
   const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, `/l/${funnel.slug}`);
   const zone = zoneLabel(new Date(), timeZone);
   const local = (date: Date | null) => utcToZonedLocal(date, timeZone);
@@ -155,7 +177,15 @@ export default async function FunnelBuilderPage({
       </div>
       <Flash error={query.error} notice={query.notice} />
       {delegate ? <p className="mb-4 rounded-lg border border-[#c7d7fe] bg-[#eef4ff] px-4 py-3 text-sm text-[#1e3a8a]">You are a delegate of this funnel: you can edit it, and someone with publish rights takes it live.</p> : null}
-      <SectionTabs label="Builder sections" active={tab} items={tabs.map((item) => ({ key: item.key, label: `${item.label}${item.key === "setup" && checks.errors.length ? " •" : ""}`, href: `/funnels/${funnel.id}?tab=${item.key}` }))} />
+      <AdvancedToggle>
+      <SectionTabs
+        label="Builder sections"
+        active={activeGroup.key}
+        items={groups.map((group) => ({ key: group.key, label: `${group.label}${group.key === "setup" && checks.errors.length ? " •" : ""}`, href: `/funnels/${funnel.id}?tab=${group.tabs[0]}` }))}
+      />
+      {activeGroup.tabs.length > 1 ? (
+        <SectionTabs label={`${activeGroup.label} sections`} active={tab} items={activeGroup.tabs.map((key) => ({ key, label: tabs.find((item) => item.key === key)!.label, href: `/funnels/${funnel.id}?tab=${key}` }))} />
+      ) : null}
 
       {tab === "setup" ? <SetupTab funnel={funnel} canWrite={canWrite} checks={checks} publicUrl={publicUrl} domains={domains} /> : null}
       {tab === "schedule" ? <ScheduleTab funnel={funnel} canWrite={canWrite} local={local} zone={zone} timeZone={timeZone} /> : null}
@@ -170,6 +200,7 @@ export default async function FunnelBuilderPage({
       ) : null}
       {tab === "hosts" ? <HostsTab funnel={funnel} hosts={hosts} openId={query.host} canWrite={canWrite} /> : null}
       {tab === "pages" ? <PagesTab funnel={funnel} days={days} navItems={navItems} forms={forms} smsForms={smsOptions} openId={query.item} canWrite={canWrite} publicUrl={publicUrl} /> : null}
+      {tab === "offer" ? <OfferTab funnel={funnel} days={days} navItems={navItems} hosts={hosts} forms={forms} smsForms={smsOptions} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
       {tab === "deadline" ? <DeadlineTab funnel={funnel} days={days} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
       {tab === "emails" ? await emailsTab(ctx.resolved.id, funnel, navItems, timeZone, canWrite, query.email) : null}
       {tab === "sms" ? await smsTab(ctx.resolved.id, funnel, smsForms, canWrite, canPublish, query.form) : null}
@@ -242,6 +273,7 @@ export default async function FunnelBuilderPage({
           {canPublish ? <StatusSection funnel={funnel} /> : null}
         </div>
       ) : null}
+      </AdvancedToggle>
     </div>
   );
 }

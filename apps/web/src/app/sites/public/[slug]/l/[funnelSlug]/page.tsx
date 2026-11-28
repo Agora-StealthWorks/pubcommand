@@ -9,6 +9,7 @@ import { SmsSlot, smsFormFor, type SmsQuery } from "@/features/funnels/sms-slot"
 import { ClosedPage, EmailOptin, FormOptin, PreviewBar, WaitlistView, previewLabel } from "@/features/funnels/public-view";
 import { ClickTracker, ViewerSync } from "@/features/funnels/public-client";
 import { homeBlocks } from "@/features/funnels/site-data";
+import { trackedCarry } from "@/features/funnels/tracking-data";
 import { CustomPageView, customPageNav } from "@/features/funnels/custom-page-view";
 import { entryDecision } from "../../../../../../../../../modules/funnels/state";
 
@@ -37,7 +38,7 @@ export default async function FunnelEntryPage({ params, searchParams }: { params
   // A launch funnel's custom page set as the home page replaces the waitlist / module redirect at the front door.
   const homePage = funnel.siteType !== "microsite" ? loaded.navItems.find((item) => item.kind === "page" && item.isHome) : undefined;
   const decision = homePage && entry.kind !== "closed" ? ({ kind: "custom" } as const) : entry;
-  if (decision.kind === "day") redirect(`${base}/day-${decision.position}${carry}`);
+  if (decision.kind === "day") redirect(`${base}/day-${decision.position}${carry || (await trackedCarry(loaded.organizationId, query))}`);
   // Previews follow the close redirect too, so "preview as of" after the end shows the real behaviour.
   if (decision.kind === "closed" && funnel.closeMode === "redirect" && funnel.closeRedirectUrl) redirect(funnel.closeRedirectUrl);
   const { branding } = theme;

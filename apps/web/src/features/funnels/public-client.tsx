@@ -52,6 +52,7 @@ export function Countdown({
   labelColor,
   boxColor,
   digitColor,
+  look = "boxes",
 }: {
   target: number;
   serverNow: number;
@@ -62,6 +63,8 @@ export function Countdown({
   labelColor: string;
   boxColor: string;
   digitColor: string;
+  /** The funnel's countdown style: boxes (one box per unit) | flip (a tile per digit). */
+  look?: "boxes" | "flip";
 }) {
   const skew = useSkew(serverNow);
   const [left, setLeft] = useState(Math.max(0, target - serverNow));
@@ -86,6 +89,17 @@ export function Countdown({
     ["Minutes", Math.floor((seconds % 3600) / 60)],
     ["Seconds", seconds % 60],
   ];
+  if (look === "flip") {
+    // Under 100 hours the flip clock counts in hours only (24:00:00, not 1 day 00:00:00).
+    const flipParts: [string, number][] =
+      seconds < 100 * 3600 ? [["Hours", Math.floor(seconds / 3600)], ["Minutes", Math.floor((seconds % 3600) / 60)], ["Seconds", seconds % 60]] : parts.filter(([label, value]) => label !== "Days" || value > 0);
+    return (
+      <div>
+        <FlipClock parts={flipParts} size={variant === "box" ? "md" : "lg"} tileColor={boxColor} digitColor={digitColor} labelColor={labelColor} />
+        {left <= 0 && reloadTo ? <p className="mt-3 text-lg font-bold">Starting now…</p> : null}
+      </div>
+    );
+  }
   return (
     <div>
       <div className={`pcf-countdown${variant === "box" ? " is-box" : ""}`} role="timer" aria-live="off">
@@ -99,6 +113,53 @@ export function Countdown({
         ))}
       </div>
       {left <= 0 ? <p className="mt-3 text-lg font-bold">Starting now…</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Flip-clock digits: a tile per digit, colons between units, small labels underneath.
+ * A tile re-mounts when its digit changes, which replays the flip animation (CSS).
+ */
+export function FlipClock({
+  parts,
+  size = "md",
+  tileColor,
+  digitColor,
+  labelColor,
+}: {
+  parts: [string, number][];
+  size?: "sm" | "md" | "lg";
+  tileColor: string;
+  digitColor: string;
+  labelColor: string;
+}) {
+  return (
+    <div className={`pcf-flip is-${size}`} role="timer" aria-live="off" aria-label={parts.map(([label, value]) => `${value} ${label.toLowerCase()}`).join(", ")}>
+      {parts.map(([label, value], index) => {
+        const digits = String(value).padStart(2, "0").split("");
+        return (
+          <div key={label} className="pcf-flip-unit-wrap">
+            {index > 0 ? (
+              <span className="pcf-flip-colon" aria-hidden="true" style={labelColor === "currentColor" ? undefined : { color: labelColor }}>
+                :
+              </span>
+            ) : null}
+            <div className="pcf-flip-unit" aria-hidden="true">
+              <div className="pcf-flip-digits">
+                {digits.map((digit, at) => (
+                  <span key={`${at}-${digit}`} className="pcf-flip-tile" style={{ background: tileColor, color: digitColor }}>
+                    {digit}
+                  </span>
+                ))}
+              </div>
+              <span className="pcf-flip-label" style={labelColor === "currentColor" ? undefined : { color: labelColor }}>
+                {label}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

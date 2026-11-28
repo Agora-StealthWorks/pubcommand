@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { googleCalendarUrl, type CalendarEvent } from "../../../../../modules/funnels/calendar";
 import { reactAttrs, splitHeadCode } from "../../../../../modules/funnels/code";
-import { deadlineBar, deadlineButtonHref, deadlineShowsOn, deadlineText, type DeadlinePage } from "../../../../../modules/funnels/deadline";
+import { DEADLINE_TARGETS, deadlineBar, deadlineButtonHref, deadlineShowsOn, deadlineText, type DeadlinePage, type DeadlineTarget } from "../../../../../modules/funnels/deadline";
 import { RichContentStyles } from "@/components/rich-text-editor/content-css";
 import { safeColor } from "../../../../../modules/funnels/checks";
 import { navStrip } from "../../../../../modules/funnels/nav";
@@ -11,6 +11,7 @@ import type { LoadedFunnel } from "./public";
 import { viewerFacts } from "./public";
 import type { ViewerCookie } from "../../../../../modules/funnels/viewer";
 import { DeadlineBarClient } from "./site-client";
+import { Countdown } from "./public-client";
 import { navItemThumb, pageHref, type FunnelTheme } from "./site-data";
 import { RICH } from "./public-view";
 import { LAYOUT_CSS } from "../../../../../modules/funnels/layout-css";
@@ -19,17 +20,33 @@ import { LAYOUT_CSS } from "../../../../../modules/funnels/layout-css";
 export type FunnelPageKind = DeadlinePage | "close";
 
 /** The deadline ribbon for this viewer, or null. */
-export function DeadlineBar({ loaded, viewer, position, page, base = "" }: { loaded: LoadedFunnel; viewer: ViewerCookie | null; position: "top" | "bottom"; page: FunnelPageKind; base?: string }) {
+/** The deadline this viewer sees on this page, or null (off, not on this page, nothing ahead). */
+function barTiming(loaded: LoadedFunnel, viewer: ViewerCookie | null, page: FunnelPageKind, episodeExpiresAt: Date | null) {
   const { funnel } = loaded;
-  const barPosition = funnel.deadlineBarPosition === "top" ? "top" : "bottom";
-  if (barPosition !== position) return null;
   if (page === "close" || !deadlineShowsOn(funnel.deadlineBarPages, page)) return null;
-  const timing = deadlineBar(
-    funnelRules(funnel),
-    { enabled: funnel.deadlineBarEnabled, target: funnel.deadlineBarTarget === "start" ? "start" : funnel.deadlineBarTarget === "custom" ? "custom" : "end", at: funnel.deadlineBarAt, withinHours: funnel.deadlineBarWithinHours },
-    viewerFacts(viewer),
-    loaded.now,
-  );
+  const target = (DEADLINE_TARGETS as readonly string[]).includes(funnel.deadlineBarTarget) ? (funnel.deadlineBarTarget as DeadlineTarget) : "end";
+  return deadlineBar(funnelRules(funnel), { enabled: funnel.deadlineBarEnabled, target, at: funnel.deadlineBarAt, withinHours: funnel.deadlineBarWithinHours }, viewerFacts(viewer), loaded.now, episodeExpiresAt);
+}
+
+export function DeadlineBar({
+  loaded,
+  viewer,
+  position,
+  page,
+  base = "",
+  episodeExpiresAt = null,
+}: {
+  loaded: LoadedFunnel;
+  viewer: ViewerCookie | null;
+  position: "top" | "bottom";
+  page: FunnelPageKind;
+  base?: string;
+  episodeExpiresAt?: Date | null;
+}) {
+  const { funnel } = loaded;
+  const barPosition = funnel.deadlineBarPosition === "top" ? "top" : funnel.deadlineBarPosition === "header" ? "header" : "bottom";
+  if (barPosition !== position) return null;
+  const timing = barTiming(loaded, viewer, page, episodeExpiresAt);
   if (!timing) return null;
   return (
     <DeadlineBarClient
@@ -63,7 +80,13 @@ export function FunnelShell({
   base,
   children,
   hideHeader = false,
+  episodeExpiresAt = null,
+  reloadTo = null,
 }: {
+  /** Module pages: when the module on screen stops being available (deadline target "episode"). */
+  episodeExpiresAt?: Date | null;
+  /** Where the header clock reloads to when it runs out (null = no reload). */
+  reloadTo?: string | null;
   /** The waitlist draws its logo inside the countdown hero instead of a header bar. */
   hideHeader?: boolean;
   theme: FunnelTheme;
@@ -79,6 +102,13 @@ export function FunnelShell({
   children: ReactNode;
 }) {
   const { branding } = theme;
+  // Deadline bar in the header: logo, text + flip clock, button in one sticky bar.
+  const headerTiming = showDeadline && loaded.funnel.deadlineBarPosition === "header" ? barTiming(loaded, viewer, page, episodeExpiresAt) : null;
+  const headerHref = headerTiming && loaded.funnel.deadlineBarButtonText.trim() ? deadlineButtonHref(loaded.funnel.deadlineBarButtonUrl, base, loaded.carry) : null;
+  const headerBar =
+    headerTiming && !headerTiming.revealAt
+      ? { at: headerTiming.at, text: deadlineText(loaded.funnel.deadlineBarText, headerTiming.at, loaded.timeZone), button: headerHref ? { text: loaded.funnel.deadlineBarButtonText.trim(), href: headerHref } : null }
+      : null;
   const logo = branding.logoSrc ? (
     <img src={branding.logoSrc} alt={branding.brandName} className="pcf-logo" />
   ) : (
@@ -91,8 +121,34 @@ export function FunnelShell({
       {theme.fontHref ? <link rel="stylesheet" href={theme.fontHref} /> : null}
       <FunnelCode loaded={loaded} where="head" />
       {preview}
-      {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="top" page={page} base={base} /> : null}
-{hideHeader ? null : (
+      {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="top" page={page} base={base} episodeExpiresAt={episodeExpiresAt} /> : null}
+      {hideHeader ? null : headerBar ? (
+        <header className="pcf-header sticky top-0 z-40" style={{ background: safeColor(loaded.funnel.deadlineBarBg, "#0a0f0d"), color: safeColor(loaded.funnel.deadlineBarColor, "#ffffff") }} data-deadline-bar="header">
+          <div className="pcf-wrap pcf-topbar py-3" style={{ maxWidth: 1440 }}>
+            <span className="pcf-topbar-logo inline-flex max-w-[40%] items-center">{theme.logoHref ? <a href={theme.logoHref} aria-label={branding.brandName}>{logo}</a> : logo}</span>
+            <div className="pcf-topbar-clock">
+              <span className="pcf-topbar-text [overflow-wrap:anywhere]">{headerBar.text}</span>
+              <Countdown
+                variant="box"
+                look="flip"
+                target={headerBar.at.getTime()}
+                serverNow={loaded.now.getTime()}
+                reloadTo={loaded.funnel.countdownZero === "stay" ? null : reloadTo}
+                labelColor="currentColor"
+                boxColor={safeColor(loaded.funnel.deadlineBarDigitColor ?? "", "#3a423e")}
+                digitColor="#ffffff"
+              />
+            </div>
+            {headerBar.button ? (
+              <a href={headerBar.button.href} className="pcf-btn pcf-topbar-btn" data-track="deadline_bar" data-track-target={headerBar.button.text} style={safeColor(loaded.funnel.deadlineBarButtonBg ?? "", "") ? { background: loaded.funnel.deadlineBarButtonBg!, borderColor: loaded.funnel.deadlineBarButtonBg! } : undefined}>
+                {headerBar.button.text}
+              </a>
+            ) : (
+              <span className="pcf-topbar-btn" />
+            )}
+          </div>
+        </header>
+      ) : (
       <header className="pcf-header">
         <div className="pcf-header-inner">
           {theme.logoHref ? (
@@ -131,7 +187,7 @@ export function FunnelShell({
           </p>
         </div>
       </footer>
-      {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="bottom" page={page} base={base} /> : null}
+      {showDeadline ? <DeadlineBar loaded={loaded} viewer={viewer} position="bottom" page={page} base={base} episodeExpiresAt={episodeExpiresAt} /> : null}
       <FunnelCode loaded={loaded} where="footer" />
     </div>
   );

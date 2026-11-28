@@ -5,14 +5,17 @@
  *   s  per-viewer clock start (ms)
  *   w  highest watched percent per day id
  *   k  day ids unlocked with their URL key
+ *   p  tracked URL parameters (org Funnels settings), first or last touch; optional
  *
  * HMAC-SHA256 signed so nobody can hand-edit their way past a lock. (Someone can
  * still replay the sync endpoint; this is a marketing funnel, not DRM.)
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ViewerFacts } from "./state";
+import { cleanStoredParams, compactForCookie, mergeTouch, type Attribution, type TrackedParams } from "./tracking";
 
-export type ViewerCookie = ViewerFacts & { visitorId: string };
+/** `params` is optional so cookies written before tracked parameters existed still decode. */
+export type ViewerCookie = ViewerFacts & { visitorId: string; params?: TrackedParams };
 
 export const VIEWER_COOKIE_MAX_AGE = 60 * 60 * 24 * 180;
 const MAX_DAYS = 60;
@@ -60,11 +63,13 @@ export function normalizeViewer(raw: unknown): ViewerCookie | null {
   }
   const keys = Array.isArray(source.k) ? source.k.filter((item): item is string => typeof item === "string" && /^[0-9a-f-]{36}$/i.test(item)).slice(0, MAX_DAYS) : [];
   const start = typeof source.s === "number" && Number.isFinite(source.s) && source.s > 0 ? Math.round(source.s) : undefined;
-  return { visitorId, start, watched, keys: [...new Set(keys)] };
+  const params = cleanStoredParams(source.p);
+  return { visitorId, start, watched, keys: [...new Set(keys)], ...(params ? { params } : {}) };
 }
 
 export function encodeViewer(viewer: ViewerCookie, secret: string): string {
-  const compact = { v: viewer.visitorId, s: viewer.start, w: viewer.watched, k: viewer.keys };
+  const params = compactForCookie(viewer.params);
+  const compact = { v: viewer.visitorId, s: viewer.start, w: viewer.watched, k: viewer.keys, ...(params ? { p: params } : {}) };
   const payload = Buffer.from(JSON.stringify(compact)).toString("base64url");
   return `${payload}.${sign(payload, secret)}`;
 }
@@ -100,4 +105,12 @@ export function rememberKey(viewer: ViewerCookie, dayId: string): ViewerCookie {
 /** Starts the per-viewer clock on the first visit; later visits keep the first start. */
 export function ensureStart(viewer: ViewerCookie, now: Date): ViewerCookie {
   return viewer.start ? viewer : { ...viewer, start: now.getTime() };
+}
+
+/** Keeps the tracked parameters a visitor arrived with (first touch) or the newest set (last touch). */
+export function rememberParams(viewer: ViewerCookie, incoming: TrackedParams | null | undefined, attribution: Attribution): ViewerCookie {
+  const next = compactForCookie(mergeTouch(viewer.params, incoming, attribution));
+  if (JSON.stringify(next ?? null) === JSON.stringify(viewer.params ?? null)) return viewer;
+  const rest: ViewerCookie = { visitorId: viewer.visitorId, watched: viewer.watched, keys: viewer.keys, ...(viewer.start ? { start: viewer.start } : {}) };
+  return next ? { ...rest, params: next } : rest;
 }

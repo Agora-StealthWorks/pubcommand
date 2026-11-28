@@ -202,6 +202,7 @@ export const CLICK_KINDS = [
   "home_button",
   "deadline_bar",
   "close_button",
+  "offer",
 ] as const;
 export type ClickKind = (typeof CLICK_KINDS)[number];
 export function isClickKind(value: unknown): value is ClickKind {
@@ -224,6 +225,7 @@ export const CLICK_LABELS: Record<ClickKind, string> = {
   home_button: "Home page button",
   deadline_bar: "Deadline bar button",
   close_button: "Close page button",
+  offer: "Offer section button (buy / unlock)",
 };
 
 export const PAGE_KINDS = ["waitlist", "home", "day", "close", "custom"] as const;
