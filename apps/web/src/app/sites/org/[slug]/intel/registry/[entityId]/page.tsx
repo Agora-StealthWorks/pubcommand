@@ -45,7 +45,7 @@ export default async function IntelEntityPage({ params, searchParams }: { params
         {competitorName ? ` · ${competitorName}` : ""}
         {entity.category ? ` · ${LIST_CATEGORY_LABELS[entity.category as keyof typeof LIST_CATEGORY_LABELS] ?? entity.category}` : ""}
         {" · "}
-        <Link href={`/intel?${entity.kind}=${entity.id}`} className="text-accent underline">
+        <Link href={`/intel/captures?${entity.kind}=${entity.id}`} className="text-accent underline">
           See them in the inbox
         </Link>
         {" · "}

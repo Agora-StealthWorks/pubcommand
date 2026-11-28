@@ -167,7 +167,7 @@ export function LandingCard({
 }
 
 /** Experts, list and topics an email or video is linked to; each links to the inbox filtered by it. */
-export function EntityChips({ entities, base = "/intel" }: { entities: Record<EntityKind, { id: string; name: string }[]>; base?: string }) {
+export function EntityChips({ entities, base = "/intel/captures" }: { entities: Record<EntityKind, { id: string; name: string }[]>; base?: string }) {
   const kinds = (["list", "expert", "topic"] as const).filter((kind) => entities[kind].length);
   if (!kinds.length) return null;
   return (

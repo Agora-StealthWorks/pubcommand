@@ -238,3 +238,45 @@ export async function staleCopyIds(limit = 200): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+
+const DEEP_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["complianceRisk", "complianceNotes", "leadType", "hook", "bigIdea", "proof", "urgency", "offerStructure", "whatWorks", "notableFor"],
+  properties: {
+    complianceRisk: { type: "string", enum: ["HIGH", "MEDIUM", "LOW", "NONE"] },
+    complianceNotes: { type: "array", items: { type: "string" } },
+    leadType: { type: "string" },
+    hook: { type: "string" },
+    bigIdea: { type: "string" },
+    proof: { type: "array", items: { type: "string" } },
+    urgency: { type: "array", items: { type: "string" } },
+    offerStructure: { type: "string" },
+    whatWorks: { type: "array", items: { type: "string" } },
+    notableFor: { type: "string", enum: ["COPY", "EDITORIAL", "COMPLIANCE", "PRODUCT", "ALL"] },
+  },
+} as const;
+
+const DEEP_SYSTEM = `You are a senior direct-response copy chief reviewing one publisher email for editors and copywriters. Record only what the email says; describe claims, never repeat them as true; never invent numbers, prices or names. complianceRisk rates implied guarantees of returns or health outcomes, missing disclaimers and urgency that misleads.`;
+
+/** iSpy's second pass, now only on request ("Deep analyze"): one bigger AI call per copy. */
+export async function deepAnalyzeCopy(copyId: string): Promise<{ ok: true } | { error: string }> {
+  if (!aiConfigured()) return { error: "The AI key is not set. Add ANTHROPIC_API_KEY." };
+  const copy = await ispyDb((tx) => tx.ispyCopy.findUnique({ where: { id: copyId }, select: { feed: true, emails: { take: 1, orderBy: { receivedAt: "asc" }, select: { subject: true, fromName: true, fromAddress: true, textBody: true } } } }));
+  const first = copy?.emails[0];
+  if (!copy || !first) return { error: "That copy no longer exists." };
+  const answer = await runStructured<Record<string, unknown>>({
+    system: DEEP_SYSTEM,
+    input: [{ type: "text", text: copyExtractionPrompt({ feed: copy.feed, fromName: first.fromName, fromAddress: first.fromAddress, subject: first.subject, text: first.textBody }) }],
+    schema: DEEP_SCHEMA as unknown as Record<string, unknown>,
+    effort: "medium",
+    maxTokens: 4000,
+  });
+  if ("usage" in answer && answer.usage) {
+    const orgId = await ensureConsoleOrganization().catch(() => null);
+    if (orgId) await logAiUsage({ organizationId: orgId, moduleId: "intel", feature: "ispy.deep-analyze", actorId: null, usage: answer.usage }).catch(() => undefined);
+  }
+  if (answer.status !== "ok") return { error: answer.reason };
+  await ispyDb((tx) => tx.ispyCopy.update({ where: { id: copyId }, data: { deepAnalysis: { ...answer.data, analyzedAt: new Date().toISOString() } as Prisma.InputJsonValue } }));
+  return { ok: true };
+}

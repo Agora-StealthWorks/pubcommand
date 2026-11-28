@@ -33,7 +33,7 @@ function go(path: string, flash?: { error?: string; notice?: string }): never {
   redirect(query ? `${path}${path.includes("?") ? "&" : "?"}${query}` : path);
 }
 
-async function writeScope(back = "/intel"): Promise<IntelScope> {
+async function writeScope(back = "/intel/captures"): Promise<IntelScope> {
   const access = await intelAccess("write");
   if (!access.ok) go(back, { error: access.error });
   return access.scope;
@@ -153,7 +153,7 @@ export async function uploadEmails(formData: FormData) {
   if (duplicates) parts.push(`${duplicates} already in the inbox.`);
   if (skipped.length) parts.push(`Skipped: ${skipped.slice(0, 5).join("; ")}.`);
   if (added && aiConfigured()) parts.push("Extraction is running.");
-  go(added ? "/intel" : "/intel/add", added ? { notice: parts.join(" ") } : { error: parts.join(" ") });
+  go(added ? "/intel/captures" : "/intel/add", added ? { notice: parts.join(" ") } : { error: parts.join(" ") });
 }
 
 export async function pasteEmail(formData: FormData) {
@@ -177,7 +177,7 @@ export async function assignCompetitor(formData: FormData) {
   const scope = await writeScope();
   const emailId = text(formData, "emailId", 40);
   const competitorId = text(formData, "competitorId", 40);
-  if (!UUID.test(emailId)) go("/intel");
+  if (!UUID.test(emailId)) go("/intel/captures");
   const db = tenantDb(scope.organizationId);
   if (competitorId && !(await db.intelCompetitor.findFirst({ where: { id: competitorId, brandId: scope.brand.id, deletedAt: null }, select: { id: true } }))) {
     go(`/intel/emails/${emailId}`, { error: "Pick a competitor from the list." });
@@ -193,7 +193,7 @@ export async function assignCompetitor(formData: FormData) {
 export async function extractEmail(formData: FormData) {
   const scope = await writeScope();
   const emailId = text(formData, "emailId", 40);
-  if (!UUID.test(emailId)) go("/intel");
+  if (!UUID.test(emailId)) go("/intel/captures");
   if (!aiConfigured()) go(`/intel/emails/${emailId}`, { error: "The AI key is not set. Add ANTHROPIC_API_KEY in Railway, then run extraction." });
   await tenantDb(scope.organizationId).intelEmail.updateMany({ where: { id: emailId, brandId: scope.brand.id }, data: { extractionStatus: "QUEUED", extractionError: null } });
   startExtraction(scope);
@@ -202,28 +202,28 @@ export async function extractEmail(formData: FormData) {
 
 export async function extractAllPending() {
   const scope = await writeScope();
-  if (!aiConfigured()) go("/intel", { error: "The AI key is not set. Add ANTHROPIC_API_KEY in Railway, then run extraction." });
+  if (!aiConfigured()) go("/intel/captures", { error: "The AI key is not set. Add ANTHROPIC_API_KEY in Railway, then run extraction." });
   const queued = await tenantDb(scope.organizationId).intelEmail.updateMany({
     where: { brandId: scope.brand.id, deletedAt: null, extractionStatus: { in: ["NONE", "FAILED"] } },
     data: { extractionStatus: "QUEUED", extractionError: null },
   });
   startExtraction(scope);
-  go("/intel", { notice: `${queued.count} email${queued.count === 1 ? "" : "s"} queued for extraction.` });
+  go("/intel/captures", { notice: `${queued.count} email${queued.count === 1 ? "" : "s"} queued for extraction.` });
 }
 
 export async function deleteEmail(formData: FormData) {
   const scope = await writeScope();
   const emailId = text(formData, "emailId", 40);
-  if (!UUID.test(emailId)) go("/intel");
+  if (!UUID.test(emailId)) go("/intel/captures");
   await tenantDb(scope.organizationId).intelEmail.updateMany({ where: { id: emailId, brandId: scope.brand.id }, data: { deletedAt: new Date() } });
   await appendOrgAudit(scope.organizationId, { actorId: scope.actorId, action: "intel.email.deleted", targetType: "intel_email", targetId: emailId });
-  go("/intel", { notice: "Email deleted." });
+  go("/intel/captures", { notice: "Email deleted." });
 }
 
 export async function sendEmailToPromoAnalyzer(formData: FormData) {
   const scope = await writeScope();
   const emailId = text(formData, "emailId", 40);
-  if (!UUID.test(emailId)) go("/intel");
+  if (!UUID.test(emailId)) go("/intel/captures");
   if (!(await canUsePromoAnalyzer())) go(`/intel/emails/${emailId}`, { error: "Sending to Promo Analyzer needs Promo Analyzer turned on and promo.write." });
   const result = await sendToPromoAnalyzer({ organizationId: scope.organizationId, brand: scope.brand, emailId, actorId: scope.actorId });
   if ("error" in result) go(`/intel/emails/${emailId}`, { error: result.error });

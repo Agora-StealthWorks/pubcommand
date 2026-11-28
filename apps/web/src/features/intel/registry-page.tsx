@@ -150,7 +150,7 @@ export async function RegistryPage({ slug, kind, search }: { slug: string; kind:
                       {kind !== "topic" ? <td className="border-b border-line px-3 py-2 text-ink">{row.competitorId ? competitorName.get(row.competitorId) ?? "" : <span className="text-muted">—</span>}</td> : null}
                       {kind === "list" ? <td className="border-b border-line px-3 py-2">{row.category ? LIST_CATEGORY_LABELS[row.category as ListCategory] : <span className="text-muted">—</span>}</td> : null}
                       <td className="border-b border-line px-3 py-2 text-right tabular-nums">
-                        <Link href={`/intel?${kind}=${row.id}`} className="underline">
+                        <Link href={`/intel/captures?${kind}=${row.id}`} className="underline">
                           {row.count}
                         </Link>
                       </td>

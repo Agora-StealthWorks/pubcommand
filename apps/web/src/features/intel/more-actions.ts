@@ -118,9 +118,9 @@ export async function sendVideoToAnalyzer(formData: FormData) {
 // ── Landing pages ───────────────────────────────────────────────────────────
 
 export async function fetchEmailLanding(formData: FormData) {
-  const scope = await writeScope("/intel");
+  const scope = await writeScope("/intel/captures");
   const emailId = text(formData, "emailId", 40);
-  if (!UUID.test(emailId)) go("/intel");
+  if (!UUID.test(emailId)) go("/intel/captures");
   const row = await captureEmailLanding({ organizationId: scope.organizationId, brandId: scope.brand.id, emailId, force: true });
   if (!row) go(`/intel/emails/${emailId}`, { error: "This email has no landing page link to fetch." });
   await appendOrgAudit(scope.organizationId, { actorId: scope.actorId, action: "intel.landing.fetched", targetType: "intel_email", targetId: emailId });

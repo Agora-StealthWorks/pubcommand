@@ -89,7 +89,7 @@ export default async function IntelVideoPage({ params, searchParams }: { params:
             </dd>
           </div>
         </dl>
-        <EntityChips entities={entities} base="/intel" />
+        <EntityChips entities={entities} base="/intel/captures" />
         {scope.canWrite ? (
           <form action={assignVideoCompetitor} className="mt-3 flex flex-wrap items-center gap-2">
             <input type="hidden" name="videoId" value={video.id} />

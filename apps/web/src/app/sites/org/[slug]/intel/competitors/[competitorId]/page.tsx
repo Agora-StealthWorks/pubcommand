@@ -50,7 +50,7 @@ export default async function IntelCompetitorPage({
         {byType.length} email{byType.length === 1 ? "" : "s"}
         {[...typeCounts.entries()].map(([type, count]) => ` · ${count} ${(EMAIL_TYPE_LABELS[type as EmailType] ?? "not extracted").toLowerCase()}`).join("")}
         {" · "}
-        <Link href={`/intel?competitor=${competitor.id}`} className="text-accent underline">
+        <Link href={`/intel/captures?competitor=${competitor.id}`} className="text-accent underline">
           See them in the inbox
         </Link>
         {" · "}

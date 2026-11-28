@@ -47,7 +47,7 @@ export default async function IntelEmailPage({
 
   return (
     <div className="min-w-0">
-      <Link href="/intel" className="text-sm text-accent underline">
+      <Link href="/intel/captures" className="text-sm text-accent underline">
         ← Inbox
       </Link>
       <div className="mt-3">
