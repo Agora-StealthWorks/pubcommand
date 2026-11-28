@@ -67,7 +67,7 @@ export function verifyState(token: string, secret: string, now = Date.now()): OA
     const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as OAuthState;
     if (typeof state.exp !== "number" || state.exp < now) return null;
     if (![state.organizationId, state.brandId, state.userId, state.orgSlug].every((value) => typeof value === "string" && value)) return null;
-    if (typeof state.returnTo !== "string" || !state.returnTo.startsWith("/intel")) state.returnTo = "/intel/gmail";
+    if (typeof state.returnTo !== "string" || !state.returnTo.startsWith("/ispy")) state.returnTo = "/ispy/gmail";
     return state;
   } catch {
     return null;

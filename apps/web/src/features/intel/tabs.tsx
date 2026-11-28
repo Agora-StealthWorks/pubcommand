@@ -4,14 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS: { href: string; label: string; also?: string[] }[] = [
-  { href: "/intel", label: "Inbox" },
-  { href: "/intel/radar", label: "Promo Radar" },
-  { href: "/intel/videos", label: "Videos" },
-  { href: "/intel/competitors", label: "Competitors" },
-  { href: "/intel/experts", label: "Registry", also: ["/intel/lists", "/intel/topics", "/intel/registry"] },
-  { href: "/intel/add", label: "Add emails" },
-  { href: "/intel/gmail", label: "Gmail" },
-  { href: "/intel/settings", label: "Settings" },
+  { href: "/ispy", label: "Inbox" },
+  { href: "/ispy/radar", label: "Promo Radar" },
+  { href: "/ispy/videos", label: "Videos" },
+  { href: "/ispy/competitors", label: "Competitors" },
+  { href: "/ispy/experts", label: "Registry", also: ["/ispy/lists", "/ispy/topics", "/ispy/registry"] },
+  { href: "/ispy/add", label: "Add emails" },
+  { href: "/ispy/gmail", label: "Gmail" },
+  { href: "/ispy/settings", label: "Settings" },
 ];
 
 export function IntelTabs() {
@@ -22,7 +22,7 @@ export function IntelTabs() {
     <nav className="flex max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1" aria-label="iSpy">
       {TABS.map((tab) => {
         const active =
-          tab.href === "/intel" ? tail === "/intel" || tail.startsWith("/intel/emails") : tail.startsWith(tab.href) || Boolean(tab.also?.some((prefix) => tail.startsWith(prefix)));
+          tab.href === "/ispy" ? tail === "/ispy" || tail.startsWith("/ispy/emails") : tail.startsWith(tab.href) || Boolean(tab.also?.some((prefix) => tail.startsWith(prefix)));
         return (
           <Link
             key={tab.href}

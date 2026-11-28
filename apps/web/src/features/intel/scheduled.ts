@@ -92,7 +92,7 @@ async function weekVideos(organizationId: string, brandId: string, week: Date, s
     competitorName: row.competitor?.name ?? null,
     type: row.videoType,
     headline: (row.extraction as EmailExtraction | null)?.headline ?? null,
-    url: orgUrl(slug, `/intel/videos/${row.id}`),
+    url: orgUrl(slug, `/ispy/videos/${row.id}`),
   }));
 }
 
@@ -139,7 +139,7 @@ export async function sendBrandDigest(input: { organizationId: string; brand: In
     brandName: input.brand.name,
     summary: radar.summary,
     narrative: radar.narrative,
-    radarUrl: orgUrl(slug, "/intel/radar", `?week=${isoDay(input.week)}`),
+    radarUrl: orgUrl(slug, "/ispy/radar", `?week=${isoDay(input.week)}`),
     videos: await weekVideos(input.organizationId, input.brand.id, input.week, slug),
   });
 

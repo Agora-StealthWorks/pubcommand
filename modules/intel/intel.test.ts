@@ -72,7 +72,7 @@ const MULTIPART = CRLF([
 describe("manifest", () => {
   it("keeps the module contract", () => {
     expect(manifest.id).toBe("intel");
-    expect(manifest.nav[0]).toMatchObject({ href: "/intel", permission: "intel.read" });
+    expect(manifest.nav[0]).toMatchObject({ href: "/ispy", permission: "intel.read" });
     expect(manifest.permissions.map((permission) => permission.key)).toEqual(["intel.read", "intel.write"]);
   });
 });

@@ -5,8 +5,8 @@ export const manifest = defineModule({
   slug: "intel",
   name: "iSpy",
   description: "Competitor intelligence: competitors, their emails (upload, paste or Gmail) and videos, landing pages, AI extraction, expert/list/topic registries, CSV exports and the weekly Promo Radar with a Slack/email digest.",
-  nav: [{ label: "iSpy", href: "/intel", permission: "intel.read" }],
-  routes: [{ path: "/intel", title: "iSpy" }],
+  nav: [{ label: "iSpy", href: "/ispy", permission: "intel.read" }],
+  routes: [{ path: "/ispy", title: "iSpy" }],
   permissions: [
     { key: "intel.read", description: "Read competitors, competitor emails and the Promo Radar" },
     { key: "intel.write", description: "Add competitors, emails and videos, connect Gmail, edit registries and settings, run extraction and the radar" },

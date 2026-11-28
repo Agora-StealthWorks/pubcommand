@@ -35,7 +35,7 @@ export default async function IntelCompetitorsPage({
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
               {competitors.map((competitor) => (
                 <li key={competitor.id}>
-                  <Link href={`/intel/competitors/${competitor.id}`} className="block px-4 py-3 hover:bg-canvas">
+                  <Link href={`/ispy/competitors/${competitor.id}`} className="block px-4 py-3 hover:bg-canvas">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="min-w-0 font-semibold text-ink">{competitor.name}</span>
                       {competitor.tags.map((tag) => (

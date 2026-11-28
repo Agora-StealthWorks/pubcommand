@@ -93,8 +93,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.rewrite(discovery, { request: { headers: requestHeaders } });
   }
 
+  // iSpy (the Intel app) is at /ispy; its pages live in the intel route folders. Old /intel links on
+  // organization hosts move permanently to /ispy. The console keeps its own /intel pages (VidRipper),
+  // and serves /ispy too because it reuses iSpy's video pages, whose links say /ispy.
+  if (site.kind === "org" && (pathname === "/intel" || pathname.startsWith("/intel/"))) {
+    const moved = request.nextUrl.clone();
+    moved.pathname = `/ispy${pathname.slice("/intel".length)}`;
+    return NextResponse.redirect(moved, 308);
+  }
+  const routePath = (site.kind === "org" || site.kind === "admin") && (pathname === "/ispy" || pathname.startsWith("/ispy/")) ? `/intel${pathname.slice("/ispy".length)}` : pathname;
+
   const url = request.nextUrl.clone();
-  const suffix = pathname === "/" ? "" : pathname;
+  const suffix = routePath === "/" ? "" : routePath;
   // Sign-in pages work on every host (org, app, admin): /login and the "Forgot your password?" reset page.
   if (pathname === "/login") url.pathname = "/sites/marketing/login";
   else if (pathname === "/reset-password") url.pathname = "/sites/marketing/reset-password";

@@ -40,7 +40,7 @@ Platform permissions are separate. `platformCan(role, permission)` reads the sta
 | `admin.pubcommand.com` | Platform console, staff only |
 | `{slug}.pubcommand.com` | That organization |
 
-Module routes are the manifest slug: `/knowledge`, `/editorial`, `/performance`, `/promo-studio`, `/intel`, `/forms`, `/charts`, `/billing`. `/settings` is the shell. Product modules are manifests only. TODO: do not build their features in this PR. Disabled or unentitled modules show an upsell. Unknown slugs 404.
+Module routes are the manifest slug: `/knowledge`, `/editorial`, `/performance`, `/promo-studio`, `/ispy` (the Intel module, shown as iSpy; `/intel` redirects to it), `/forms`, `/charts`, `/billing`. `/settings` is the shell. Product modules are manifests only. TODO: do not build their features in this PR. Disabled or unentitled modules show an upsell. Unknown slugs 404.
 
 Middleware parses the `Host` header (and, only on bare localhost, `?org=` or `?site=`). It rewrites to an internal route that includes the slug. The server resolves the slug again from the host, loads the organization, and requires a membership before any tenant query. The host is not authorization. Old slugs live in `organization_slug_history` and redirect to the current slug.
 

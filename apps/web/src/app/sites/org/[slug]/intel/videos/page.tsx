@@ -76,7 +76,7 @@ export default async function IntelVideosPage({ params, searchParams }: { params
         </aside>
       </div>
 
-      <form action="/intel/videos" className="mb-4 grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(5,minmax(0,1fr))_auto]">
+      <form action="/ispy/videos" className="mb-4 grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(5,minmax(0,1fr))_auto]">
         <div className="min-w-0">
           <Label htmlFor="video-q">Search</Label>
           <Input id="video-q" name="q" defaultValue={filters.q} placeholder="Title, URL or transcript" className="mt-1" />
@@ -127,7 +127,7 @@ export default async function IntelVideosPage({ params, searchParams }: { params
             Filter
           </Button>
           {filtered ? (
-            <Link href="/intel/videos" className="inline-flex min-h-10 items-center px-2 text-sm text-muted underline">
+            <Link href="/ispy/videos" className="inline-flex min-h-10 items-center px-2 text-sm text-muted underline">
               Clear
             </Link>
           ) : null}
@@ -140,7 +140,7 @@ export default async function IntelVideosPage({ params, searchParams }: { params
           {filtered ? " match" : ""}
           {videos.length === 100 ? " (latest 100)" : ""}
         </p>
-        <a href={`/intel/export?${exportQuery.toString()}`} className="text-sm text-accent underline">
+        <a href={`/ispy/export?${exportQuery.toString()}`} className="text-sm text-accent underline">
           Export CSV
         </a>
       </div>
@@ -151,10 +151,10 @@ export default async function IntelVideosPage({ params, searchParams }: { params
         <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
           {videos.map((video) => (
             <li key={video.id}>
-              <Link href={`/intel/videos/${video.id}`} className="flex min-w-0 gap-3 px-4 py-3 hover:bg-canvas">
+              <Link href={`/ispy/videos/${video.id}`} className="flex min-w-0 gap-3 px-4 py-3 hover:bg-canvas">
                 <div className="hidden h-14 w-24 shrink-0 overflow-hidden rounded-md bg-canvas sm:block">
                   {video.hasThumb ? (
-                    <img src={`/intel/videos/${video.id}/frames/0`} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    <img src={`/ispy/videos/${video.id}/frames/0`} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : null}
                 </div>
                 <div className="min-w-0 flex-1">

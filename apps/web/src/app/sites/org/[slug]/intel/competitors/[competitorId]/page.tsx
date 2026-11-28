@@ -39,7 +39,7 @@ export default async function IntelCompetitorPage({
 
   return (
     <div className="min-w-0">
-      <Link href="/intel/competitors" className="text-sm text-accent underline">
+      <Link href="/ispy/competitors" className="text-sm text-accent underline">
         ← Competitors
       </Link>
       <div className="mt-3">
@@ -50,15 +50,15 @@ export default async function IntelCompetitorPage({
         {byType.length} email{byType.length === 1 ? "" : "s"}
         {[...typeCounts.entries()].map(([type, count]) => ` · ${count} ${(EMAIL_TYPE_LABELS[type as EmailType] ?? "not extracted").toLowerCase()}`).join("")}
         {" · "}
-        <Link href={`/intel?competitor=${competitor.id}`} className="text-accent underline">
+        <Link href={`/ispy?competitor=${competitor.id}`} className="text-accent underline">
           See them in the inbox
         </Link>
         {" · "}
-        <a href={`/intel/export?competitor=${competitor.id}`} className="text-accent underline">
+        <a href={`/ispy/export?competitor=${competitor.id}`} className="text-accent underline">
           Export emails (CSV)
         </a>
         {" · "}
-        <a href={`/intel/export?kind=videos&competitor=${competitor.id}`} className="text-accent underline">
+        <a href={`/ispy/export?kind=videos&competitor=${competitor.id}`} className="text-accent underline">
           Export videos (CSV)
         </a>
       </p>
@@ -98,7 +98,7 @@ export default async function IntelCompetitorPage({
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
               {recent.map((email) => (
                 <li key={email.id}>
-                  <Link href={`/intel/emails/${email.id}`} className="block px-4 py-2.5 hover:bg-canvas">
+                  <Link href={`/ispy/emails/${email.id}`} className="block px-4 py-2.5 hover:bg-canvas">
                     <div className="flex items-center gap-2">
                       <TypeBadge type={email.emailType} />
                       <span className="ml-auto text-xs text-muted">{formatDay(email.receivedAt)}</span>

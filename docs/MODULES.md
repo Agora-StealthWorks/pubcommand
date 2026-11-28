@@ -14,7 +14,7 @@ Register the manifest in `modules/src/index.ts`. The registry rejects duplicate 
 | `editorial` | `/editorial` | `editorial.read`, `editorial.write`, `editorial.publish` | `editorial` |
 | `performance` | `/performance` | `performance.read` | `performance` |
 | `promo-studio` | `/promo-studio` | `promo.read`, `promo.write`, `promo.approve` | `promo-studio` |
-| `intel` | `/intel` | `intel.read` | `intel` |
+| `intel` | `/ispy` (iSpy; `/intel` redirects) | `intel.read` | `intel` |
 | `forms` | `/forms` | `forms.read`, `forms.write`, `forms.export` | `forms` |
 | `charts` | `/charts` | `charts.read` | `charts` |
 | `billing` | `/billing` | `billing.read`, `billing.manage` | `billing` |

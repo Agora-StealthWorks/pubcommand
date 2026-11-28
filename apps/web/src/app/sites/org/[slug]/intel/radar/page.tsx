@@ -45,11 +45,11 @@ export default async function IntelRadarPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/intel/radar?week=${prev}`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
+          <Link href={`/ispy/radar?week=${prev}`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
             ← Week before
           </Link>
           {next ? (
-            <Link href={`/intel/radar?week=${next}`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
+            <Link href={`/ispy/radar?week=${next}`} className="inline-flex min-h-11 items-center rounded-md border border-line px-3 text-sm font-semibold">
               Week after →
             </Link>
           ) : null}
@@ -119,7 +119,7 @@ export default async function IntelRadarPage({
             <div key={group.key} className="rounded-xl border border-line bg-white p-4">
               <div className="flex flex-wrap items-center gap-2">
                 {group.competitorId ? (
-                  <Link href={`/intel/competitors/${group.competitorId}`} className="pc-break font-semibold text-ink underline-offset-2 hover:underline">
+                  <Link href={`/ispy/competitors/${group.competitorId}`} className="pc-break font-semibold text-ink underline-offset-2 hover:underline">
                     {group.name}
                   </Link>
                 ) : (
@@ -138,7 +138,7 @@ export default async function IntelRadarPage({
                     <li key={promo.key} className="py-2">
                       <div className="flex flex-wrap items-center gap-2">
                         {promo.isNew ? <Badge tone="accent">new</Badge> : <Badge>returning</Badge>}
-                        <Link href={`/intel/emails/${promo.emailIds[0]}`} className="pc-break text-sm font-medium text-ink hover:underline">
+                        <Link href={`/ispy/emails/${promo.emailIds[0]}`} className="pc-break text-sm font-medium text-ink hover:underline">
                           {promo.headline}
                         </Link>
                       </div>
@@ -193,7 +193,7 @@ export default async function IntelRadarPage({
               <ul className="space-y-1 text-sm">
                 {weeks.map((row) => (
                   <li key={row.id}>
-                    <Link href={`/intel/radar?week=${isoDay(row.weekStart)}`} className={`underline ${isoDay(row.weekStart) === isoDay(week) ? "font-semibold text-ink" : "text-accent"}`}>
+                    <Link href={`/ispy/radar?week=${isoDay(row.weekStart)}`} className={`underline ${isoDay(row.weekStart) === isoDay(week) ? "font-semibold text-ink" : "text-accent"}`}>
                       {weekLabel(row.weekStart)}
                     </Link>
                   </li>
