@@ -89,6 +89,14 @@ re-checking that the agent is not paused or removed and its token is live. So ev
 action runs with the agent's own permissions, brand access and audit logging, exactly as for a
 person. A pass never works as a browser login, and agents still cannot sign in with cookies.
 
+Editors that save from the browser without a form have their own tools. For a funnel's Design,
+Home page and Offer section: `get_funnel_editor` returns the current JSON, the choices (forms,
+SMS forms, module and page targets, form themes) and every block type with its fields;
+`save_funnel_editor` saves one part as its Save button does (blocks replace the whole list); and
+`add_funnel_image` stores an image from a public https address. They call
+`/agent-api/funnels/<id>`, which accepts only a valid agent pass and runs the editors' own save
+actions.
+
 Rules:
 
 - Organization agents work only in their own organization. Platform agents must name an
