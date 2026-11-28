@@ -4,7 +4,8 @@ import { moduleRegistry } from "@pubcommand/modules";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { PLATFORM_PERMISSIONS, platformCan } from "@pubcommand/core";
-import { readImpersonation, readSession, readStaff, staffReady } from "./auth";
+import { readAgentPassFromRequest, readImpersonation, readSession, readStaff, staffReady } from "./auth";
+import { agentSettings } from "@/features/agents/data";
 import { CONSOLE_ORG_SLUG, ensureConsoleOrganization } from "./console-workspace";
 import { currentRequest } from "./request";
 
@@ -49,12 +50,19 @@ export const getOrgContext = cache(async (slug: string) => {
       subject = await loadSuperAdminSubject(resolved.id, auth.user.id, moduleRegistry.permissionModules());
     }
   }
+  // An AI agent using the app (MCP page bridge): a platform agent with admin changes works with
+  // full access in the organization; an agent never publishes when the organization holds AI
+  // agents' posts for approval (AI Agents → Settings).
+  const agentPass = await readAgentPassFromRequest();
+  if (agentPass && agentPass.o !== resolved.id) return { kind: "forbidden" as const, request, resolved, auth, impersonatingHere };
+  if (!subject && agentPass?.s) subject = await loadSuperAdminSubject(resolved.id, auth.user.id, moduleRegistry.permissionModules());
+  if (subject && agentPass && !(await agentSettings(resolved.id)).allowPublishing) subject = withoutPublishing(subject);
   if (!subject) return { kind: "forbidden" as const, request, resolved, auth, impersonatingHere };
   const brands = await tenantDb(resolved.id).brand.findMany({
     orderBy: { name: "asc" },
     include: { workspaces: { orderBy: { name: "asc" } } },
   });
-  const brandCookie = (await cookies()).get("pc_brand")?.value;
+  const brandCookie = agentPass?.b ?? (await cookies()).get("pc_brand")?.value;
   const brand = brands.find((item) => item.id === brandCookie) ?? brands[0] ?? null;
   const memberships = await rawPrisma().membership.findMany({
     where: { userId: effectiveUserId, status: "ACTIVE", organization: { deletedAt: null } },
@@ -113,6 +121,12 @@ async function consoleContext(request: CurrentRequest) {
     effectiveUserId: auth.user.id,
     scope,
   };
+}
+
+/** The subject with every "*.publish" permission excluded (AI agents when approval is required). */
+function withoutPublishing<T extends { permissionModules: Readonly<Record<string, string>>; exclusions: readonly unknown[] }>(subject: T): T {
+  const publish = Object.keys(subject.permissionModules).filter((permission) => permission.endsWith(".publish"));
+  return { ...subject, exclusions: [...subject.exclusions, ...publish.map((permission) => ({ permission, userId: null, roleId: null, brandId: null, workspaceId: null }))] };
 }
 
 export { can };

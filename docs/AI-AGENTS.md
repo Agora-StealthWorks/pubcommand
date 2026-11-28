@@ -72,6 +72,32 @@ learn up into the Master Brain like any taught note. An agent can update only no
 itself. No tool calls PubCommand's LLM: the agent's own AI reads the search results. An app's tools are listed only when the app is on and the agent can
 read it. Each call checks the agent's permission in the post's brand.
 
+### Using the apps (every app, through its own pages)
+
+`list_app_pages`, `open_page` and `submit_form` let an agent use any app the way a person does:
+Funnels, Forms, Calendar, Testimonials, Research, Websites, Mini-Blog and the rest, including
+apps that have no dedicated tools. `open_page` shows a page's text, its links and every form on it
+(fields with labels, current values and choices, plus its buttons). `submit_form` fills in the
+fields it is given, keeps the others as they are, presses a button and runs the app's own server
+action. It returns the app's message (for example "Saved.") and the page it lands on. File fields
+take public https image addresses.
+
+How it works (`features/agents/page-bridge.ts`): the MCP server requests the app's own pages
+internally and adds a signed agent pass (`x-pc-agent`, HMAC with `AUTH_SECRET`, two-minute life,
+`features/agents/assertion.ts`). `readSession()` turns a valid pass into the agent's user, after
+re-checking that the agent is not paused or removed and its token is live. So every page and
+action runs with the agent's own permissions, brand access and audit logging, exactly as for a
+person. A pass never works as a browser login, and agents still cannot sign in with cookies.
+
+Rules:
+
+- Organization agents work only in their own organization. Platform agents must name an
+  `organization` and work there with full access; submitting needs "Can make admin changes".
+- With **Allow publishing by AI agents** off, the agent loses every `*.publish` permission on
+  these pages too, so a publish becomes "Submitted for review" and waits in Approvals.
+- Off limits: AI Agents, the account, billing, domains, sign-in and password pages, `/api` and
+  public site pages.
+
 Each tool call is logged in `ai_agent_calls` (the agent's Activity list, plus a limit of
 120 calls a minute). Writes also go to the organization's audit log as the agent user.
 
