@@ -31,11 +31,11 @@ export default async function IntelVideoPage({ params, searchParams }: { params:
   const capturing = video.status === "QUEUED" || video.status === "RUNNING";
   const extracting = video.extractionStatus === "QUEUED" || video.extractionStatus === "RUNNING";
   const stepIndex = video.step ? VIDEO_STEPS.indexOf(video.step as VideoStep) : -1;
-  const base = `/intel/videos/${video.id}`;
+  const base = `/ispy/videos/${video.id}`;
 
   return (
     <div className="min-w-0">
-      <Link href="/intel/videos" className="text-sm text-accent underline">
+      <Link href="/ispy/videos" className="text-sm text-accent underline">
         ← Videos
       </Link>
       <div className="mt-3">
@@ -79,7 +79,7 @@ export default async function IntelVideoPage({ params, searchParams }: { params:
             <dt className="text-muted">Competitor</dt>
             <dd className="min-w-0">
               {video.competitor ? (
-                <Link href={`/intel/competitors/${video.competitor.id}`} className="text-accent underline">
+                <Link href={`/ispy/competitors/${video.competitor.id}`} className="text-accent underline">
                   {video.competitor.name}
                 </Link>
               ) : (
@@ -89,7 +89,7 @@ export default async function IntelVideoPage({ params, searchParams }: { params:
             </dd>
           </div>
         </dl>
-        <EntityChips entities={entities} base="/intel" />
+        <EntityChips entities={entities} base="/ispy" />
         {scope.canWrite ? (
           <form action={assignVideoCompetitor} className="mt-3 flex flex-wrap items-center gap-2">
             <input type="hidden" name="videoId" value={video.id} />

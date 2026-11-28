@@ -45,11 +45,11 @@ export default async function IntelEntityPage({ params, searchParams }: { params
         {competitorName ? ` · ${competitorName}` : ""}
         {entity.category ? ` · ${LIST_CATEGORY_LABELS[entity.category as keyof typeof LIST_CATEGORY_LABELS] ?? entity.category}` : ""}
         {" · "}
-        <Link href={`/intel?${entity.kind}=${entity.id}`} className="text-accent underline">
+        <Link href={`/ispy?${entity.kind}=${entity.id}`} className="text-accent underline">
           See them in the inbox
         </Link>
         {" · "}
-        <a href={`/intel/export?${entity.kind}=${entity.id}`} className="text-accent underline">
+        <a href={`/ispy/export?${entity.kind}=${entity.id}`} className="text-accent underline">
           Export CSV
         </a>
       </p>
@@ -64,7 +64,7 @@ export default async function IntelEntityPage({ params, searchParams }: { params
               <ul className="divide-y divide-line">
                 {entity.emails.map((email) => (
                   <li key={email.id}>
-                    <Link href={`/intel/emails/${email.id}`} className="block px-4 py-2 hover:bg-canvas">
+                    <Link href={`/ispy/emails/${email.id}`} className="block px-4 py-2 hover:bg-canvas">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="min-w-0 truncate text-sm font-semibold">{email.competitor?.name ?? email.fromAddress}</span>
                         <TypeBadge type={email.emailType} />
@@ -83,7 +83,7 @@ export default async function IntelEntityPage({ params, searchParams }: { params
               <ul className="divide-y divide-line">
                 {entity.videos.map((video) => (
                   <li key={video.id}>
-                    <Link href={`/intel/videos/${video.id}`} className="block px-4 py-2 hover:bg-canvas">
+                    <Link href={`/ispy/videos/${video.id}`} className="block px-4 py-2 hover:bg-canvas">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="pc-break min-w-0 text-sm">{video.title ?? video.url}</span>
                         <TypeBadge type={video.videoType} />

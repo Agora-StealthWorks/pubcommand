@@ -40,14 +40,14 @@ export default async function IntelEmailPage({
   const view = (VIEWS as readonly string[]).includes(search.view ?? "") ? (search.view as (typeof VIEWS)[number]) : email.htmlBody ? "html" : "text";
   const images = search.images === "1";
   const sanitized = email.htmlBody && view === "html" ? sanitizeEmailHtml(email.htmlBody, { allowRemoteImages: images }) : null;
-  const base = `/intel/emails/${email.id}`;
+  const base = `/ispy/emails/${email.id}`;
   const viewHref = (next: string, withImages = images) => `${base}?view=${next}${withImages ? "&images=1" : ""}`;
   const busy = email.extractionStatus === "QUEUED" || email.extractionStatus === "RUNNING";
   const ai = aiConfigured();
 
   return (
     <div className="min-w-0">
-      <Link href="/intel" className="text-sm text-accent underline">
+      <Link href="/ispy" className="text-sm text-accent underline">
         ← Inbox
       </Link>
       <div className="mt-3">
@@ -81,7 +81,7 @@ export default async function IntelEmailPage({
             <dt className="text-muted">Competitor</dt>
             <dd className="min-w-0">
               {email.competitor ? (
-                <Link href={`/intel/competitors/${email.competitor.id}`} className="text-accent underline">
+                <Link href={`/ispy/competitors/${email.competitor.id}`} className="text-accent underline">
                   {email.competitor.name}
                 </Link>
               ) : (
@@ -110,7 +110,7 @@ export default async function IntelEmailPage({
               Set competitor
             </Button>
             {competitors.length === 0 ? (
-              <Link href="/intel/competitors" className="text-sm text-accent underline">
+              <Link href="/ispy/competitors" className="text-sm text-accent underline">
                 Add a competitor
               </Link>
             ) : null}

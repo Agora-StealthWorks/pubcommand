@@ -14,9 +14,9 @@ export const ENTITY_KINDS = ["expert", "list", "topic"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 
 export const ENTITY_LABELS: Record<EntityKind, { one: string; many: string; route: string }> = {
-  expert: { one: "Expert", many: "Experts", route: "/intel/experts" },
-  list: { one: "List", many: "Lists", route: "/intel/lists" },
-  topic: { one: "Topic", many: "Topics", route: "/intel/topics" },
+  expert: { one: "Expert", many: "Experts", route: "/ispy/experts" },
+  list: { one: "List", many: "Lists", route: "/ispy/lists" },
+  topic: { one: "Topic", many: "Topics", route: "/ispy/topics" },
 };
 
 export const LIST_CATEGORIES = ["free", "paid", "hotlist", "marketing"] as const;

@@ -59,7 +59,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
         landingUrl: row.landingUrl,
         landingTitle: row.landingPage?.status === "OK" ? row.landingPage.title : null,
         extraction: (row.extraction as EmailExtraction | null) ?? null,
-        link: `${base}/intel/emails/${row.id}`,
+        link: `${base}/ispy/emails/${row.id}`,
       })),
     );
   } else {
@@ -84,7 +84,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
         transcriptSource: row.transcriptSource,
         transcriptChars: row.transcript.length,
         extraction: (row.extraction as EmailExtraction | null) ?? null,
-        link: `${base}/intel/videos/${row.id}`,
+        link: `${base}/ispy/videos/${row.id}`,
       })),
     );
   }

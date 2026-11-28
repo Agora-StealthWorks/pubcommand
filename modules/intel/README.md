@@ -1,16 +1,16 @@
 # iSpy (Intel)
 
-The app is called **iSpy** in the product (dashboard card, sidebar and page title). Its code, URLs (`/intel`) and permissions (`intel.*`) keep the name Intel.
+The app is called **iSpy** in the product (dashboard card, sidebar, page title) and lives at `/ispy` on an organization's host. Old `/intel` addresses redirect there permanently, so bookmarks and earlier digest links keep working. Its code, route folders, permissions (`intel.*`), the Gmail callback (`/api/intel/gmail/callback`) and the cron route (`/api/intel/cron`) keep the name Intel.
 
-Competitor intelligence: what competing publishers send and promote. Route `/intel`. Permissions `intel.read` (view) and `intel.write` (change). Plan entitlement `intel`. Data belongs to the current brand.
+Competitor intelligence: what competing publishers send and promote. Route `/ispy`. Permissions `intel.read` (view) and `intel.write` (change). Plan entitlement `intel`. Data belongs to the current brand.
 
 ## Screens
-- **Inbox** (`/intel`): competitor emails with filters (competitor, type, date range, search, and list / expert / topic), plus **Export CSV** of exactly what is filtered.
-- **Email** (`/intel/emails/<id>`): sanitized HTML in a sandboxed iframe (remote images blocked unless turned on), plain text, links, the AI extraction, its list/experts/topics, the captured **landing page** (text only, "Fetch page" re-runs extraction with it), manual competitor assignment, raw `.eml` download, Send to Promo Analyzer.
-- **Promo Radar** (`/intel/radar?week=YYYY-MM-DD`): one week grouped by competitor, promos merged across re-sends, new promos flagged, recurring angles, and an AI read when a key is set.
-- **Videos** (`/intel/videos`, `/intel/videos/<id>`), the old VidRipper: paste a sales page, webinar replay, YouTube, Vimeo or Wistia link. A background capture finds the player on the page, downloads it (yt-dlp, max 480p), takes the transcript (platform captions first, else speech-to-text), keeps up to six small keyframes and the page text, then runs the same AI extraction as emails. The video file is deleted. Transcript download, re-capture, competitor assignment, Send transcript to Promo Analyzer.
+- **Inbox** (`/ispy`): competitor emails with filters (competitor, type, date range, search, and list / expert / topic), plus **Export CSV** of exactly what is filtered.
+- **Email** (`/ispy/emails/<id>`): sanitized HTML in a sandboxed iframe (remote images blocked unless turned on), plain text, links, the AI extraction, its list/experts/topics, the captured **landing page** (text only, "Fetch page" re-runs extraction with it), manual competitor assignment, raw `.eml` download, Send to Promo Analyzer.
+- **Promo Radar** (`/ispy/radar?week=YYYY-MM-DD`): one week grouped by competitor, promos merged across re-sends, new promos flagged, recurring angles, and an AI read when a key is set.
+- **Videos** (`/ispy/videos`, `/ispy/videos/<id>`), the old VidRipper: paste a sales page, webinar replay, YouTube, Vimeo or Wistia link. A background capture finds the player on the page, downloads it (yt-dlp, max 480p), takes the transcript (platform captions first, else speech-to-text), keeps up to six small keyframes and the page text, then runs the same AI extraction as emails. The video file is deleted. Transcript download, re-capture, competitor assignment, Send transcript to Promo Analyzer.
 - **Competitors**: name, brands/products, websites, sender addresses and domains, notes, tags; one-click competitor from an unmatched sender domain; CSV export per competitor.
-- **Registry** (`/intel/experts`, `/intel/lists`, `/intel/topics`, `/intel/registry/<id>`): experts/gurus, sender lists/newsletters (with a category: free, paid, hotlist, marketing) and topics, with counts, filters, aliases, ignore, merge and "Rebuild links".
+- **Registry** (`/ispy/experts`, `/ispy/lists`, `/ispy/topics`, `/ispy/registry/<id>`): experts/gurus, sender lists/newsletters (with a category: free, paid, hotlist, marketing) and topics, with counts, filters, aliases, ignore, merge and "Rebuild links".
 - **Add emails**: `.eml` / `.mbox` upload (up to 50 MB) or paste.
 - **Gmail**: Google OAuth (read-only), Sync now, a Gmail search filter, Disconnect.
 - **Settings**: weekly digest (Slack incoming webhook stored encrypted, and/or team emails), "send last week's now", and whether landing pages are fetched automatically.
@@ -25,7 +25,7 @@ Competitor intelligence: what competing publishers send and promote. Route `/int
   - `digest.ts`: the Slack/email/text digest. `csv.ts`: exports (formula-safe cells).
 - Server side (`apps/web/src/features/intel/`): `server.ts` (store, match, extract, radar, Promo Analyzer), `gmail.ts`, `net.ts` (guarded HTTP with connect-time address checks), `landing.ts`, `registry.ts`, `video.ts` (queue, one capture at a time, extraction), `video-tools.ts` (yt-dlp/ffmpeg), `scheduled.ts` (shared by jobs and the cron route), `settings.ts`.
 - Jobs (`apps/web/src/jobs/intel-*.ts`): `intel.gmail-sync` (every 3 h), `intel.radar` (Mon 6:10 ET), `intel.digest` (Mon 8:05 ET), `intel.video-capture` (every 5 min; a paste also starts the capture at once).
-- Routes: `/api/intel/gmail/callback`; `/api/intel/cron?job=sync|radar|all` (kept for external schedulers, `Authorization: Bearer $INTEL_CRON_SECRET`); `/intel/export?kind=emails|videos&…` (CSV).
+- Routes: `/api/intel/gmail/callback`; `/api/intel/cron?job=sync|radar|all` (kept for external schedulers, `Authorization: Bearer $INTEL_CRON_SECRET`); `/ispy/export?kind=emails|videos&…` (CSV).
 
 ## Rules
 - The AI never supplies facts. Prices are as the email, page or transcript states them; the landing page must be one of the parsed links.

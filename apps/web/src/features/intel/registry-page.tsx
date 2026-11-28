@@ -139,7 +139,7 @@ export async function RegistryPage({ slug, kind, search }: { slug: string; kind:
                   {rows.map((row) => (
                     <tr key={row.id} className="align-top">
                       <td className="border-b border-line px-3 py-2">
-                        <Link href={`/intel/registry/${row.id}`} className="pc-break font-semibold text-accent underline">
+                        <Link href={`/ispy/registry/${row.id}`} className="pc-break font-semibold text-accent underline">
                           {row.name}
                         </Link>
                         {row.ignored ? (
@@ -150,7 +150,7 @@ export async function RegistryPage({ slug, kind, search }: { slug: string; kind:
                       {kind !== "topic" ? <td className="border-b border-line px-3 py-2 text-ink">{row.competitorId ? competitorName.get(row.competitorId) ?? "" : <span className="text-muted">—</span>}</td> : null}
                       {kind === "list" ? <td className="border-b border-line px-3 py-2">{row.category ? LIST_CATEGORY_LABELS[row.category as ListCategory] : <span className="text-muted">—</span>}</td> : null}
                       <td className="border-b border-line px-3 py-2 text-right tabular-nums">
-                        <Link href={`/intel?${kind}=${row.id}`} className="underline">
+                        <Link href={`/ispy?${kind}=${row.id}`} className="underline">
                           {row.count}
                         </Link>
                       </td>

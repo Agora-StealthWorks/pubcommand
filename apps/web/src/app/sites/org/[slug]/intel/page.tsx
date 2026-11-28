@@ -43,12 +43,12 @@ export default async function IntelInboxPage({
     for (const [key, value] of Object.entries(filters)) if (key !== "page" && value) query.set(key, String(value));
     if (page > 1) query.set("page", String(page));
     const text = query.toString();
-    return text ? `/intel?${text}` : "/intel";
+    return text ? `/ispy?${text}` : "/ispy";
   };
   const filtered = Boolean(filters.competitor || filters.type || filters.from || filters.to || filters.q || filters.expert || filters.list || filters.topic);
   const exportQuery = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) if (key !== "page" && value) exportQuery.set(key, String(value));
-  const exportHref = `/intel/export${exportQuery.toString() ? `?${exportQuery.toString()}` : ""}`;
+  const exportHref = `/ispy/export${exportQuery.toString() ? `?${exportQuery.toString()}` : ""}`;
 
   return (
     <div className="min-w-0">
@@ -60,7 +60,7 @@ export default async function IntelInboxPage({
         </p>
       ) : null}
 
-      <form action="/intel" className="mb-4 grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))_auto]">
+      <form action="/ispy" className="mb-4 grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))_auto]">
         <div className="min-w-0">
           <Label htmlFor="intel-q">Search</Label>
           <Input id="intel-q" name="q" defaultValue={filters.q} placeholder="Subject, sender or text" className="mt-1" />
@@ -120,7 +120,7 @@ export default async function IntelInboxPage({
             Filter
           </Button>
           {filtered ? (
-            <Link href="/intel" className="inline-flex min-h-10 items-center px-2 text-sm text-muted underline">
+            <Link href="/ispy" className="inline-flex min-h-10 items-center px-2 text-sm text-muted underline">
               Clear
             </Link>
           ) : null}
@@ -134,7 +134,7 @@ export default async function IntelInboxPage({
           {counts.unmatched ? (
             <>
               {" · "}
-              <Link href="/intel?competitor=none" className="underline">
+              <Link href="/ispy?competitor=none" className="underline">
                 {counts.unmatched} not matched to a competitor
               </Link>
             </>
@@ -162,8 +162,8 @@ export default async function IntelInboxPage({
             <>
               <p className="font-semibold text-ink">No competitor emails yet.</p>
               <p className="mt-1">
-                Add competitors, then <Link href="/intel/add" className="text-accent underline">upload .eml or .mbox files</Link>, paste an email, or{" "}
-                <Link href="/intel/gmail" className="text-accent underline">connect a Gmail inbox</Link> that is subscribed to their lists.
+                Add competitors, then <Link href="/ispy/add" className="text-accent underline">upload .eml or .mbox files</Link>, paste an email, or{" "}
+                <Link href="/ispy/gmail" className="text-accent underline">connect a Gmail inbox</Link> that is subscribed to their lists.
               </p>
             </>
           )}
@@ -172,7 +172,7 @@ export default async function IntelInboxPage({
         <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
           {inbox.rows.map((row) => (
             <li key={row.id}>
-              <Link href={`/intel/emails/${row.id}`} className="block px-4 py-3 hover:bg-canvas">
+              <Link href={`/ispy/emails/${row.id}`} className="block px-4 py-3 hover:bg-canvas">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="min-w-0 max-w-full truncate text-sm font-semibold text-ink">{row.competitor?.name ?? row.fromName ?? row.fromAddress}</span>
                   <TypeBadge type={row.emailType} />

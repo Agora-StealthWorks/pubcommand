@@ -615,7 +615,7 @@ export async function ViewportSurface({
     return (
       <div data-surface="intel">
         {orgFrame(
-          "/intel",
+          "/ispy",
           <div>
             <PageHeader title="iSpy" description="Competitor emails, AI extraction and the weekly Promo Radar." />
             <ul className="divide-y divide-line rounded-lg border border-line bg-white">

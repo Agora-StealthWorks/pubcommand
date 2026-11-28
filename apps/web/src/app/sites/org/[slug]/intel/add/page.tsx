@@ -29,7 +29,7 @@ export default async function IntelAddPage({
             <h2 className="text-base font-semibold">Upload files</h2>
             <p className="mt-1 text-sm text-muted">
               Single emails as <strong>.eml</strong>, or a whole folder as <strong>.mbox</strong> (Gmail Takeout, Thunderbird, Apple Mail). Up to 50 MB per upload.
-              Duplicates are skipped and senders are matched to your <Link href="/intel/competitors" className="text-accent underline">competitors</Link>.
+              Duplicates are skipped and senders are matched to your <Link href="/ispy/competitors" className="text-accent underline">competitors</Link>.
             </p>
           </div>
           <div>
@@ -90,7 +90,7 @@ export default async function IntelAddPage({
         </form>
       </div>
       <p className="mt-4 text-sm text-muted">
-        For a steady feed, <Link href="/intel/gmail" className="text-accent underline">connect a Gmail inbox</Link> that is subscribed to competitors&apos; lists.
+        For a steady feed, <Link href="/ispy/gmail" className="text-accent underline">connect a Gmail inbox</Link> that is subscribed to competitors&apos; lists.
       </p>
     </div>
   );
