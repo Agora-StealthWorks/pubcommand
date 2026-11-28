@@ -10,6 +10,7 @@ import { ClickTracker, Countdown, CtaButton, DayVideo, EarlyJoin, FormEmbed, Liv
 import { SessionCalendar, upcomingSessions } from "./calendar-view";
 import { dayRulesOf, rulesOf, viewerFacts, type LoadedFunnel } from "./public";
 import type { PageContext } from "./public-context";
+import { EpisodeList } from "./episode-list";
 import { sanitizeEmbed, sanitizeRich } from "./sanitize";
 
 /** Typography for sanitized rich text (no shared CSS file is touched). */
@@ -24,7 +25,7 @@ export function PublicShell({ branding, homeHref, children, preview }: { brandin
         <div className="mx-auto flex max-w-5xl items-center justify-center px-4 py-3.5">
           <a href={homeHref} className="inline-flex max-w-full items-center" aria-label={branding.brandName}>
             {branding.logoSrc ? (
-              <img src={branding.logoSrc} alt={branding.brandName} style={{ maxHeight: branding.logoHeight, maxWidth: "100%", width: "auto" }} />
+              <img src={branding.logoSrc} alt={branding.brandName} style={{ height: branding.logoHeight, maxWidth: "100%", width: "auto", objectFit: "contain", flex: "none" }} />
             ) : (
               <span className="truncate text-lg font-bold tracking-tight">{branding.brandName}</span>
             )}
@@ -111,6 +112,19 @@ export function LinkList({ items, branding, dayId, dark }: { items: LinkItem[]; 
       {items.map((item, index) => {
         const target = `${index}|${item.label}|${item.url}`.slice(0, 600);
         const common = { href: item.url, "data-track": "resource", "data-track-target": target, ...(dayId ? { "data-track-day": dayId } : {}), ...(item.newTab ? { target: "_blank", rel: "noopener noreferrer" } : { rel: "noopener" }) };
+        if (item.style === "locked") {
+          return (
+            <li key={index} className="max-w-full">
+              <a href={item.url} data-track="offer" data-track-target={item.label} {...(item.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})} className="pcf-dl is-locked [overflow-wrap:anywhere]">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+                {item.label}
+              </a>
+            </li>
+          );
+        }
         return (
           <li key={index} className="max-w-full">
             {item.style === "link" ? (
@@ -473,10 +487,11 @@ export function ClosedView({ funnel, branding }: { funnel: FunnelRow; branding: 
 }
 
 /** The dark box in the video's place: locked, coming soon, replay pending, countdowns. */
-function Placeholder({ title, message, lock, children }: { title: string; message: string; lock?: boolean; children?: ReactNode }) {
+function Placeholder({ title, message, lock, children, look }: { title: string; message: string; lock?: boolean; children?: ReactNode; look?: { bg: string | null; text: string | null; minimal: boolean } }) {
+  const minimal = Boolean(look?.minimal);
   return (
-    <div className="pcf-ph-box">
-      {lock ? (
+    <div className={`pcf-ph-box${minimal ? " is-minimal" : ""}`} style={look && (look.bg || look.text) ? { ...(look.bg ? { background: look.bg } : {}), ...(look.text ? { color: look.text } : {}) } : undefined}>
+      {lock && !minimal ? (
         <div className="pcf-ph-lock" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="38" height="38" fill="currentColor">
             <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z" />
@@ -484,7 +499,7 @@ function Placeholder({ title, message, lock, children }: { title: string; messag
         </div>
       ) : null}
       <h2 className="pcf-ph-title [overflow-wrap:anywhere]">{title}</h2>
-      {message ? <p className="pcf-ph-msg [overflow-wrap:anywhere]">{message}</p> : null}
+      {message && !minimal ? <p className="pcf-ph-msg [overflow-wrap:anywhere]">{message}</p> : null}
       {children}
     </div>
   );
@@ -494,7 +509,24 @@ function Placeholder({ title, message, lock, children }: { title: string; messag
  * One module page: the state engine's answer for this module, rendered the way
  * the old app did. `day` comes from the safe days (no video id unless open).
  */
-export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: LoadedFunnel; ctx: PageContext; day: DayRow; presentedKey: string | null; nav: ReactNode; sms?: ReactNode }) {
+export function DayView({
+  loaded,
+  ctx,
+  day,
+  presentedKey,
+  nav,
+  sms,
+  offer,
+}: {
+  loaded: LoadedFunnel;
+  ctx: PageContext;
+  day: DayRow;
+  presentedKey: string | null;
+  nav: ReactNode;
+  sms?: ReactNode;
+  /** The funnel's offer section (blocks), shown under the module with anchor #offer. */
+  offer?: ReactNode;
+}) {
   const { funnel, timeZone, preview, now, carry } = loaded;
   const { base, states, safeDays: days } = ctx;
   const { branding } = ctx.theme;
@@ -510,6 +542,9 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
   const liveFunnel = funnel.mode === "live";
   const liveDay = liveFunnel && day.isLive;
   const text = isTextModule(day, funnel.mode);
+  const look = funnel.countdownStyle === "flip" ? ("flip" as const) : ("boxes" as const);
+  const boxLook = { bg: isHexColor(funnel.lockedBoxBg ?? "") ? funnel.lockedBoxBg : null, text: isHexColor(funnel.lockedBoxText ?? "") ? funnel.lockedBoxText : null, minimal: funnel.lockedBoxMinimal };
+  const sidebar = funnel.navLayout === "sidebar";
   // A locked module offers the closest earlier module that has its video.
   let previous: DayRow | undefined;
   if (state.kind === "locked") for (let at = index - 1; at >= 0; at -= 1) if (states[at]!.kind === "video") { previous = days[at]; break; }
@@ -548,6 +583,8 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
       day.lockedMessage?.trim() ||
       (state.reason === "passed"
         ? funnel.lockedPassedMsg
+        : state.reason === "expired"
+        ? funnel.lockedExpiredMsg
         : state.reason === "watch"
         ? funnel.lockedWatchMsg
         : state.reason === "key"
@@ -567,14 +604,29 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
     const pendingLive = Boolean(pending && isLiveNow(rules, pending, now));
     const pendingToday = Boolean(pending && (pendingLive || dayKey(pending.liveStartAt!, timeZone) === dayKey(now, timeZone)));
     const calendar = <SessionCalendar loaded={loaded} day={day} base={base} origin={ctx.origin} tone="dark" />;
-    const countdown = (target: Date) => <Countdown variant="box" target={target.getTime()} serverNow={now.getTime()} reloadTo={asOf ? null : reloadTo} labelColor="#ffffff" boxColor={isHexColor(funnel.countdownBoxBg) ? funnel.countdownBoxBg : "#ffffff"} digitColor={isHexColor(funnel.countdownDigit) ? funnel.countdownDigit : "#111827"} />;
+    const countdown = (target: Date) => (
+      <Countdown
+        variant="box"
+        look={look}
+        target={target.getTime()}
+        serverNow={now.getTime()}
+        reloadTo={asOf || funnel.countdownZero === "stay" ? null : reloadTo}
+        labelColor={boxLook.text ?? "#ffffff"}
+        boxColor={isHexColor(funnel.countdownBoxBg) ? funnel.countdownBoxBg : "#ffffff"}
+        digitColor={isHexColor(funnel.countdownDigit) ? funnel.countdownDigit : "#111827"}
+      />
+    );
     const sessionDay = state.unlockAt ? dayKey(state.unlockAt, timeZone) === dayKey(now, timeZone) : false;
     const showLiveCountdown = liveDay && !pending && funnel.liveCountdown && state.reason === "live_upcoming" && Boolean(state.unlockAt) && state.unlockAt! > now && sessionDay;
     const mode = funnel.unlockCountdownMode;
     const showUnlockCountdown =
       !showLiveCountdown && !liveDay && mode !== "off" && Boolean(state.unlockAt) && (state.reason === "scheduled" || state.reason === "not_started") && state.unlockAt! > now && (mode === "always" || sessionDay);
     if (showUnlockCountdown) {
-      box = <Placeholder title={funnel.unlockCountdownTitle} message={message}>{countdown(state.unlockAt!)}</Placeholder>;
+      box = (
+        <Placeholder title={funnel.unlockCountdownTitle.replaceAll("{day}", label)} message={message} look={boxLook}>
+          {countdown(state.unlockAt!)}
+        </Placeholder>
+      );
     } else if (showLiveCountdown) {
       const early = [funnel.earlyJoinUrl, day.liveUrl, funnel.livestreamUrl].find((value) => value && /^https?:\/\//i.test(value));
       box = (
@@ -614,10 +666,20 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
           </a>
         </div>
       ) : null;
+      // Expired episode: point to the offer when the page has one.
+      const toOffer =
+        state.reason === "expired" && offer ? (
+          <div className="mb-4">
+            <a href="#offer" className="pcf-btn text-base" data-track="offer" data-track-target={`expired:${label}`}>
+              Get full access »
+            </a>
+          </div>
+        ) : null;
       box = (
-        <Placeholder title={funnel.lockedTitle} message={message} lock>
+        <Placeholder title={state.reason === "expired" ? "Access expired" : funnel.lockedTitle} message={message} lock look={{ ...boxLook, minimal: false }}>
           {pointer}
           {toNewest}
+          {toOffer}
           <div className="flex justify-center">{calendar}</div>
         </Placeholder>
       );
@@ -632,8 +694,10 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
     <>
       {syncUrl ? <ViewerSync syncUrl={syncUrl} dayId={day.id} unlockKey={presentedKey} refreshOnUnlock={Boolean(presentedKey)} /> : null}
       <ClickTracker syncUrl={syncUrl} dayId={day.id} page="day" />
-      {nav}
-      <section className="pcf-wrap pcf-day">
+      {sidebar ? null : nav}
+      <section className={`pcf-wrap pcf-day${sidebar ? " is-split" : ""}`}>
+        <div className={sidebar ? "pcf-split" : undefined}>
+        <div className={sidebar ? "pcf-split-main" : undefined}>
         <h1 className="pcf-title">{title}</h1>
         {text && state.kind === "video" ? (
           box
@@ -706,7 +770,15 @@ export function DayView({ loaded, ctx, day, presentedKey, nav, sms }: { loaded: 
             <LinkList items={resources} branding={branding} dayId={day.id} />
           </section>
         ) : null}
+        </div>
+        {sidebar ? <EpisodeList funnel={funnel} days={days} states={states} base={base} carry={carry} currentDayId={day.id} now={now} /> : null}
+        </div>
       </section>
+      {offer && day.showOffer && state.kind !== "closed" ? (
+        <section id="offer" className="pcf-offer" aria-label="Offer">
+          {offer}
+        </section>
+      ) : null}
     </>
   );
 }

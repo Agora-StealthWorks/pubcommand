@@ -1,4 +1,4 @@
-import { AGENT_PLATFORMS, agentPlatformLabel, isAgentEmail } from "@pubcommand/core";
+import { AGENT_PLATFORMS, agentPlatformLabel, buildSiteUrl, isAgentEmail } from "@pubcommand/core";
 import { rawPrisma, tenantDb } from "@pubcommand/db";
 import { Badge } from "@pubcommand/ui";
 import Link from "next/link";
@@ -7,6 +7,8 @@ import { TableScroll } from "@/components/table-scroll";
 import { Flash } from "@/components/ui";
 import { createAgentWithKey } from "@/features/agents/actions";
 import { AgentKeyForm } from "@/features/agents/key-form";
+import { cursorInstallLink } from "@/features/agents/cursor";
+import { rootDomain } from "@/lib/auth";
 import { agentsPage, when } from "@/features/agents/page-access";
 
 export default async function AgentsPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
@@ -23,7 +25,8 @@ export default async function AgentsPage({ params, searchParams }: { params: Pro
   const ownerName = new Map(owners.map((owner) => [owner.id, owner.name || owner.email]));
   const day = new Date(Date.now() - 86_400_000);
   const counts = await Promise.all(agents.map((agent) => db.aiAgentCall.count({ where: { agentId: agent.id, createdAt: { gte: day } } })));
-  const mcpUrl = `${ctx.request.origin}/api/mcp`;
+  // One address for every organization: a key or a login says which organization (used by GrokBot).
+  const appMcpUrl = buildSiteUrl({ rootDomain: rootDomain(), requestHost: ctx.request.host, site: { kind: "app" }, pathname: "/api/mcp" });
 
   // Admins choose the owner and the starting role.
   const people = canManage
@@ -83,23 +86,38 @@ export default async function AgentsPage({ params, searchParams }: { params: Pro
         )}
       </section>
 
+      <section className="rounded-xl border border-line bg-white p-4">
+        <h2 className="text-base font-semibold">GrokBot</h2>
+        <p className="mt-1 max-w-3xl text-sm text-muted">
+          Add PubCommand to GrokBot in one click, then log in with your PubCommand account and pick this organization. Your GrokBot agent is created for you and starts with your access.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <a href={cursorInstallLink("PubCommand", appMcpUrl)} className="inline-flex min-h-11 items-center rounded-md bg-accent px-4 text-sm font-semibold text-white">
+            Add to GrokBot
+          </a>
+          <Link href="/agents/help" className="inline-flex min-h-11 items-center text-sm font-semibold text-accent">
+            Other ways to set it up
+          </Link>
+        </div>
+      </section>
+
       <section className="grid min-w-0 gap-4 xl:grid-cols-2">
         <div className="min-w-0 rounded-xl border border-line bg-white p-4">
-          <h2 className="text-base font-semibold">Connect with sign-in (Claude, ChatGPT)</h2>
+          <h2 className="text-base font-semibold">Claude or ChatGPT</h2>
           <p className="mt-1 text-sm text-muted">
-            Add PubCommand as a custom connector in your AI app with this address. The app opens PubCommand, you sign in, and approve. The agent is created for you and starts with your access.
+            Add PubCommand as a custom connector with this address. The app opens PubCommand, you log in, pick the organization and approve. The agent is created for you and starts with your access.
           </p>
-          <code className="mt-3 block break-all rounded bg-canvas px-2 py-2 font-mono text-xs text-ink">{mcpUrl}</code>
+          <code className="mt-3 block break-all rounded bg-canvas px-2 py-2 font-mono text-xs text-ink">{appMcpUrl}</code>
           <Link href="/agents/help" className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-accent">
             Step-by-step for each AI app
           </Link>
         </div>
         <div className="min-w-0 rounded-xl border border-line bg-white p-4">
-          <h2 className="text-base font-semibold">Connect with an API key (Grok, OpenAI API, scripts)</h2>
+          <h2 className="text-base font-semibold">With an API key (Grok API, OpenAI API, scripts)</h2>
           <p className="mb-3 mt-1 text-sm text-muted">For agents you run through an API, where you paste the MCP address and a key. The AI usage stays on that AI account.</p>
           <AgentKeyForm
             action={createAgentWithKey}
-            mcpUrl={mcpUrl}
+            mcpUrl={appMcpUrl}
             platforms={AGENT_PLATFORMS.map((platform) => ({ id: platform.id, label: platform.label }))}
             owners={canManage ? people : undefined}
             roles={canManage ? roles : undefined}

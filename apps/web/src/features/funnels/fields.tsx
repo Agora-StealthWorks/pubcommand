@@ -3,9 +3,9 @@ import { Label } from "@pubcommand/ui";
 import type { ReactNode } from "react";
 
 /** One labelled builder field with an optional hint. */
-export function Field({ label, htmlFor, hint, children, className = "" }: { label: string; htmlFor: string; hint?: ReactNode; children: ReactNode; className?: string }) {
+export function Field({ label, htmlFor, hint, children, className = "", advanced }: { label: string; htmlFor: string; hint?: ReactNode; children: ReactNode; className?: string; advanced?: boolean }) {
   return (
-    <div className={`min-w-0 ${className}`}>
+    <div className={`min-w-0 ${className}`} {...(advanced ? { "data-advanced": "" } : {})}>
       <Label htmlFor={htmlFor}>{label}</Label>
       <div className="mt-1">{children}</div>
       {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
@@ -13,9 +13,9 @@ export function Field({ label, htmlFor, hint, children, className = "" }: { labe
   );
 }
 
-export function Check({ name, label, defaultChecked, hint }: { name: string; label: string; defaultChecked: boolean; hint?: string }) {
+export function Check({ name, label, defaultChecked, hint, advanced }: { name: string; label: string; defaultChecked: boolean; hint?: string; advanced?: boolean }) {
   return (
-    <label className="flex items-start gap-2 text-sm">
+    <label className="flex items-start gap-2 text-sm" {...(advanced ? { "data-advanced": "" } : {})}>
       <input type="checkbox" name={name} defaultChecked={defaultChecked} className="mt-0.5 h-4 w-4 shrink-0 accent-accent" />
       <span>
         <span className="font-semibold">{label}</span>
@@ -36,9 +36,10 @@ export function ColorField({ name, label, value }: { name: string; label: string
   );
 }
 
-export function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+/** `advanced`: hidden until "Show advanced options" is on (the inputs still submit their values). */
+export function Section({ title, description, children, advanced }: { title: string; description?: string; children: ReactNode; advanced?: boolean }) {
   return (
-    <section className="rounded-xl border border-line bg-white p-4 sm:p-5">
+    <section className="rounded-xl border border-line bg-white p-4 sm:p-5" {...(advanced ? { "data-advanced": "" } : {})}>
       <h2 className="text-base font-semibold">{title}</h2>
       {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
       <div className="mt-4 space-y-4">{children}</div>

@@ -34,6 +34,10 @@ model TextSite {
   logoHeight       Int          @default(36) @map("logo_height")
   headerBg         String       @default("#111827") @map("header_bg")
   accentColor      String       @default("#1d4ed8") @map("accent_color")
+  /// Page background around the content box; null = the theme's.
+  pageBg           String?      @map("page_bg")
+  /// Button color (action button, subscribe buttons); null = the link color (accentColor).
+  buttonColor      String?      @map("button_color")
   /// On: header color, accent color, logo and logo height follow the brand's branding
   /// (Settings → Brands) and are re-copied whenever it is saved (syncBrandLook).
   followBrand      Boolean      @default(false) @map("follow_brand")

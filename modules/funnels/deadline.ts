@@ -6,7 +6,11 @@
 import { effectiveEnd, effectiveStart, type FunnelRules, type ViewerFacts } from "./state";
 import { formatZoned } from "./time";
 
-export const DEADLINE_TARGETS = ["end", "start", "custom"] as const;
+/** episode = when the module on screen stops being available (docuseries access window). */
+export const DEADLINE_TARGETS = ["end", "start", "custom", "episode"] as const;
+/** header = merged into the site header: logo, text + clock, button (one sticky bar). */
+export const DEADLINE_POSITIONS = ["top", "bottom", "header"] as const;
+export type DeadlinePosition = (typeof DEADLINE_POSITIONS)[number];
 export type DeadlineTarget = (typeof DEADLINE_TARGETS)[number];
 
 export type DeadlineBarConfig = {
@@ -28,9 +32,10 @@ export type DeadlineBarTiming = {
 const HOUR = 3_600_000;
 
 /** The deadline this viewer sees, or null when the bar should not show at all (off, no date, or already passed). */
-export function deadlineBar(funnel: FunnelRules, bar: DeadlineBarConfig, viewer: ViewerFacts, now: Date): DeadlineBarTiming | null {
+export function deadlineBar(funnel: FunnelRules, bar: DeadlineBarConfig, viewer: ViewerFacts, now: Date, episodeExpiresAt: Date | null = null): DeadlineBarTiming | null {
   if (!bar.enabled) return null;
-  const at = bar.target === "start" ? effectiveStart(funnel, viewer, now) : bar.target === "custom" ? bar.at : effectiveEnd(funnel, viewer, now);
+  const at =
+    bar.target === "start" ? effectiveStart(funnel, viewer, now) : bar.target === "custom" ? bar.at : bar.target === "episode" ? episodeExpiresAt : effectiveEnd(funnel, viewer, now);
   if (!at || Number.isNaN(at.getTime()) || at <= now) return null;
   const within = Math.max(0, Math.floor(bar.withinHours || 0));
   const revealAt = within > 0 ? new Date(at.getTime() - within * HOUR) : null;
@@ -70,6 +75,7 @@ export function deadlineShowsOn(pages: unknown, page: DeadlinePage): boolean {
  */
 export function deadlineButtonHref(target: string, base: string, carry = ""): string | null {
   const value = target.trim();
+  if (value === "#offer") return value;
   const module = /^module:(\d{1,3})$/.exec(value);
   if (module) return `${base}/day-${Number(module[1])}${carry}`;
   return /^https?:\/\/[^\s<>"]+$/i.test(value) ? value : null;
@@ -78,7 +84,7 @@ export function deadlineButtonHref(target: string, base: string, carry = ""): st
 /** Validate the button target on save ("" = none). */
 export function normalizeDeadlineButtonUrl(value: string): string {
   const text = value.trim().slice(0, 500);
-  return /^module:\d{1,3}$/.test(text) || /^https?:\/\/[^\s<>"]+$/i.test(text) ? text : "";
+  return text === "#offer" || /^module:\d{1,3}$/.test(text) || /^https?:\/\/[^\s<>"]+$/i.test(text) ? text : "";
 }
 
 /**

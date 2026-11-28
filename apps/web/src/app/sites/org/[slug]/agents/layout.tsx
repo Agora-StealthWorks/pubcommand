@@ -27,7 +27,7 @@ export default async function AgentsLayout({ children, params }: { children: Rea
       <header className="mb-4">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">AI Agents</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">
-          Claude, Grok, OpenAI and other agents working in {access.ctx.resolved.name} as members. Each belongs to a person here and uses that person&apos;s own AI account. Agents are labelled inside
+          GrokBot, Claude, Grok API, OpenAI and other agents working in {access.ctx.resolved.name} as members. Each belongs to a person here and uses that person&apos;s own AI account. Agents are labelled inside
           PubCommand only; readers never see that a post came from one.
         </p>
       </header>

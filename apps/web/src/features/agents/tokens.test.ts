@@ -36,7 +36,7 @@ describe("PKCE", () => {
 });
 
 describe("redirect URIs", () => {
-  it("allow https and loopback http only", () => {
+  it("allow https, loopback http and known editor app links only", () => {
     expect(isAllowedRedirectUri("https://claude.ai/api/mcp/auth_callback")).toBe(true);
     expect(isAllowedRedirectUri("https://chatgpt.com/connector_platform_oauth_redirect")).toBe(true);
     expect(isAllowedRedirectUri("http://localhost:6274/callback")).toBe(true);
@@ -44,6 +44,12 @@ describe("redirect URIs", () => {
     expect(isAllowedRedirectUri("http://evil.example.com/cb")).toBe(false);
     expect(isAllowedRedirectUri("https://x.example.com/cb#frag")).toBe(false);
     expect(isAllowedRedirectUri("javascript:alert(1)")).toBe(false);
+    // Cursor and other editors sign in through their own app link.
+    expect(isAllowedRedirectUri("cursor://anysphere.cursor-mcp/oauth/callback")).toBe(true);
+    expect(isAllowedRedirectUri("http://localhost:8787/callback")).toBe(true);
+    expect(isAllowedRedirectUri("vscode://vscode.github-authentication/did-authenticate")).toBe(true);
+    expect(isAllowedRedirectUri("data:text/html,hi")).toBe(false);
+    expect(isAllowedRedirectUri("myapp://callback")).toBe(false);
     expect(isAllowedRedirectUri("not a url")).toBe(false);
   });
 });

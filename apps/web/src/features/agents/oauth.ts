@@ -1,4 +1,5 @@
-import { rawPrisma, tenantDb } from "@pubcommand/db";
+import { platformTx, rawPrisma, tenantDb } from "@pubcommand/db";
+import { CONSOLE_ORG_SLUG } from "@/lib/console-workspace";
 import { issueAgentToken } from "./data";
 import { ACCESS_TOKEN_TTL_SECONDS, OAUTH_CODE_TTL_SECONDS, hashToken, isAllowedRedirectUri, pkceMatches, randomValue, tokenKind } from "./tokens";
 
@@ -187,4 +188,23 @@ export async function exchangeToken(organizationId: string, form: URLSearchParam
 export async function revokeToken(organizationId: string, token: string): Promise<void> {
   if (!tokenKind(token)) return;
   await tenantDb(organizationId).aiAgentToken.updateMany({ where: { tokenHash: hashToken(token), revokedAt: null }, data: { revokedAt: new Date() } });
+}
+
+/**
+ * On the app host (app.<root>, the one address for every organization) the organization comes
+ * from the code or token being exchanged. Platform agents (console organization) are excluded.
+ */
+export async function organizationOfGrant(form: URLSearchParams): Promise<string | null> {
+  const grant = form.get("grant_type");
+  const value = grant === "authorization_code" ? form.get("code") : grant === "refresh_token" ? form.get("refresh_token") : form.get("token");
+  if (!value) return null;
+  const hash = hashToken(value);
+  const organizationId = await platformTx(async (tx) =>
+    grant === "authorization_code"
+      ? (await tx.aiAgentOauthCode.findFirst({ where: { codeHash: hash }, select: { organizationId: true } }))?.organizationId
+      : (await tx.aiAgentToken.findFirst({ where: { tokenHash: hash }, select: { organizationId: true } }))?.organizationId,
+  );
+  if (!organizationId) return null;
+  const org = await rawPrisma().organization.findFirst({ where: { id: organizationId, deletedAt: null, suspendedAt: null, NOT: { slug: CONSOLE_ORG_SLUG } }, select: { id: true } });
+  return org?.id ?? null;
 }

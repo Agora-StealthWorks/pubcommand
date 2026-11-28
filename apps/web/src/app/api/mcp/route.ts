@@ -1,4 +1,4 @@
-import { authenticateAgent, hostOrganization, logAgentCall, type AgentContext } from "@/features/agents/context";
+import { agentHostOrigin, authenticateAgent, logAgentCall, type AgentContext } from "@/features/agents/context";
 import { RPC, handleMessage, toolContent, type JsonRpcResponse } from "@/features/agents/mcp";
 import { ToolError, findTool, toolsFor } from "@/features/agents/tools";
 
@@ -17,8 +17,8 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
 }
 
 async function unauthorized(error: string, status: number) {
-  const host = await hostOrganization();
-  const metadata = host ? `${host.request.origin}/.well-known/oauth-protected-resource` : "";
+  const origin = await agentHostOrigin();
+  const metadata = origin ? `${origin}/.well-known/oauth-protected-resource` : "";
   const challenge: Record<string, string> = status === 401 ? { "www-authenticate": `Bearer realm="pubcommand"${metadata ? `, resource_metadata="${metadata}"` : ""}, error="invalid_token"` } : {};
   return json(status, { jsonrpc: "2.0", id: null, error: { code: RPC.invalidRequest, message: error } }, challenge);
 }

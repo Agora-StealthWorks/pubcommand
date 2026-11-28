@@ -1,12 +1,21 @@
+"use client";
+
+import { useState } from "react";
 import type { SwitcherLink, SwitcherModel } from "@/features/navigation/switcher";
 
+/** Above this many organizations, the switcher shows a search box. */
+const SEARCH_FROM = 7;
+
 /**
- * Where you are, and where else you can go: every organization you belong to, the Platform
- * console (staff), all workspaces, Your account, and sign out. Sits under the logo on every
- * signed-in surface. A plain <details>, so it opens inline (also in the phone menu) without JS.
+ * Where you are, and where else you can go: every organization you can open (the super admin
+ * sees all of them), the Platform console (staff), all workspaces,
+ * Your account, and sign out. Sits under the logo on every signed-in surface. A plain <details>,
+ * so it opens inline (also in the phone menu) and its links work before JS loads.
  */
 export function SiteSwitcher({ model }: { model: SwitcherModel }) {
+  const [query, setQuery] = useState("");
   const others = [model.console, model.chooser].filter((link): link is SwitcherLink => Boolean(link));
+  const organizations = filterOrganizations(model.organizations, query);
   return (
     <details className="group rounded-lg border border-line bg-white" data-testid="site-switcher">
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-1.5 hover:bg-canvas [&::-webkit-details-marker]:hidden">
@@ -23,12 +32,28 @@ export function SiteSwitcher({ model }: { model: SwitcherModel }) {
         {model.organizations.length > 0 ? (
           <>
             <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Organizations</p>
-            <ul>
-              {model.organizations.map((link) => (
-                <li key={link.key}>
-                  <SwitchLink link={link} />
+            {model.organizations.length > SEARCH_FROM ? (
+              <div className="px-2 pb-1">
+                <label className="sr-only" htmlFor="pc-switcher-search">
+                  Find an organization
+                </label>
+                <input
+                  id="pc-switcher-search"
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Find an organization"
+                  className="min-h-9 w-full rounded-md border border-line px-2 text-sm"
+                />
+              </div>
+            ) : null}
+            <ul className="max-h-[60vh] overflow-y-auto">
+              {organizations.map((org) => (
+                <li key={org.key}>
+                  <SwitchLink link={org} />
                 </li>
               ))}
+              {organizations.length === 0 ? <li className="px-3 py-2 text-sm text-muted">Nothing matches “{query}”.</li> : null}
             </ul>
           </>
         ) : null}
@@ -56,6 +81,13 @@ export function SiteSwitcher({ model }: { model: SwitcherModel }) {
       </div>
     </details>
   );
+}
+
+/** Organizations whose name (or hint, e.g. "Suspended") matches. */
+function filterOrganizations(organizations: SwitcherLink[], query: string): SwitcherLink[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return organizations;
+  return organizations.filter((org) => org.label.toLowerCase().includes(needle) || org.hint?.toLowerCase().includes(needle));
 }
 
 function SwitchLink({ link }: { link: SwitcherLink }) {

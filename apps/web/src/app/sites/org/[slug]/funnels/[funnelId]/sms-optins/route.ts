@@ -2,6 +2,8 @@ import { appendOrgAudit, tenantDb } from "@pubcommand/db";
 import { loadFunnelForBrand } from "@/features/funnels/data";
 import { funnelsAccess } from "@/features/funnels/guard";
 import { toCsv } from "../../../../../../../../../../modules/funnels/checks";
+import { paramCells, paramColumns } from "../../../../../../../../../../modules/funnels/tracking";
+import { loadFunnelsSettings } from "@/features/funnels/tracking-data";
 
 /** SMS opt-ins (phone, optional email, the exact consent text shown) as CSV. PII: funnels.publish only, every download audited. */
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string; funnelId: string }> }) {
@@ -18,9 +20,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   ]);
   const names = new Map(forms.map((form) => [form.id, form.name]));
   await appendOrgAudit(ctx.resolved.id, { actorId: ctx.auth.user.id, action: "funnels.sms_optins.exported", targetType: "funnel", targetId: loaded.funnel.id, metadata: { rows: rows.length } });
+  // One column per tracked URL parameter (Funnels → Settings), plus any older key a row carries.
+  const columns = paramColumns((await loadFunnelsSettings(ctx.resolved.id)).trackedParams, rows.map((row) => row.params));
   const csv = toCsv(
-    ["phone_e164", "email", "form", "opted_in_at_utc", "consent_text", "page_url", "user_agent"],
-    rows.map((row) => [row.phone, row.email ?? "", names.get(row.formId) ?? "", row.createdAt, row.consentText, row.pageUrl ?? "", row.userAgent ?? ""]),
+    ["phone_e164", "email", "form", "opted_in_at_utc", "consent_text", "page_url", "user_agent", ...columns],
+    rows.map((row) => [row.phone, row.email ?? "", names.get(row.formId) ?? "", row.createdAt, row.consentText, row.pageUrl ?? "", row.userAgent ?? "", ...paramCells(columns, row.params)]),
   );
   return new Response(csv, {
     headers: {

@@ -3,7 +3,9 @@ import { after } from "next/server";
 import { verifyUnsubscribeToken } from "../../../../../modules/funnels/emails";
 import { captureSmsOptin, isValidEmail } from "../../../../../modules/funnels/sms";
 import { classifyTraffic, clientIpOf, deviceOf, isClickKind, isPageKind } from "../../../../../modules/funnels/traffic";
-import { ensureStart, recordWatch, rememberKey } from "../../../../../modules/funnels/viewer";
+import { ensureStart, recordWatch, rememberKey, rememberParams } from "../../../../../modules/funnels/viewer";
+import { attributedParams, paramsFromUrl } from "../../../../../modules/funnels/tracking";
+import { loadFunnelsSettings } from "./tracking-data";
 import { eventBoxEvent, icsFile } from "../../../../../modules/funnels/calendar";
 import { sessionEvent, upcomingSessions } from "./calendar-view";
 import { effectiveStart, keyUnlocks } from "../../../../../modules/funnels/state";
@@ -70,6 +72,12 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
   const target = typeof body.target === "string" ? body.target.replace(/[\u0000-\u001f]/g, " ").slice(0, 600) : null;
   const { funnel, now } = loaded;
   let viewer = ensureStart(startViewer(await readViewer(funnel.id, false)), now);
+  // Tracked URL parameters (org Funnels settings): read from the page address this call came from
+  // (its Referer), kept in the viewer cookie by first/last touch, and recorded on every event.
+  const tracking = await loadFunnelsSettings(loaded.organizationId);
+  const incoming = paramsFromUrl(request.headers.get("referer"), tracking.trackedParams);
+  viewer = rememberParams(viewer, incoming, tracking.attribution);
+  const params = attributedParams(viewer.params, undefined, tracking.trackedParams, tracking.attribution);
   const db = tenantDb(loaded.organizationId);
   // Flag (never drop) automated traffic: bot user agents, cloud / data-center networks, automated browsers.
   const userAgent = request.headers.get("user-agent");
@@ -85,7 +93,7 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
       unlocked = true;
     }
     const recent = await db.funnelEvent.count({ where: { funnelId: funnel.id, dayId, page, visitorId: viewer.visitorId, kind: "view", createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
-    if (!recent) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, page, device, kind: "view", visitorId: viewer.visitorId, botReason } });
+    if (!recent) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, page, device, kind: "view", visitorId: viewer.visitorId, botReason, ...(params ? { params } : {}) } });
   } else if (kind === "watch") {
     const percent = Number(body.percent);
     if (!day || !Number.isFinite(percent)) return json({ ok: false }, 400);
@@ -106,7 +114,7 @@ export async function handleViewerSync(request: Request, orgSlug: string, funnel
   } else {
     // A click. Bursts from one visitor are capped so a script cannot flood the table.
     const recent = await db.funnelEvent.count({ where: { funnelId: funnel.id, visitorId: viewer.visitorId, createdAt: { gte: new Date(now.getTime() - 10 * 60_000) } } });
-    if (recent < 150) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, page, device, kind, target, visitorId: viewer.visitorId, botReason } });
+    if (recent < 150) await db.funnelEvent.create({ data: { organizationId: loaded.organizationId, funnelId: funnel.id, dayId, page, device, kind, target, visitorId: viewer.visitorId, botReason, ...(params ? { params } : {}) } });
   }
 
   const cookie = viewerCookieHeader(funnel.id, viewer, isSecure(request));
@@ -136,6 +144,7 @@ export async function handleFunnelOptin(request: Request, orgSlug: string, funne
     if (recent >= 10) return seeOther(withQuery(back, { error: "Too many sign-ups from this connection. Try again later." }));
   }
   const branding = await funnelBranding(loaded.organizationId, loaded.funnel, "");
+  const params = await requestParams(request, loaded.organizationId, loaded.funnel.id);
   const existing = await db.funnelOptin.findFirst({ where: { funnelId: loaded.funnel.id, email }, select: { id: true } });
   if (!existing) {
     const created = await db.funnelOptin
@@ -147,6 +156,7 @@ export async function handleFunnelOptin(request: Request, orgSlug: string, funne
           consentText: emailConsent(loaded.funnel, branding),
           ipHash,
           pageUrl: (request.headers.get("referer") ?? "").slice(0, 500) || null,
+          ...(params ? { params } : {}),
         },
         select: { id: true },
       })
@@ -159,6 +169,14 @@ export async function handleFunnelOptin(request: Request, orgSlug: string, funne
     }
   }
   return seeOther(withQuery(back, { joined: "1" }));
+}
+
+/** An opt-in's tracked URL parameters: the visitor's cookie set merged with the form page's address (Referer). */
+async function requestParams(request: Request, organizationId: string, funnelId: string) {
+  const tracking = await loadFunnelsSettings(organizationId);
+  if (!tracking.trackedParams.length) return undefined;
+  const viewer = await readViewer(funnelId, false);
+  return attributedParams(viewer?.params, paramsFromUrl(request.headers.get("referer"), tracking.trackedParams), tracking.trackedParams, tracking.attribution);
 }
 
 function imageResponse(file: { data: Uint8Array; mimeType: string; size: number }) {
@@ -297,8 +315,10 @@ export async function handleSmsOptin(request: Request, orgSlug: string, funnelSl
     const recent = await db.funnelSmsOptin.count({ where: { funnelId: loaded.funnel.id, ipHash, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
     if (recent >= 10) return seeOther(withQuery(back, { sms_form: sms.id, sms_error: "Too many sign-ups from this connection. Try again later." }));
   }
+  const params = await requestParams(request, loaded.organizationId, loaded.funnel.id);
   await db.funnelSmsOptin.create({
     data: {
+      ...(params ? { params } : {}),
       organizationId: loaded.organizationId,
       funnelId: loaded.funnel.id,
       formId: sms.id,

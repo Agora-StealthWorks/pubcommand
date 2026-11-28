@@ -1,5 +1,5 @@
 import { can, type AccessScope, type AccessSubject } from "@pubcommand/core";
-import { loadAccessSubject, loadSuperAdminSubject, rawPrisma, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
+import { loadAccessSubject, loadSuperAdminSubject, platformTx, rawPrisma, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
 import { moduleRegistry } from "@pubcommand/modules";
 import { CONSOLE_ORG_SLUG, ensureConsoleOrganization } from "@/lib/console-workspace";
 import { currentRequest } from "@/lib/request";
@@ -54,14 +54,47 @@ async function ownerIsSuperAdmin(userId: string): Promise<boolean> {
   return Boolean(staff && !staff.disabledAt && staff.role === "SUPER_ADMIN" && !staff.user.disabledAt && !staff.user.deletedAt);
 }
 
+/**
+ * The one address for every organization (app.<root>/api/mcp, used by the GrokBot plugin):
+ * the token names the organization. It must be an organization agent's token; platform agents
+ * work only on the admin host.
+ */
+export async function organizationOfToken(tokenHash: string): Promise<string | null> {
+  const row = await platformTx((tx) => tx.aiAgentToken.findFirst({ where: { tokenHash }, select: { organizationId: true } }));
+  return row?.organizationId ?? null;
+}
+
+async function appHostOrganization(organizationId: string) {
+  const request = await currentRequest();
+  const org = await rawPrisma().organization.findFirst({ where: { id: organizationId, deletedAt: null, NOT: { slug: CONSOLE_ORG_SLUG } }, select: { id: true, name: true, slug: true, suspendedAt: true } });
+  return org ? { resolved: { ...org, redirected: false }, request, platform: false as const } : null;
+}
+
+/** True on hosts that serve the MCP server: organization hosts, the admin host and the app host. */
+export async function agentHostOrigin(): Promise<string | null> {
+  const request = await currentRequest();
+  if (request.site.kind === "app" || request.site.kind === "admin") return request.origin;
+  return (await hostOrganization()) ? request.origin : null;
+}
+
 export async function authenticateAgent(request: Request): Promise<{ ok: true; ctx: AgentContext } | AgentAuthFailure> {
-  const host = await hostOrganization();
-  if (!host) return { ok: false, status: 404, error: "Not found." };
-  const { resolved } = host;
-  if (resolved.suspendedAt) return { ok: false, status: 403, error: "This organization is suspended." };
+  const signIn = "Sign in to PubCommand: connect this agent from AI Agents, or send its API key as Authorization: Bearer pca_…";
   const presented = bearerToken(request.headers);
   const kind = presented ? tokenKind(presented) : null;
-  if (!presented || (kind !== "key" && kind !== "access")) return { ok: false, status: 401, error: "Sign in to PubCommand: connect this agent from AI Agents, or send its API key as Authorization: Bearer pca_…" };
+  const appHost = (await currentRequest()).site.kind === "app";
+  let host: Awaited<ReturnType<typeof hostOrganization>>;
+  if (appHost) {
+    if (!presented || (kind !== "key" && kind !== "access")) return { ok: false, status: 401, error: signIn };
+    const organizationId = await organizationOfToken(hashToken(presented));
+    host = organizationId ? await appHostOrganization(organizationId) : null;
+    if (!host) return { ok: false, status: 401, error: "That token is not valid, expired, or was revoked." };
+  } else {
+    host = await hostOrganization();
+    if (!host) return { ok: false, status: 404, error: "Not found." };
+  }
+  const { resolved } = host;
+  if (resolved.suspendedAt) return { ok: false, status: 403, error: "This organization is suspended." };
+  if (!presented || (kind !== "key" && kind !== "access")) return { ok: false, status: 401, error: signIn };
   const db = tenantDb(resolved.id);
   const token = await db.aiAgentToken.findFirst({ where: { tokenHash: hashToken(presented) } });
   if (!token || token.revokedAt || token.kind !== kind || (token.expiresAt && token.expiresAt <= new Date())) {

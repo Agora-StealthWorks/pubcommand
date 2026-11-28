@@ -69,8 +69,9 @@ describe("mediums", () => {
   });
 
   it("picks the sign-up form from the medium", () => {
-    expect(subscribeKind("SMS")).toBe("sms");
-    expect(subscribeKind("Text alerts")).toBe("sms");
+    // Mini-Blogs have no SMS sign-up at all.
+    expect(subscribeKind("SMS")).toBe("none");
+    expect(subscribeKind("Text alerts")).toBe("none");
     expect(subscribeKind("Email")).toBe("email");
     expect(subscribeKind("Push Notification")).toBe("none");
   });
@@ -86,8 +87,10 @@ describe("mediums", () => {
 
 describe("go-live checks per medium", () => {
   const base = { name: "Alerts", slug: "alerts", privacyUrl: null, termsUrl: null, programName: "", helpContact: "" };
-  it("keeps the carrier rules for SMS", () => {
-    expect(checkSite({ ...base, medium: "SMS" }).errors).toHaveLength(3);
+  it("lets SMS Mini-Blogs go live with no sign-up form (there is no SMS sign-up)", () => {
+    const result = checkSite({ ...base, medium: "SMS" });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings[0]).toContain("no sign-up form");
   });
   it("asks email Mini-Blogs for a privacy link only", () => {
     expect(checkSite({ ...base, medium: "Email" }).errors).toEqual(["Add a privacy-policy link. It is shown on the email sign-up form."]);
@@ -95,7 +98,7 @@ describe("go-live checks per medium", () => {
   it("lets push Mini-Blogs go live without a form", () => {
     const result = checkSite({ ...base, medium: "Push Notification" });
     expect(result.errors).toEqual([]);
-    expect(result.warnings[0]).toContain("no subscribe form");
+    expect(result.warnings[0]).toContain("no sign-up form");
   });
 });
 

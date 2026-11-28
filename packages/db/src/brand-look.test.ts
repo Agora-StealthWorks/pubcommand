@@ -38,7 +38,7 @@ describe("brand look for form themes and Mini-Blogs", () => {
     });
     const following = await db.formTheme.create({ data: { organizationId: orgId, brandId: brand.id, name: "Brand", privacyPolicyUrl: "", followBrand: true } });
     const custom = await db.formTheme.create({ data: { organizationId: orgId, brandId: brand.id, name: "Custom", privacyPolicyUrl: "", barColor: "#ff0000" } });
-    const site = await db.textSite.create({ data: { organizationId: orgId, brandId: brand.id, name: "Alerts", slug: `alerts-${suffix}`, followBrand: true, logoUrl: "https://example.com/old.png" } });
+    const site = await db.textSite.create({ data: { organizationId: orgId, brandId: brand.id, name: "Alerts", slug: `alerts-${suffix}`, followBrand: true, logoUrl: "https://example.com/old.png", logoHeight: 72 } });
 
     expect(await syncBrandLook(orgId, brand.id)).toEqual({ themes: 1, sites: 1 });
 
@@ -50,7 +50,8 @@ describe("brand look for form themes and Mini-Blogs", () => {
     expect((await db.formTheme.findUniqueOrThrow({ where: { id: custom.id } })).barColor).toBe("#ff0000");
 
     const blog = await db.textSite.findUniqueOrThrow({ where: { id: site.id } });
-    expect(blog).toMatchObject({ headerBg: "#1e3a2b", accentColor: "#f5b400", logoHeight: 56, logoUrl: null });
+    // Colors and logo follow the brand; the logo size stays the Mini-Blog's own.
+    expect(blog).toMatchObject({ headerBg: "#1e3a2b", accentColor: "#f5b400", logoHeight: 72, logoUrl: null });
     expect(new Uint8Array((await db.funnelAsset.findUniqueOrThrow({ where: { id: blog.logoAssetId! } })).data)).toEqual(darkArtwork);
 
     // Nothing changed: nothing is written, and the logo is not stored again.

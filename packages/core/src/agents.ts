@@ -18,8 +18,10 @@ export function agentEmail(agentKey: string): string {
 
 export const AGENT_PLATFORMS = [
   { id: "claude", label: "Claude", vendor: "Anthropic" },
-  { id: "grok", label: "Grok", vendor: "xAI" },
+  { id: "grok", label: "Grok API", vendor: "xAI API" },
   { id: "openai", label: "OpenAI", vendor: "OpenAI (ChatGPT, agents)" },
+  // Cursor, the AI code editor, is called GrokBot everywhere in PubCommand.
+  { id: "cursor", label: "GrokBot", vendor: "GrokBot" },
   { id: "other", label: "Other", vendor: "Any MCP client" },
 ] as const;
 
@@ -36,6 +38,8 @@ export function agentPlatformLabel(value: string): string {
 /** Best guess of the platform from an OAuth connector's client_name ("Claude", "ChatGPT", "Grok", …). */
 export function platformFromClientName(name: string | null | undefined): AgentPlatform {
   const value = (name ?? "").toLowerCase();
+  // Cursor first: it runs many models, and its client name may mention one.
+  if (/cursor/.test(value)) return "cursor";
   if (/claude|anthropic/.test(value)) return "claude";
   if (/grok|\bxai\b|x\.ai/.test(value)) return "grok";
   if (/chatgpt|openai|\bgpt\b|codex/.test(value)) return "openai";

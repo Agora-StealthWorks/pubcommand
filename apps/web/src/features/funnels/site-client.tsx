@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { dismissKey, isDismissed, rememberDismiss } from "../../../../../modules/funnels/deadline";
 
 function sessionStore(): Storage | null {
@@ -172,3 +172,25 @@ export function HtmlFrame({ html, title, height = 0, textColor = "#1f2937", link
     />
   );
 }
+
+/**
+ * Shows the first six items of the wrapped grid, then a "Load more" button that reveals
+ * the rest (`.pcf-more` CSS hides items 7+ until it is pressed). `first` must stay 6 to match.
+ */
+export function LoadMore({ first, count, label = "Load more", children }: { first: number; count: number; label?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  if (count <= first) return <>{children}</>;
+  return (
+    <div className={open ? undefined : "pcf-more"}>
+      {children}
+      {open ? null : (
+        <div className="mt-5 text-center">
+          <button type="button" className="pcf-btn" onClick={() => setOpen(true)}>
+            {label}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+

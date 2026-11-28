@@ -27,7 +27,10 @@ const SHARE_URL =
 
 const organization = { id: VIEWPORT_ORG_ID, name: "Northstar Publishing Desk", slug: SLUG };
 const brands = [{ id: "brand-desk", name: "Northstar Desk" }];
-const switcherOrgs = [organization, { slug: "harbor-research-and-a-very-long-organization-name", name: "Harbor Research and a Very Long Organization Name" }];
+const switcherOrgs = [
+  organization,
+  { slug: "harbor-research-and-a-very-long-organization-name", name: "Harbor Research and a Very Long Organization Name", member: false },
+];
 const switcherBase = { organizations: switcherOrgs, staff: { ready: true }, rootDomain: "pubcommand.com", requestHost: `${SLUG}.pubcommand.com` };
 
 function orgFrame(pathname: string, children: React.ReactNode, impersonating = false) {

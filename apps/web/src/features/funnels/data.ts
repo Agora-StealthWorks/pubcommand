@@ -48,6 +48,7 @@ export function funnelRules(funnel: FunnelRow, timeZone?: string): FunnelRules {
     livestreamUrl: isHttpUrl(funnel.livestreamUrl) ? funnel.livestreamUrl : null,
     waitlistEnabled: funnel.waitlistEnabled,
     siteType: pick(funnel.siteType, SITE_TYPES, "launch"),
+    accessHours: funnel.accessHours,
   };
 }
 
@@ -92,6 +93,7 @@ export function dayRules(day: DayRow, mode = "evergreen"): DayRules {
     unlockOffsetHours: day.unlockOffsetHours,
     unlockAt: day.unlockAt,
     unlockKey: day.unlockKey,
+    accessHours: day.accessHours,
     isLive: day.isLive,
     liveStartAt: day.liveStartAt,
     liveEndAt: day.liveEndAt,

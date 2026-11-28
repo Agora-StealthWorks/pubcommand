@@ -54,25 +54,19 @@ export type CheckResult = { errors: string[]; warnings: string[] };
 export type SiteCheckInput = { name: string; slug: string; privacyUrl: string | null; termsUrl: string | null; programName: string; helpContact: string; medium?: string | null };
 
 /**
- * Go-live checks. Errors block going live. An SMS Mini-Blog needs privacy and
- * terms links and a program name (carriers require them on an opt-in page); an
- * email one needs a privacy link; other mediums have no subscribe form.
+ * Go-live checks. Errors block going live. An email Mini-Blog needs a privacy
+ * link (it is shown on the sign-up form); other mediums, SMS included, have no
+ * sign-up form, so they need nothing more than a name and a link name.
  */
 export function checkSite(input: SiteCheckInput): CheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const kind = subscribeKind(input.medium ?? "SMS");
   if (!input.name.trim()) errors.push("Give the Mini-Blog a name.");
   if (!isValidSlug(input.slug)) errors.push("The link name must be lowercase letters, numbers and dashes.");
-  if (kind === "sms") {
-    if (!isHttpUrl(input.privacyUrl)) errors.push("Add a privacy-policy link. Carriers require it on every opt-in page.");
-    if (!isHttpUrl(input.termsUrl)) errors.push("Add a terms link (SMS terms of service).");
-    if (!input.programName.trim()) errors.push("Name the text program (for example the publication name).");
-    if (!input.helpContact.trim()) warnings.push("Add a HELP contact (email or phone) so subscribers know how to reach you.");
-  } else if (kind === "email") {
+  if (subscribeKind(input.medium) === "email") {
     if (!isHttpUrl(input.privacyUrl)) errors.push("Add a privacy-policy link. It is shown on the email sign-up form.");
   } else {
-    warnings.push(`${input.medium} Mini-Blogs have no subscribe form yet; readers reach posts by link.`);
+    warnings.push(`${input.medium || "This"} Mini-Blog has no sign-up form; readers reach posts by link.`);
   }
   return { errors, warnings };
 }

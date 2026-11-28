@@ -53,4 +53,15 @@ describe("site switcher", () => {
     expect(local.organizations[0]!.href).toBe("http://localhost:3159/?org=example-gazette");
     expect(local.chooser).toBeNull();
   });
+
+  it("marks organizations the super admin opens without being a member", () => {
+    const model = buildSwitcher({
+      here: { kind: "admin" },
+      organizations: [orgs[0]!, { ...orgs[1]!, member: false }],
+      staff: { ready: true },
+      rootDomain: "pubcommand.com",
+      requestHost: "admin.pubcommand.com",
+    });
+    expect(model.organizations.map((org) => org.hint)).toEqual([undefined, "Super admin access"]);
+  });
 });

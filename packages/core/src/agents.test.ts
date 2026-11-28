@@ -25,7 +25,9 @@ describe("platformFromClientName", () => {
     expect(platformFromClientName("OpenAI Agents")).toBe("openai");
     expect(platformFromClientName("Grok")).toBe("grok");
     expect(platformFromClientName("xAI")).toBe("grok");
-    expect(platformFromClientName("Cursor")).toBe("other");
+    expect(platformFromClientName("Cursor")).toBe("cursor");
+    expect(platformFromClientName("Cursor (Claude)")).toBe("cursor");
+    expect(platformFromClientName("Windsurf")).toBe("other");
     expect(platformFromClientName(undefined)).toBe("other");
   });
 
@@ -38,7 +40,8 @@ describe("platformFromClientName", () => {
 describe("defaultAgentName", () => {
   it("uses the owner's first name, else the email's local part", () => {
     expect(defaultAgentName("Stephen Smith", "s@example.com", "claude")).toBe("Stephen's Claude");
-    expect(defaultAgentName(null, "jane@example.com", "grok")).toBe("jane's Grok");
+    expect(defaultAgentName(null, "jane@example.com", "grok")).toBe("jane's Grok API");
+    expect(defaultAgentName("Stephen Prior", "s@example.com", "cursor")).toBe("Stephen's GrokBot");
     expect(defaultAgentName("", "jane@example.com", "other")).toBe("jane's Agent");
   });
 });

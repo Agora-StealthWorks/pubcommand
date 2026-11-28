@@ -1,4 +1,5 @@
-import { AGENT_PLATFORMS, agentPlatformLabel, can } from "@pubcommand/core";
+import { AGENT_PLATFORMS, agentPlatformLabel, buildSiteUrl, can } from "@pubcommand/core";
+import { rootDomain } from "@/lib/auth";
 import { rawPrisma, tenantDb } from "@pubcommand/db";
 import { Badge, Button, Input, Label } from "@pubcommand/ui";
 import Link from "next/link";
@@ -38,7 +39,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
   const lastUse = (clientId: string) =>
     tokens.filter((token) => token.clientId === clientId).reduce<Date | null>((latest, token) => (token.lastUsedAt && (!latest || token.lastUsedAt > latest) ? token.lastUsedAt : latest), null);
   const canEditAccess = can(ctx.subject, "settings.users.manage", ctx.scope);
-  const mcpUrl = `${ctx.request.origin}/api/mcp`;
+  const mcpUrl = buildSiteUrl({ rootDomain: rootDomain(), requestHost: ctx.request.host, site: { kind: "app" }, pathname: "/api/mcp" });
 
   return (
     <div className="min-w-0 max-w-5xl space-y-4">

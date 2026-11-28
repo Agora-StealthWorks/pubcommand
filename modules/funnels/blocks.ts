@@ -11,7 +11,7 @@
  */
 import { isHexColor, isHttpUrl } from "./checks";
 
-export const BLOCK_TYPES = ["headline", "text", "event", "countdown", "agenda", "optin", "hosts", "button", "image", "html", "divider"] as const;
+export const BLOCK_TYPES = ["headline", "text", "event", "countdown", "agenda", "optin", "hosts", "button", "image", "html", "divider", "pricing", "testimonials", "logos", "faq", "episodes"] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
 export const BLOCK_INFO: Record<BlockType, { label: string; description: string }> = {
@@ -26,6 +26,11 @@ export const BLOCK_INFO: Record<BlockType, { label: string; description: string 
   image: { label: "Image", description: "One image, optionally linked" },
   html: { label: "Custom HTML", description: "Embed code, run in a sandbox" },
   divider: { label: "Divider", description: "A thin line between sections" },
+  pricing: { label: "Pricing", description: "One to three packages: price, features, bonus value stack and a buy button" },
+  testimonials: { label: "Testimonials", description: "Reviews or endorsements with optional star ratings" },
+  logos: { label: "Logo strip", description: "“As featured in” logos" },
+  faq: { label: "FAQ", description: "Questions that open to show their answers" },
+  episodes: { label: "Episode grid", description: "Every module as a card with an unlock button" },
 };
 
 export const BLOCK_WIDTHS = ["narrow", "standard", "wide", "full"] as const;
@@ -51,7 +56,8 @@ export type HeadlineBlock = Base<"headline"> & { eyebrow: string; heading: strin
 export type TextBlock = Base<"text"> & { html: string };
 /** `at` is an ISO instant; "" = the funnel start. */
 export type EventBlock = Base<"event"> & { eyebrow: string; title: string; when: string; at: string; minutes: number; countdown: boolean; calendar: boolean };
-export type CountdownBlock = Base<"countdown"> & { heading: string; target: "start" | "end" | "custom"; at: string };
+/** target "episode" = when the module on screen stops being available (access window). */
+export type CountdownBlock = Base<"countdown"> & { heading: string; target: "start" | "end" | "custom" | "episode"; at: string };
 export type AgendaBlock = Base<"agenda"> & { heading: string; layout: "list" | "cards"; linkModules: boolean };
 /** mode "sms": `smsFormId` is one of the funnel's SMS opt-in forms. */
 export type OptinBlock = Base<"optin"> & { heading: string; intro: string; mode: "email" | "form" | "sms"; formSlug: string; smsFormId: string; buttonText: string };
@@ -61,8 +67,38 @@ export type ButtonBlock = Base<"button"> & { label: string; target: string; newT
 export type ImageBlock = Base<"image"> & { assetId: string; src: string; alt: string; href: string; newTab: boolean; widthPercent: number };
 export type HtmlBlock = Base<"html"> & { title: string; html: string; height: number };
 export type DividerBlock = Base<"divider">;
+/** features / bonuses: one per line; a bonus line is "Name | value" (value optional). */
+export type PricingTier = { name: string; price: string; was: string; badge: string; features: string; bonuses: string; buttonText: string; url: string; highlight: boolean };
+export type PricingBlock = Base<"pricing"> & { heading: string; tiers: PricingTier[]; footnote: string };
+export type Testimonial = { quote: string; name: string; role: string; rating: number };
+export type TestimonialsBlock = Base<"testimonials"> & { heading: string; items: Testimonial[] };
+export type LogoItem = { assetId: string; src: string; alt: string };
+export type LogosBlock = Base<"logos"> & { heading: string; items: LogoItem[] };
+export type FaqItem = { q: string; a: string };
+export type FaqBlock = Base<"faq"> & { heading: string; items: FaqItem[] };
+/** `target`: where each card's button goes (normalizeTarget; "#offer" = this page's offer section). */
+export type EpisodesBlock = Base<"episodes"> & { heading: string; buttonText: string; target: string };
 
-export type Block = HeadlineBlock | TextBlock | EventBlock | CountdownBlock | AgendaBlock | OptinBlock | HostsBlock | ButtonBlock | ImageBlock | HtmlBlock | DividerBlock;
+export type Block =
+  | HeadlineBlock
+  | TextBlock
+  | EventBlock
+  | CountdownBlock
+  | AgendaBlock
+  | OptinBlock
+  | HostsBlock
+  | ButtonBlock
+  | ImageBlock
+  | HtmlBlock
+  | DividerBlock
+  | PricingBlock
+  | TestimonialsBlock
+  | LogosBlock
+  | FaqBlock
+  | EpisodesBlock;
+
+export const MAX_TIERS = 3;
+export const MAX_ITEMS = 30;
 
 export const MAX_BLOCKS = 60;
 export const MAX_RICH = 50_000;
@@ -78,6 +114,11 @@ const STYLE_BY_TYPE: Partial<Record<BlockType, Partial<BlockStyle>>> = {
   button: { align: "center", padding: "small" },
   image: { align: "center" },
   divider: { padding: "small" },
+  pricing: { align: "center", width: "wide" },
+  testimonials: { width: "wide" },
+  logos: { align: "center", width: "wide", padding: "small" },
+  faq: { width: "narrow" },
+  episodes: { align: "center", width: "wide" },
 };
 
 /** Per-type field defaults (without id, type and style). */
@@ -93,6 +134,18 @@ export const BLOCK_DEFAULTS = {
   image: { assetId: "", src: "", alt: "", href: "", newTab: false, widthPercent: 100 },
   html: { title: "Embed", html: "", height: 0 },
   divider: {},
+  pricing: {
+    heading: "Choose your package",
+    tiers: [
+      { name: "Basic", price: "", was: "", badge: "", features: "", bonuses: "", buttonText: "Buy now", url: "", highlight: false },
+      { name: "Gold", price: "", was: "", badge: "Most popular", features: "", bonuses: "", buttonText: "Yes, I want this now", url: "", highlight: true },
+    ],
+    footnote: "",
+  },
+  testimonials: { heading: "What viewers are saying", items: [{ quote: "", name: "", role: "", rating: 5 }] },
+  logos: { heading: "As featured in", items: [] },
+  faq: { heading: "Frequently asked questions", items: [{ q: "", a: "" }] },
+  episodes: { heading: "The complete series", buttonText: "Unlock now", target: "#offer" },
 } satisfies { [K in BlockType]: Omit<Extract<Block, { type: K }>, "id" | "type" | "style"> };
 
 export function isBlockType(value: unknown): value is BlockType {
@@ -151,6 +204,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** A button target: an http(s) URL, `module:<n>` or `page:<slug>`. Anything else is "". */
 export function normalizeTarget(value: unknown): string {
   const text = line(value, 500);
+  if (text === "#offer") return text;
   if (/^module:\d{1,3}$/.test(text)) return text;
   if (/^page:[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/.test(text)) return text;
   return isHttpUrl(text) ? text : "";
@@ -203,7 +257,7 @@ export function normalizeBlock(raw: unknown, options: NormalizeOptions = {}): Bl
         calendar: flag(input.calendar, d.event.calendar),
       };
     case "countdown":
-      return { id, type, style, heading: line(input.heading, 200), target: oneOf(input.target, ["start", "end", "custom"] as const, "start"), at: isoOrEmpty(input.at) };
+      return { id, type, style, heading: line(input.heading, 200), target: oneOf(input.target, ["start", "end", "custom", "episode"] as const, "start"), at: isoOrEmpty(input.at) };
     case "agenda":
       return { id, type, style, heading: line(input.heading, 200, d.agenda.heading), layout: oneOf(input.layout, ["list", "cards"] as const, "cards"), linkModules: flag(input.linkModules, true) };
     case "optin":
@@ -241,7 +295,65 @@ export function normalizeBlock(raw: unknown, options: NormalizeOptions = {}): Bl
       return { id, type, style, title: line(input.title, 120, d.html.title) || "Embed", html: str(input.html, MAX_RAW_HTML), height: num(input.height, 0, 0, 4000) };
     case "divider":
       return { id, type, style };
+    case "pricing":
+      return {
+        id,
+        type,
+        style,
+        heading: line(input.heading, 200),
+        tiers: list(input.tiers, MAX_TIERS).map((tier) => ({
+          name: line(tier.name, 80),
+          price: line(tier.price, 40),
+          was: line(tier.was, 40),
+          badge: line(tier.badge, 40),
+          features: str(tier.features, 3000).trim(),
+          bonuses: str(tier.bonuses, 3000).trim(),
+          buttonText: line(tier.buttonText, 60),
+          url: normalizeTarget(tier.url),
+          highlight: flag(tier.highlight, false),
+        })),
+        footnote: str(input.footnote, 600).trim(),
+      };
+    case "testimonials":
+      return {
+        id,
+        type,
+        style,
+        heading: line(input.heading, 200),
+        items: list(input.items, MAX_ITEMS).map((item) => ({ quote: str(item.quote, 2000).trim(), name: line(item.name, 120), role: line(item.role, 120), rating: num(item.rating, 0, 0, 5) })),
+      };
+    case "logos":
+      return {
+        id,
+        type,
+        style,
+        heading: line(input.heading, 200),
+        items: list(input.items, MAX_ITEMS).map((item) => {
+          const src = line(item.src, 1000);
+          return { assetId: typeof item.assetId === "string" && UUID_RE.test(item.assetId) ? item.assetId.toLowerCase() : "", src: /^https:\/\//i.test(src) && isHttpUrl(src) ? src : "", alt: line(item.alt, 200) };
+        }),
+      };
+    case "faq":
+      return { id, type, style, heading: line(input.heading, 200), items: list(input.items, MAX_ITEMS).map((item) => ({ q: line(item.q, 300), a: str(item.a, 4000).trim() })) };
+    case "episodes":
+      return { id, type, style, heading: line(input.heading, 200), buttonText: line(input.buttonText, 60), target: normalizeTarget(input.target) };
   }
+}
+
+/** An array of plain objects, capped. Anything else is dropped. */
+function list(value: unknown, max: number): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)).slice(0, max) : [];
+}
+
+/** A bonus line: "Name | value" -> { name, value }. */
+export function parseBonus(line: string): { name: string; value: string } {
+  const [name, ...rest] = line.split("|");
+  return { name: (name ?? "").trim(), value: rest.join("|").trim() };
+}
+
+/** Non-empty lines of a multi-line field. */
+export function lines(value: string): string[] {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
 }
 
 /** Every block, cleaned, in order, capped at MAX_BLOCKS, with duplicate ids replaced. */
@@ -350,5 +462,15 @@ export function blockSummary(block: Block): string {
       return block.html.trim() ? `${block.title} · ${block.html.length} characters` : "No HTML yet";
     case "divider":
       return "Line";
+    case "pricing":
+      return block.tiers.map((tier) => [tier.name, tier.price].filter(Boolean).join(" ")).join(" · ") || "No packages yet";
+    case "testimonials":
+      return `${block.heading || "Testimonials"} · ${block.items.length}`;
+    case "logos":
+      return `${block.heading || "Logos"} · ${block.items.length}`;
+    case "faq":
+      return `${block.heading || "FAQ"} · ${block.items.length} questions`;
+    case "episodes":
+      return block.heading || "Episode grid";
   }
 }

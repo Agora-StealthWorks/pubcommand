@@ -68,7 +68,7 @@ export default async function MiniBlogsPage({ params, searchParams }: { params: 
                 </select>
               </div>
               <Button type="submit">Create Mini-Blog</Button>
-              <p className="text-xs text-muted sm:col-span-4">The medium picks the sign-up form (SMS: mobile number, Email: email address) and is the issue type of its posts on the Calendar. Each new post goes on the Calendar on its publish date.</p>
+              <p className="text-xs text-muted sm:col-span-4">The medium is the issue type of its posts on the Calendar. Only Email Mini-Blogs get a sign-up form (email address); SMS and other mediums have none. Each new post goes on the Calendar on its publish date.</p>
             </form>
           </details>
         ) : null}

@@ -3,6 +3,9 @@ import { rawPrisma, tenantDb } from "@pubcommand/db";
 import { agentCan, pickBrand, type AgentContext } from "./context";
 import { agentSettings } from "./data";
 import { PLATFORM_TOOLS } from "./platform-tools";
+import { PLATFORM_AUDIT_TOOLS } from "./platform-audit-tools";
+import { PLATFORM_ORG_TOOLS } from "./platform-org-tools";
+import { PUBLICATION_TOOLS } from "./publication-tools";
 import { USAGE_TOOLS } from "./usage-tools";
 import { ToolError, UUID, date, limit, oneOf, str, strings, uuid, type Tool } from "./tool-kit";
 import { PostError, saveTextPostAsAgent, saveWebPostAsAgent } from "./posts";
@@ -159,7 +162,7 @@ const ORG_TOOLS: Tool[] = [
           ...(ctx.scope === "platform"
             ? {
                 kind: "Platform agent (PubCommand staff). You see the whole platform: Master Brain, organizations, users, audit logs, jobs, AI usage. You can read any organization's Brain (organization argument).",
-                admin_changes: ctx.allowAdminActions ? "Allowed: suspend/resume, plan, app access, invite, run jobs. Each needs a reason and is audited." : "Not allowed for this agent (read-only).",
+                admin_changes: ctx.allowAdminActions ? "Allowed (each needs a reason and is audited): suspend/resume organizations, plans, app access, invite people, run jobs; rename organizations; add, change and remove empty brands; move Brain and Master Brain notes; delete and restore notes; create and update publications and gurus (with photos) and link them." : "Not allowed for this agent (read-only).",
               }
             : {}),
           organization: ctx.scope === "platform" ? "PubCommand platform" : ctx.organization.name,
@@ -624,7 +627,7 @@ const BRAIN_TOOLS: Tool[] = [
 const forOrganizations = (tool: Tool): Tool => (tool.name === "whoami" ? tool : { ...tool, available: (ctx) => ctx.scope === "organization" && tool.available(ctx) });
 
 function allTools(): Tool[] {
-  return [...ORG_TOOLS.map(forOrganizations), ...BRAIN_TOOLS, ...PLATFORM_TOOLS, ...USAGE_TOOLS];
+  return [...ORG_TOOLS.map(forOrganizations), ...BRAIN_TOOLS, ...PLATFORM_TOOLS, ...USAGE_TOOLS, ...PLATFORM_AUDIT_TOOLS, ...PLATFORM_ORG_TOOLS, ...PUBLICATION_TOOLS];
 }
 
 export function toolsFor(ctx: AgentContext) {

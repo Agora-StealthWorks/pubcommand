@@ -1,7 +1,7 @@
 /**
- * Mini-Blog SMS opt-ins: phone validation and the consent record. There is no SMS
- * provider yet, so nothing here sends a message; it only captures consent the
- * way a carrier audit expects (exact text shown, when, from which page).
+ * Mini-Blog sign-ups. Mini-Blogs collect EMAIL sign-ups only: there is no SMS
+ * sign-up, no phone capture and no SMS consent text. The phone helpers remain
+ * only to show and export SMS opt-ins collected before SMS sign-up was removed.
  */
 
 /**
@@ -46,6 +46,7 @@ export function maskPhone(e164: string): string {
   return `•••${e164.slice(-4)}`;
 }
 
+/** The site fields the email consent text uses. */
 export type ConsentSite = {
   programName: string;
   companyName: string;
@@ -54,59 +55,6 @@ export type ConsentSite = {
   privacyUrl: string | null;
   termsUrl: string | null;
 };
-
-/**
- * The exact consent sentence shown next to the checkbox. It is stored with every
- * opt-in, so a later edit to the site never rewrites what someone agreed to.
- */
-export function consentText(site: ConsentSite): string {
-  const program = site.programName.trim() || "text alerts";
-  const company = site.companyName.trim() || "us";
-  const frequency = site.messageFrequency.trim() || "Message frequency varies";
-  const parts = [
-    `By checking this box, I agree to receive recurring automated marketing text messages from ${company} (${program}) at the number provided.`,
-    "Consent is not a condition of any purchase.",
-    `${frequency.replace(/\.$/, "")}.`,
-    "Msg & data rates may apply.",
-    "Reply STOP to cancel or HELP for help" + (site.helpContact.trim() ? ` (or contact ${site.helpContact.trim()})` : "") + ".",
-  ];
-  const links = [site.privacyUrl ? `Privacy Policy: ${site.privacyUrl}` : null, site.termsUrl ? `Terms: ${site.termsUrl}` : null].filter(Boolean);
-  if (links.length) parts.push(`${links.join(". ")}.`);
-  return parts.join(" ");
-}
-
-export type OptinInput = {
-  phone: string;
-  consentChecked: boolean;
-  /** The consent text the page showed (echoed by the form). */
-  shownConsent: string;
-  honeypot: string;
-};
-
-export type OptinRecord = { phone: string; consentText: string };
-
-/**
- * Validate one subscribe submission against the CURRENT consent text. A form
- * rendered before an edit (different text) is refused so the stored text is
- * always what the person actually saw.
- */
-export function captureOptin(input: OptinInput, currentConsent: string): { ok: true; record: OptinRecord } | { ok: false; error: string; spam?: boolean } {
-  if (input.honeypot.trim()) return { ok: false, error: "Thanks!", spam: true };
-  const phone = normalizePhone(input.phone);
-  if (!phone) return { ok: false, error: "Enter a valid mobile number, including the area code." };
-  if (!input.consentChecked) return { ok: false, error: "Check the box to agree to receive text messages." };
-  if (input.shownConsent.trim() !== currentConsent.trim()) return { ok: false, error: "This page was updated. Please review the terms and try again." };
-  return { ok: true, record: { phone, consentText: currentConsent } };
-}
-
-/** The compliance block shown under every subscribe form and in every site footer. */
-export function complianceLines(site: ConsentSite): string[] {
-  return [
-    `${site.messageFrequency.trim() || "Message frequency varies"}. Msg & data rates may apply.`,
-    "Text STOP to cancel at any time. Text HELP for help.",
-    "Consent is not a condition of purchase.",
-  ];
-}
 
 /** A lowercased email address, or null when it cannot be one. */
 export function normalizeEmail(input: string | null | undefined): string | null {

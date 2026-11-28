@@ -48,6 +48,10 @@ Auth cookies use `Domain=.pubcommand.com` when `ROOT_DOMAIN` is a real domain, s
 
 Reserved organization slugs: `www`, `app`, `admin`, `api`, `platform`, `mail`, `status`, `docs`, `help`, `billing`, `auth`, `static`, `cdn`. Slugs are lowercase, 3–40 characters, `[a-z0-9-]`, and cannot start or end with a hyphen.
 
+### Site switcher
+
+The dropdown under the logo on every signed-in sidebar (organization, console and picker) is how people move between places. It lists every organization you can open; the one you are in is ticked. The super admin, once two-factor is done, sees every organization, not just their memberships; ones they are not a member of say "Super admin access". Below the list: the Platform console (staff), All workspaces, Your account and Sign out. With more than seven organizations, a search box filters them by name. The same places are in the ⌘K palette. Brands are not in this dropdown: you pick the brand with the separate Brand picker below it. Code: `features/navigation/switcher.ts` (pure model), `features/navigation/load.ts` (memberships, staff), `components/site-switcher.tsx`.
+
 ## Staff and 2FA
 
 `PlatformStaff` is the staff flag. Roles:

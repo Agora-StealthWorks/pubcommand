@@ -2,7 +2,8 @@ import { buildSiteUrl } from "@pubcommand/core";
 
 /**
  * The site switcher at the top of every signed-in sidebar: where you are, and links to every
- * organization you belong to, the Platform console (staff), Your account and the workspace list.
+ * organization you can open, the Platform
+ * console (staff), Your account and the workspace list. The super admin sees every organization.
  * Pure: the caller looks up memberships and staff status. Links to another host are built with
  * buildSiteUrl, so they follow the environment (localhost locally, *.pubcommand.com in production).
  */
@@ -32,7 +33,13 @@ export type SwitcherModel = {
 
 export type SwitcherInput = {
   here: SwitcherHere;
-  organizations: { slug: string; name: string; suspended?: boolean }[];
+  organizations: {
+    slug: string;
+    name: string;
+    suspended?: boolean;
+    /** False when the super admin can open it without being a member. */
+    member?: boolean;
+  }[];
   /** Null when not platform staff. `ready` is false while staff two-factor is unfinished. */
   staff: { ready: boolean } | null;
   rootDomain: string;
@@ -45,14 +52,17 @@ export function buildSwitcher(input: SwitcherInput): SwitcherModel {
   const here = input.here;
   const hereSlug = here.kind === "org" ? here.slug : null;
 
-  const organizations: SwitcherLink[] = input.organizations.map((org) => ({
-    key: `org:${org.slug}`,
-    label: org.name,
-    // Stay on this host for the current organization (a relative link keeps any local ?org= routing simple).
-    href: org.slug === hereSlug ? "/" : url({ kind: "org", slug: org.slug }),
-    current: org.slug === hereSlug,
-    ...(org.suspended ? { hint: "Suspended" } : {}),
-  }));
+  const organizations: SwitcherLink[] = input.organizations.map((org) => {
+    const hint = org.suspended ? "Suspended" : org.member === false ? "Super admin access" : undefined;
+    return {
+      key: `org:${org.slug}`,
+      label: org.name,
+      // Stay on this host for the current organization (a relative link keeps any local ?org= routing simple).
+      href: org.slug === hereSlug ? "/" : url({ kind: "org", slug: org.slug }),
+      current: org.slug === hereSlug,
+      ...(hint ? { hint } : {}),
+    };
+  });
 
   const consoleLink: SwitcherLink | null = input.staff
     ? {

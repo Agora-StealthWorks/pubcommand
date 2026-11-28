@@ -1,6 +1,6 @@
 "use server";
 
-import { appendOrgAudit, syncBrandLook, tenantDb, type Prisma } from "@pubcommand/db";
+import { appendOrgAudit, loadBrandLook, syncBrandLook, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { miniBlogPath } from "../../../../../modules/miniblog/paths";
@@ -12,7 +12,7 @@ import { MAX_AD_CODE_LENGTH, acceptAdChoice, newAdCodeId, parseAdCodes, type AdC
 import { acceptMedium, mediumsFromText } from "../../../../../modules/miniblog/mediums";
 import { acceptCategory, categoriesFromText } from "../../../../../modules/miniblog/post-fields";
 import { DEFAULT_THEME, isThemeId, themeById } from "../../../../../modules/miniblog/themes";
-import { bool, color, int, optional, storeLogo, text, url, zoned } from "./form-input";
+import { bool, color, int, optional, optionalColor, storeLogo, text, url, zoned } from "./form-input";
 import { syncPostLinks } from "./links";
 import { miniblogAction, miniblogWriteCtx, orgPublicUrl, withMessage, type MiniBlogCtx } from "./guard";
 import { richFromInput } from "./sanitize";
@@ -68,7 +68,8 @@ export async function createSite(formData: FormData) {
       theme: theme.id,
       headerBg: theme.headerBg,
       accentColor: theme.accent,
-      logoHeight: 34,
+      // Starts at the brand's logo size; after that the Mini-Blog's slider decides.
+      logoHeight: (await loadBrandLook(ctx.resolved.id, ctx.brand.id)).logoHeight,
       archivesEnabled: true,
       followBrand: true,
       createdById: ctx.actorId,
@@ -108,6 +109,9 @@ export async function saveSite(formData: FormData) {
       logoHeight: int(formData, "logoHeight", site.logoHeight, 16, 120),
       headerBg: color(formData, "headerBg", site.headerBg),
       accentColor: color(formData, "accentColor", site.accentColor),
+      // Empty = the theme's page color / the link color.
+      pageBg: optionalColor(formData, "pageBg"),
+      buttonColor: optionalColor(formData, "buttonColor"),
       theme,
       medium,
       postCategories: categoriesFromText(text(formData, "postCategories", 4000)),
