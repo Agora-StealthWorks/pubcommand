@@ -14,7 +14,7 @@ export default async function IntelLayout({ children, params }: { children: Reac
     <div className="min-w-0">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">Intel</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">iSpy</h1>
           <p className="text-sm text-muted">What competing publishers send and promote, for {access.scope.brand.name}.</p>
         </div>
         <IntelTabs />

@@ -19,7 +19,7 @@ export function IntelTabs() {
   // Pages are rewritten under /sites/org/<slug>; match on the tail.
   const tail = pathname.replace(/^\/sites\/org\/[^/]+/, "");
   return (
-    <nav className="flex max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1" aria-label="Intel">
+    <nav className="flex max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1" aria-label="iSpy">
       {TABS.map((tab) => {
         const active =
           tab.href === "/intel" ? tail === "/intel" || tail.startsWith("/intel/emails") : tail.startsWith(tab.href) || Boolean(tab.also?.some((prefix) => tail.startsWith(prefix)));

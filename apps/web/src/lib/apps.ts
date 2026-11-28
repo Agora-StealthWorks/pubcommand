@@ -59,7 +59,7 @@ const CARDS: AppCard[] = [
   },
   {
     moduleId: "intel",
-    name: "Intel",
+    name: "iSpy",
     description: "Competitor emails and promos in your market.",
     icon: "🔎",
     category: "Research & Knowledge",
