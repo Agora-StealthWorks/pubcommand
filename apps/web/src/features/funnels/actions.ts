@@ -5,9 +5,10 @@ import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { starterBlocks } from "../../../../../modules/funnels/blocks";
+import { isPreset, presetBasics, presetColumns, presetDayResources, presetOfferBlocks } from "../../../../../modules/funnels/presets";
 import { NEW_FUNNEL_COLUMNS, NEW_FUNNEL_DESIGN } from "../../../../../modules/funnels/design";
 import { checkFunnel, isValidSlug, newUnlockKey, normalizeSlug } from "../../../../../modules/funnels/checks";
-import { DEADLINE_PAGES, DEADLINE_TARGETS, normalizeDeadlineButtonUrl, normalizeDeadlinePages } from "../../../../../modules/funnels/deadline";
+import { DEADLINE_PAGES, DEADLINE_POSITIONS, DEADLINE_TARGETS, normalizeDeadlineButtonUrl, normalizeDeadlinePages } from "../../../../../modules/funnels/deadline";
 import { BETWEEN_SESSIONS, CLOSE_MODES, CTA_REVEALS, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, SITE_TYPES, TIMING_MODES } from "../../../../../modules/funnels/state";
 import { parseReminders } from "../../../../../modules/funnels/calendar";
 import { linkItemsFromForm } from "../../../../../modules/funnels/links";
@@ -47,9 +48,13 @@ function builder(funnelId: string, tab: string) {
 export async function createFunnel(formData: FormData) {
   const ctx = await funnelsAction("/funnels", "funnels.write");
   const db = tenantDb(ctx.resolved.id);
-  const siteType = pickOne(formData, "siteType", SITE_TYPES, "launch");
+  // A preset picks type and mode (and starting settings); without one, the type / kind fields as before.
+  const presetValue = text(formData, "preset", 20);
+  const preset = isPreset(presetValue) ? presetValue : null;
+  const basics = preset ? presetBasics(preset) : null;
+  const siteType = basics?.siteType ?? pickOne(formData, "siteType", SITE_TYPES, "launch");
   const name = text(formData, "name", 120) || (siteType === "microsite" ? "New microsite" : "New launch");
-  const mode = pickOne(formData, "mode", FUNNEL_MODES, "evergreen");
+  const mode = basics?.mode ?? pickOne(formData, "mode", FUNNEL_MODES, "evergreen");
   const dayCount = int(formData, "days", 4, siteType === "microsite" ? 0 : 1, 30);
   const themes = await db.formTheme.findMany({ where: { brandId: ctx.brand.id, deletedAt: null }, orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }], select: { id: true }, take: 1 });
   const funnel = await db.funnel.create({
@@ -65,16 +70,27 @@ export async function createFunnel(formData: FormData) {
       // New funnels start with the old app's look; existing ones keep theirs.
       design: JSON.parse(JSON.stringify(NEW_FUNNEL_DESIGN)) as Prisma.InputJsonValue,
       ...NEW_FUNNEL_COLUMNS,
+      ...(preset ? (presetColumns(preset) as Prisma.FunnelCreateInput) : {}),
+      ...(preset === "docuseries" ? { offerBlocks: JSON.parse(JSON.stringify(presetOfferBlocks(preset))) as Prisma.InputJsonValue } : {}),
       companyName: ctx.brand.name,
       createdById: ctx.actorId,
     },
   });
   for (let position = 1; position <= dayCount; position += 1) {
     await db.funnelDay.create({
-      data: { organizationId: ctx.resolved.id, funnelId: funnel.id, position, title: "", unlockKey: newUnlockKey(), unlockOffsetHours: (position - 1) * 24, isLive: mode === "live" },
+      data: {
+        organizationId: ctx.resolved.id,
+        funnelId: funnel.id,
+        position,
+        title: "",
+        unlockKey: newUnlockKey(),
+        unlockOffsetHours: (position - 1) * 24,
+        isLive: mode === "live",
+        ...(preset === "docuseries" ? { navLabel: `Episode ${position}`, resources: JSON.parse(JSON.stringify(presetDayResources(preset))) as Prisma.InputJsonValue, resourcesHeading: "" } : {}),
+      },
     });
   }
-  await audit(ctx, "funnels.funnel.created", "funnel", funnel.id);
+  await audit(ctx, "funnels.funnel.created", "funnel", funnel.id, preset ? { preset } : undefined);
   redirect(builder(funnel.id, "setup"));
 }
 
@@ -156,6 +172,8 @@ export async function saveFunnel(formData: FormData) {
       lockedKeyMsg: text(formData, "lockedKeyMsg", 1000),
       lockedLiveMsg: text(formData, "lockedLiveMsg", 1000),
       lockedPassedMsg: text(formData, "lockedPassedMsg", 1000),
+      lockedExpiredMsg: text(formData, "lockedExpiredMsg", 1000),
+      accessHours: optionalInt(formData, "accessHours", 1, 24 * 365),
       comingSoonTitle: text(formData, "comingSoonTitle", 120) || "Coming soon",
       comingSoonMessage: text(formData, "comingSoonMessage", 1000),
       replayPendingTitle: text(formData, "replayPendingTitle", 120) || "The replay is on its way",
@@ -208,7 +226,7 @@ export async function saveFunnel(formData: FormData) {
       deadlineBarEnabled: bool(formData, "deadlineBarEnabled"),
       deadlineBarTarget: pickOne(formData, "deadlineBarTarget", DEADLINE_TARGETS, "end"),
       deadlineBarAt: zoned(formData, "deadlineBarAt", timeZone),
-      deadlineBarPosition: pickOne(formData, "deadlineBarPosition", ["top", "bottom"] as const, "bottom"),
+      deadlineBarPosition: pickOne(formData, "deadlineBarPosition", DEADLINE_POSITIONS, "bottom"),
       deadlineBarSticky: bool(formData, "deadlineBarSticky"),
       deadlineBarText: text(formData, "deadlineBarText", 200) || "This offer ends in",
       deadlineBarBg: color(formData, "deadlineBarBg", "#b42318"),
@@ -223,6 +241,18 @@ export async function saveFunnel(formData: FormData) {
       deadlineBarSpacing: pickOne(formData, "deadlineBarSpacing", ["narrow", "wide"] as const, "narrow"),
     };
     if (data.deadlineBarButtonText && !data.deadlineBarButtonUrl) redirect(withMessage(back, "error", "The bar button needs a web address (https://…) or a module (module:1)."));
+  } else if (section === "episode") {
+    data = {
+      countdownStyle: pickOne(formData, "countdownStyle", ["boxes", "flip"] as const, "boxes"),
+      countdownZero: pickOne(formData, "countdownZero", ["reload", "stay"] as const, "reload"),
+      countdownBoxBg: color(formData, "countdownBoxBg", "#ffffff"),
+      countdownDigit: color(formData, "countdownDigit", "#111827"),
+      lockedBoxBg: blankOrColor("lockedBoxBg") || null,
+      lockedBoxText: blankOrColor("lockedBoxText") || null,
+      lockedBoxMinimal: bool(formData, "lockedBoxMinimal"),
+      navLayout: pickOne(formData, "navLayout", ["strip", "sidebar"] as const, "strip"),
+      navBlurLocked: bool(formData, "navBlurLocked"),
+    };
   } else if (section === "emails") {
     const replyTo = text(formData, "emailReplyTo", 254).toLowerCase();
     if (replyTo && !isValidEmail(replyTo)) redirect(withMessage(back, "error", "The reply-to address is not a valid email."));
@@ -322,6 +352,8 @@ export async function saveDay(formData: FormData) {
       ...(formData.has("unlockAt") || unlockBy ? { unlockAt: unlockBy === "offset" ? null : zoned(formData, "unlockAt", timeZone) } : {}),
       unlockKey,
       lockedMessage: optional(formData, "lockedMessage", 1000),
+      accessHours: optionalInt(formData, "accessHours", 1, 24 * 365),
+      showOffer: bool(formData, "showOffer"),
       isLive: bool(formData, "isLive"),
       liveStartAt: zoned(formData, "liveStartAt", timeZone),
       liveEndAt: zoned(formData, "liveEndAt", timeZone),

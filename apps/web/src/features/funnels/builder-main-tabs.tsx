@@ -62,14 +62,15 @@ function LinkRows({ prefix, items, label }: { prefix: string; items: LinkItem[];
   return (
     <fieldset className="space-y-2">
       <legend className="text-sm font-semibold">{label}</legend>
-      <p className="text-xs text-muted">Empty rows are ignored. Clear a link to remove it.</p>
+      <p className="text-xs text-muted">Empty rows are ignored. Clear a link to remove it. “Locked teaser” shows a lock (e.g. Download transcript) and can link to <code>#offer</code>, the offer section on the page.</p>
       {rows.map((item, index) => (
         <div key={index} className="grid gap-2 rounded-lg border border-line p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_130px_auto] sm:items-center sm:border-0 sm:p-0">
           <Input name={`${prefix}_label_${index}`} defaultValue={item?.label ?? ""} placeholder="Label" maxLength={200} aria-label={`Label ${index + 1}`} />
-          <Input name={`${prefix}_url_${index}`} defaultValue={item?.url ?? ""} placeholder="https://" type="url" aria-label={`Link ${index + 1}`} />
+          <Input name={`${prefix}_url_${index}`} defaultValue={item?.url ?? ""} placeholder="https:// or #offer" inputMode="url" aria-label={`Link ${index + 1}`} />
           <select name={`${prefix}_style_${index}`} defaultValue={item?.style ?? "button"} className="pc-control text-sm" aria-label={`Style ${index + 1}`}>
             <option value="button">Button</option>
             <option value="link">Text link</option>
+            <option value="locked">Locked teaser</option>
           </select>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name={`${prefix}_newTab_${index}`} defaultChecked={item ? item.newTab : true} className="h-4 w-4 accent-accent" /> New tab
@@ -194,16 +195,16 @@ export function ScheduleTab({ funnel, canWrite, local, zone, timeZone }: { funne
                 <Field label="Calendar link" htmlFor="calendarUrl" hint="Link mode. Each live module can override it." className="sm:col-span-2">
                   <Input id="calendarUrl" name="calendarUrl" type="url" defaultValue={funnel.calendarUrl ?? ""} placeholder="https://" />
                 </Field>
-                <Field label="Invite covers" htmlFor="calInviteScope" hint="Built-in mode. Series: Apple and Outlook get one file with every remaining session; Google lists one link per session.">
+                <Field advanced label="Invite covers" htmlFor="calInviteScope" hint="Built-in mode. Series: Apple and Outlook get one file with every remaining session; Google lists one link per session.">
                   <Select name="calInviteScope" value={funnel.calInviteScope} options={[["individual", "Each session on its own (waitlist adds the first)"], ["series", "The whole series in one invite"]]} />
                 </Field>
-                <Field label="Reminders before the session" htmlFor="calReminders" hint={`Comma-separated, up to 5, e.g. 1 day, 1 hour, 15 min. Now: ${describeReminders(reminders)}. Apple and Outlook only (Google uses its own alerts).`}>
+                <Field advanced label="Reminders before the session" htmlFor="calReminders" hint={`Comma-separated, up to 5, e.g. 1 day, 1 hour, 15 min. Now: ${describeReminders(reminders)}. Apple and Outlook only (Google uses its own alerts).`}>
                   <Input id="calReminders" name="calReminders" defaultValue={reminders.join(", ")} maxLength={200} />
                 </Field>
-                <Field label="Invite title" htmlFor="calInviteTitle" hint="{funnel} {day} {title}" className="sm:col-span-2">
+                <Field advanced label="Invite title" htmlFor="calInviteTitle" hint="{funnel} {day} {title}" className="sm:col-span-2">
                   <Input id="calInviteTitle" name="calInviteTitle" defaultValue={funnel.calInviteTitle} maxLength={300} />
                 </Field>
-                <Field label="Invite description" htmlFor="calInviteDesc" hint="{agenda} every session with its date and topics · {topics} this session's topics · {room_url} {page_url} {day} {title} {date} {time}. The event's location is always the session's room." className="sm:col-span-2">
+                <Field advanced label="Invite description" htmlFor="calInviteDesc" hint="{agenda} every session with its date and topics · {topics} this session's topics · {room_url} {page_url} {day} {title} {date} {time}. The event's location is always the session's room." className="sm:col-span-2">
                   <Textarea id="calInviteDesc" name="calInviteDesc" defaultValue={funnel.calInviteDesc} className="min-h-28" />
                 </Field>
               </div>
@@ -225,28 +226,28 @@ export function ScheduleTab({ funnel, canWrite, local, zone, timeZone }: { funne
                 <Input id="liveCountdownTitle" name="liveCountdownTitle" defaultValue={funnel.liveCountdownTitle} maxLength={200} />
               </Field>
               <h3 className="pt-2 text-sm font-semibold">Join today&apos;s session</h3>
-              <Check name="todayTrainingEnabled" label="On a later session's page, point people to today's session while it is still to come or live" defaultChecked={funnel.todayTrainingEnabled} hint="Someone opens Day 2 on the morning of Day 1: they see Day 2's date and a button to Day 1." />
+              <Check advanced name="todayTrainingEnabled" label="On a later session's page, point people to today's session while it is still to come or live" defaultChecked={funnel.todayTrainingEnabled} hint="Someone opens Day 2 on the morning of Day 1: they see Day 2's date and a button to Day 1." />
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Button text" htmlFor="todayTrainingText">
+                <Field advanced label="Button text" htmlFor="todayTrainingText">
                   <Input id="todayTrainingText" name="todayTrainingText" defaultValue={funnel.todayTrainingText} maxLength={120} />
                 </Field>
-                <Field label="Before it starts" htmlFor="todayTrainingMsg" hint="{day} {time}">
+                <Field advanced label="Before it starts" htmlFor="todayTrainingMsg" hint="{day} {time}">
                   <Input id="todayTrainingMsg" name="todayTrainingMsg" defaultValue={funnel.todayTrainingMsg} maxLength={500} />
                 </Field>
-                <Field label="While it is live" htmlFor="todayTrainingLiveMsg" hint="{day}">
+                <Field advanced label="While it is live" htmlFor="todayTrainingLiveMsg" hint="{day}">
                   <Input id="todayTrainingLiveMsg" name="todayTrainingLiveMsg" defaultValue={funnel.todayTrainingLiveMsg} maxLength={500} />
                 </Field>
               </div>
               <h3 className="pt-2 text-sm font-semibold">Join the room early</h3>
-              <Check name="earlyJoinEnabled" label="Show a “join early” button shortly before a session goes live" defaultChecked={funnel.earlyJoinEnabled} hint="Replaces Add to calendar on the waitlist page and in the session-day countdown. It appears by itself at the right moment. Clicks are counted." />
+              <Check advanced name="earlyJoinEnabled" label="Show a “join early” button shortly before a session goes live" defaultChecked={funnel.earlyJoinEnabled} hint="Replaces Add to calendar on the waitlist page and in the session-day countdown. It appears by itself at the right moment. Clicks are counted." />
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Minutes before going live" htmlFor="earlyJoinMinutes">
+                <Field advanced label="Minutes before going live" htmlFor="earlyJoinMinutes">
                   <Input id="earlyJoinMinutes" name="earlyJoinMinutes" type="number" min={1} max={1440} defaultValue={funnel.earlyJoinMinutes} />
                 </Field>
-                <Field label="Button text" htmlFor="earlyJoinText">
+                <Field advanced label="Button text" htmlFor="earlyJoinText">
                   <Input id="earlyJoinText" name="earlyJoinText" defaultValue={funnel.earlyJoinText} maxLength={120} />
                 </Field>
-                <Field label="Room link" htmlFor="earlyJoinUrl" hint="Blank = the session's livestream room.">
+                <Field advanced label="Room link" htmlFor="earlyJoinUrl" hint="Blank = the session's livestream room.">
                   <Input id="earlyJoinUrl" name="earlyJoinUrl" type="url" defaultValue={funnel.earlyJoinUrl ?? ""} placeholder="https://" />
                 </Field>
               </div>
@@ -348,10 +349,15 @@ export function ProgressionTab({ funnel, canWrite }: { funnel: FunnelRow; canWri
           <Field label="Unlock rule" htmlFor="progression" hint="A: all open. B: each module at a set date and time, or hours after the start (set per module). C: once the previous video is watched to a percentage. D: with its secret link (?k=…) from an email, remembered per browser.">
             <Select name="progression" value={funnel.progression} options={PROGRESSIONS.map((value, index) => [value, `${"ABCD"[index]} · ${PROGRESSION_LABELS[value]}`])} />
           </Field>
-          <Check name="lockFirstModule" label="Lock the first module too (set times and link keys)" defaultChecked={funnel.lockFirstModule} hint="Normally the first module opens when the funnel starts. Ticked, it follows the same rule as the others. Best with the Microsite type, so visitors land on the home page." />
-          <Check name="keyForceUnlock" label="Email links can force-unlock a module early (B and C)" defaultChecked={funnel.keyForceUnlock} hint="Each module gets a secret link (?k=…) for your emails. Opening it unlocks that module straight away, even before its time or watch percentage, and the browser remembers it. Without the link, the module still unlocks on its own rule." />
+          <Check advanced name="lockFirstModule" label="Lock the first module too (set times and link keys)" defaultChecked={funnel.lockFirstModule} hint="Normally the first module opens when the funnel starts. Ticked, it follows the same rule as the others. Best with the Microsite type, so visitors land on the home page." />
+          <Check advanced name="keyForceUnlock" label="Email links can force-unlock a module early (B and C)" defaultChecked={funnel.keyForceUnlock} hint="Each module gets a secret link (?k=…) for your emails. Opening it unlocks that module straight away, even before its time or watch percentage, and the browser remembers it. Without the link, the module still unlocks on its own rule." />
           <Check name="lockPassedModules" label="Lock each module again once the next one unlocks (B, C and D)" defaultChecked={funnel.lockPassedModules} hint="Viewers only ever have the newest module. When a later module's video opens for them, the earlier ones lock and show the “Module has passed” message with a button to the open one. The front door goes to the open one too. Live modules are never locked this way." />
-          <Check name="hidePassedModules" label="Hide passed modules from the navigation" defaultChecked={funnel.hidePassedModules} hint="Only with the option above. Ticked, a module that has locked again disappears from the module tiles instead of showing a lock. The agenda still lists it." />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Each module stays open for (hours)" htmlFor="accessHours" hint="Docuseries access window: after a module opens for a viewer it expires this many hours later (e.g. 24) and shows the “Access expired” message. Blank = modules never expire. Works with A and B; live modules never expire.">
+              <Input id="accessHours" name="accessHours" type="number" min={1} max={24 * 365} defaultValue={funnel.accessHours ?? ""} placeholder="Never expire" />
+            </Field>
+          </div>
+          <Check advanced name="hidePassedModules" label="Hide passed modules from the navigation" defaultChecked={funnel.hidePassedModules} hint="Only with the option above. Ticked, a module that has locked again disappears from the module tiles instead of showing a lock. The agenda still lists it." />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Percent of the previous video to watch" htmlFor="watchPercent" hint="Unlock by watching. Text modules count as read after 5 seconds open.">
               <Input id="watchPercent" name="watchPercent" type="number" min={1} max={100} defaultValue={funnel.watchPercent} />
@@ -364,7 +370,7 @@ export function ProgressionTab({ funnel, canWrite }: { funnel: FunnelRow; canWri
             </Field>
           </div>
         </Section>
-        <Section title="Video setup">
+        <Section advanced title="Video setup">
           <Field label="Build" htmlFor="buildMode" hint="Pre-add all: every module needs its video before the funnel can publish.">
             <Select name="buildMode" value={funnel.buildMode} options={[["as_you_go", "Build as you go (modules without a video say “coming soon”)"], ["prebuilt", "Pre-add all videos"]]} />
           </Field>
@@ -380,6 +386,7 @@ export function ProgressionTab({ funnel, canWrite }: { funnel: FunnelRow; canWri
               ["lockedKeyMsg", "Unlock by link key", funnel.lockedKeyMsg],
               ["lockedLiveMsg", "Live session not started yet", funnel.lockedLiveMsg],
               ["lockedPassedMsg", "Module has passed (a later one is open)", funnel.lockedPassedMsg],
+              ["lockedExpiredMsg", "Access expired (the module's access window is over)", funnel.lockedExpiredMsg],
             ] as const
           ).map(([name, label, value]) => (
             <Field key={name} label={label} htmlFor={name}>
@@ -387,7 +394,7 @@ export function ProgressionTab({ funnel, canWrite }: { funnel: FunnelRow; canWri
             </Field>
           ))}
         </Section>
-        <Section title="Other page messages">
+        <Section advanced title="Other page messages">
           <div className="grid gap-4 sm:grid-cols-2">
             {messages.map(([name, label, value]) => (
               <Field key={name} label={label} htmlFor={name}>
@@ -818,6 +825,15 @@ function ModuleEditor({ funnel, day, days, smsForms, canWrite, local, zone, link
               <input type="hidden" name="lockedMessage" value={day.lockedMessage ?? ""} />
             </>
           )}
+
+          <Section title="Docuseries">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Open for (hours)" htmlFor="dayAccessHours" hint={funnel.accessHours ? `Blank = the funnel's ${funnel.accessHours} hours.` : "Blank = never expires (set a window for every module on Progression & messages)."}>
+                <Input id="dayAccessHours" name="accessHours" type="number" min={1} max={24 * 365} defaultValue={day.accessHours ?? ""} />
+              </Field>
+            </div>
+            <Check name="showOffer" label="Show the offer section under this module" defaultChecked={day.showOffer} hint="The blocks on the Offer section tab (pricing, testimonials, FAQ…), anchored at #offer." />
+          </Section>
 
           <Section title="Agenda">
             <Check name="showAgenda" label="Show the agenda below the video" defaultChecked={day.showAgenda} hint="In every state, including before this module unlocks. Uses the agenda title and colours from the Waitlist page tab." />

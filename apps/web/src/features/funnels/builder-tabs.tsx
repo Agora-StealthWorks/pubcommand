@@ -13,7 +13,7 @@ import { Check, ColorField, Field, Section } from "./fields";
 import { HomeBuilder } from "./home-builder";
 import { hostPhoto } from "./home-view";
 import { RichTextArea } from "./rich-text-area";
-import { hasDraft as hasDraftValue, navItemThumb, parseDesignDraft, parseHomeDraft } from "./site-data";
+import { hasDraft as hasDraftValue, navItemThumb, parseDesignDraft, parseHomeDraft, parseOfferDraft } from "./site-data";
 
 type Option = { value: string; label: string };
 
@@ -59,6 +59,30 @@ function MoveDelete({ funnel, idName, id, first, last, move, remove, removeLabel
 }
 
 // ---------------------------------------------------------------------------
+
+/** The offer section under module pages: the same block builder as the home page, saved to offerBlocks. */
+export function OfferTab({ funnel, days, navItems, hosts, forms, smsForms = [], timeZone, zone, canWrite }: { funnel: FunnelRow; days: DayRow[]; navItems: NavItemRow[]; hosts: HostRow[]; forms: { slug: string; title: string }[]; smsForms?: { id: string; name: string }[]; timeZone: string; zone: string; canWrite: boolean }) {
+  const hasDraft = hasDraftValue(funnel.offerBlocksDraft);
+  const blocks = hasDraft ? parseOfferDraft(funnel.offerBlocksDraft, funnel).blocks : normalizeBlocks(funnel.offerBlocks);
+  const first = [...days].sort((a, b) => a.position - b.position)[0];
+  return (
+    <HomeBuilder
+      target="offer"
+      funnelId={funnel.id}
+      publicPath={`/l/${funnel.slug}/day-${first?.position ?? 1}`}
+      timeZone={timeZone}
+      zone={zone}
+      initial={{ blocks, shell: funnel.homeShell, title: funnel.homeTitle }}
+      forms={forms.map((form) => ({ value: form.slug, label: form.title }))}
+      smsForms={smsForms.map((form) => ({ value: form.id, label: form.name }))}
+      modules={days.map((day) => ({ value: String(day.position), label: `${dayLabel(day)}${day.title ? `: ${day.title}` : ""}` }))}
+      pages={navItems.filter((item) => item.kind === "page").map((item) => ({ value: item.slug, label: item.title || item.label || item.slug }))}
+      hostCount={hosts.length}
+      canWrite={canWrite}
+      hasDraft={hasDraft}
+    />
+  );
+}
 
 export function HomeTab({ funnel, days, navItems, hosts, forms, smsForms = [], timeZone, zone, canWrite }: { funnel: FunnelRow; days: DayRow[]; navItems: NavItemRow[]; hosts: HostRow[]; forms: { slug: string; title: string }[]; smsForms?: { id: string; name: string }[]; timeZone: string; zone: string; canWrite: boolean }) {
   const hasDraft = hasDraftValue(funnel.homeBlocksDraft);
@@ -365,10 +389,62 @@ export function PagesTab({ funnel, days, navItems, forms, smsForms = [], openId,
 
 // ---------------------------------------------------------------------------
 
+/** Countdown look, the locked video box and the episode list: everything the episode page looks like around the video. */
+export function EpisodePageSettings({ funnel, canWrite }: { funnel: FunnelRow; canWrite: boolean }) {
+  return (
+    <form action={saveFunnel} className="space-y-4">
+      <Hidden funnel={funnel} section="episode" />
+      <fieldset disabled={!canWrite} className="space-y-4">
+        <Section title="Countdowns" description="One look for every countdown: the waitlist, the locked video box, the header bar and countdown blocks.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Style" htmlFor="countdownStyle">
+              <select id="countdownStyle" name="countdownStyle" defaultValue={funnel.countdownStyle} className="pc-control w-full text-sm">
+                <option value="boxes">Boxes: one box per unit</option>
+                <option value="flip">Flip clock: a tile per digit</option>
+              </select>
+            </Field>
+            <Field label="When it reaches zero" htmlFor="countdownZero" advanced>
+              <select id="countdownZero" name="countdownZero" defaultValue={funnel.countdownZero} className="pc-control w-full text-sm">
+                <option value="reload">Reload into the page that just opened</option>
+                <option value="stay">Stay on 00:00:00</option>
+              </select>
+            </Field>
+            <ColorField name="countdownBoxBg" label="Box / tile colour" value={safeColor(funnel.countdownBoxBg, "#ffffff")} />
+            <ColorField name="countdownDigit" label="Digit colour" value={safeColor(funnel.countdownDigit, "#111827")} />
+          </div>
+        </Section>
+        <Section advanced title="Locked video box" description="The box in the video's place before a module opens (e.g. “Episode 2 starts in…”).">
+          <Check name="lockedBoxMinimal" label="Minimal: just the headline and countdown" defaultChecked={funnel.lockedBoxMinimal} hint="Hides the lock icon and message on countdown boxes. Expired and other locked boxes keep their message." />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Box colour" htmlFor="lockedBoxBg" hint="#rrggbb, or blank = default dark grey. Black: #000000.">
+              <Input id="lockedBoxBg" name="lockedBoxBg" defaultValue={funnel.lockedBoxBg ?? ""} maxLength={7} className="font-mono" />
+            </Field>
+            <Field label="Text colour" htmlFor="lockedBoxText" hint="#rrggbb, or blank = white.">
+              <Input id="lockedBoxText" name="lockedBoxText" defaultValue={funnel.lockedBoxText ?? ""} maxLength={7} className="font-mono" />
+            </Field>
+          </div>
+        </Section>
+        <Section title="Episode navigation">
+          <Field label="Layout" htmlFor="navLayout">
+            <select id="navLayout" name="navLayout" defaultValue={funnel.navLayout} className="pc-control w-full text-sm">
+              <option value="strip">Thumbnail strip above the video</option>
+              <option value="sidebar">Episode list beside the video (stacks under it on phones)</option>
+            </select>
+          </Field>
+          <Check name="navBlurLocked" label="Blur locked and expired thumbnails" defaultChecked={funnel.navBlurLocked} />
+          {canWrite ? <Button type="submit">Save episode page</Button> : null}
+        </Section>
+      </fieldset>
+    </form>
+  );
+}
+
 export function DeadlineTab({ funnel, days, timeZone, zone, canWrite }: { funnel: FunnelRow; days: DayRow[]; timeZone: string; zone: string; canWrite: boolean }) {
   const pages = normalizeDeadlinePages(funnel.deadlineBarPages);
   const pageKinds = DEADLINE_PAGES.filter((page) => (funnel.siteType === "microsite" ? page !== "waitlist" : page !== "home"));
   return (
+    <div className="space-y-4">
+    <EpisodePageSettings funnel={funnel} canWrite={canWrite} />
     <form action={saveFunnel} className="space-y-4">
       <Hidden funnel={funnel} section="deadline" />
       <fieldset disabled={!canWrite} className="space-y-4">
@@ -379,6 +455,7 @@ export function DeadlineTab({ funnel, days, timeZone, zone, canWrite }: { funnel
               <select id="deadlineBarTarget" name="deadlineBarTarget" defaultValue={funnel.deadlineBarTarget} className="pc-control w-full text-sm">
                 <option value="end">When the funnel closes</option>
                 <option value="start">When the funnel starts</option>
+                <option value="episode">When the episode on screen expires (module pages)</option>
                 <option value="custom">A set time</option>
               </select>
             </Field>
@@ -390,16 +467,17 @@ export function DeadlineTab({ funnel, days, timeZone, zone, canWrite }: { funnel
             </Field>
             <Field label="Position" htmlFor="deadlineBarPosition">
               <select id="deadlineBarPosition" name="deadlineBarPosition" defaultValue={funnel.deadlineBarPosition} className="pc-control w-full text-sm">
+                <option value="header">In the header: logo, message + flip clock, button (sticky)</option>
                 <option value="top">Top of the page</option>
                 <option value="bottom">Bottom of the page</option>
               </select>
             </Field>
-            <Field label="Only in the last … hours" htmlFor="deadlineBarWithinHours" hint="0 = always.">
+            <Field advanced label="Only in the last … hours" htmlFor="deadlineBarWithinHours" hint="0 = always.">
               <Input id="deadlineBarWithinHours" name="deadlineBarWithinHours" type="number" min={0} defaultValue={funnel.deadlineBarWithinHours} />
             </Field>
           </div>
           <Check name="deadlineBarSticky" label="Sticky (stays on screen while scrolling)" defaultChecked={funnel.deadlineBarSticky} />
-          <Check name="deadlineBarDismiss" label="Visitors can close it" defaultChecked={funnel.deadlineBarDismiss} hint="Adds a × button. Closing it is remembered for the rest of the visit, until the deadline changes." />
+          <Check advanced name="deadlineBarDismiss" label="Visitors can close it" defaultChecked={funnel.deadlineBarDismiss} hint="Adds a × button. Closing it is remembered for the rest of the visit, until the deadline changes." />
           <fieldset className="rounded-lg border border-line p-3">
             <legend className="px-1 text-sm font-semibold">Show on</legend>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -414,9 +492,10 @@ export function DeadlineTab({ funnel, days, timeZone, zone, canWrite }: { funnel
             <Field label="Button text" htmlFor="deadlineBarButtonText" hint="Optional. Empty = no button.">
               <Input id="deadlineBarButtonText" name="deadlineBarButtonText" defaultValue={funnel.deadlineBarButtonText} maxLength={40} />
             </Field>
-            <Field label="Button goes to" htmlFor="deadlineBarButtonUrl" hint="A web address, or a module.">
-              <Input id="deadlineBarButtonUrl" name="deadlineBarButtonUrl" defaultValue={funnel.deadlineBarButtonUrl} list="deadline-targets" placeholder="https:// or module:1" maxLength={500} />
+            <Field label="Button goes to" htmlFor="deadlineBarButtonUrl" hint="A web address, a module, or #offer (the offer section on module pages).">
+              <Input id="deadlineBarButtonUrl" name="deadlineBarButtonUrl" defaultValue={funnel.deadlineBarButtonUrl} list="deadline-targets" placeholder="https://, module:1 or #offer" maxLength={500} />
               <datalist id="deadline-targets">
+                <option value="#offer">Offer section</option>
                 {days.map((day) => (
                   <option key={day.id} value={`module:${day.position}`}>
                     {dayLabel(day)}
@@ -435,7 +514,7 @@ export function DeadlineTab({ funnel, days, timeZone, zone, canWrite }: { funnel
               <Input id="deadlineBarButtonBg" name="deadlineBarButtonBg" defaultValue={funnel.deadlineBarButtonBg ?? ""} maxLength={7} className="font-mono" />
             </Field>
           </div>
-          <Field label="Spacing on desktop" htmlFor="deadlineBarSpacing">
+          <Field advanced label="Spacing on desktop" htmlFor="deadlineBarSpacing">
             <select id="deadlineBarSpacing" name="deadlineBarSpacing" defaultValue={funnel.deadlineBarSpacing} className="pc-control w-full text-sm">
               <option value="narrow">Narrow: grouped around the countdown</option>
               <option value="wide">Wide: spread across the bar</option>
@@ -445,6 +524,7 @@ export function DeadlineTab({ funnel, days, timeZone, zone, canWrite }: { funnel
         </Section>
       </fieldset>
     </form>
+    </div>
   );
 }
 

@@ -186,3 +186,64 @@ export function funnelReport(input: { events: readonly ReportEvent[]; pages: rea
     daily: [...daily].sort(([a], [b]) => a.localeCompare(b)).map(([date, bucket]) => ({ date, views: bucket.views, uniques: bucket.uniques.size })),
   };
 }
+
+/** Click kinds that count as an offer / call-to-action click in the parameter breakdown. */
+export const OFFER_CLICK_KINDS = ["cta", "deadline_bar", "close_button", "home_button", "offer"] as const;
+
+export type BreakdownEvent = { kind: string; visitorId: string; createdAt: Date; params: unknown };
+export type BreakdownOptin = { params: unknown };
+export type BreakdownRow = { value: string; visitors: number; optins: number; views: number; offerClicks: number; clickers: number; clickRate: number };
+
+/** The bucket for visitors and opt-ins without the parameter. */
+export const NO_VALUE = "(none)";
+
+function paramValue(params: unknown, key: string): string | null {
+  if (!params || typeof params !== "object" || Array.isArray(params)) return null;
+  const value = (params as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 200) : null;
+}
+
+/**
+ * Stats per value of one tracked URL parameter. Each visitor falls in ONE
+ * bucket: the value on their earliest event that has it (first touch) or their
+ * latest (last touch), "(none)" when no event has it; all their views and
+ * clicks count there, so the rows add up to the totals. Opt-ins are counted by
+ * the value stored with the opt-in. Click rate = visitors with an offer / CTA
+ * click ÷ visitors. Sorted by visitors, "(none)" last.
+ */
+export function paramBreakdown(input: { param: string; events: readonly BreakdownEvent[]; optins: readonly BreakdownOptin[]; attribution: "first" | "last" }): BreakdownRow[] {
+  const offer = new Set<string>(OFFER_CLICK_KINDS);
+  const perVisitor = new Map<string, { value: string | null; at: number; views: number; clicks: number }>();
+  for (const event of input.events) {
+    const slot = perVisitor.get(event.visitorId) ?? { value: null, at: 0, views: 0, clicks: 0 };
+    perVisitor.set(event.visitorId, slot);
+    if (event.kind === "view") slot.views += 1;
+    else if (offer.has(event.kind)) slot.clicks += 1;
+    const value = paramValue(event.params, input.param);
+    if (value === null) continue;
+    const at = event.createdAt.getTime();
+    if (slot.value === null || (input.attribution === "first" ? at < slot.at : at >= slot.at)) {
+      slot.value = value;
+      slot.at = at;
+    }
+  }
+  const rows = new Map<string, BreakdownRow>();
+  const row = (value: string) => {
+    const existing = rows.get(value);
+    if (existing) return existing;
+    const created = { value, visitors: 0, optins: 0, views: 0, offerClicks: 0, clickers: 0, clickRate: 0 };
+    rows.set(value, created);
+    return created;
+  };
+  for (const slot of perVisitor.values()) {
+    const target = row(slot.value ?? NO_VALUE);
+    target.visitors += 1;
+    target.views += slot.views;
+    target.offerClicks += slot.clicks;
+    if (slot.clicks > 0) target.clickers += 1;
+  }
+  for (const optin of input.optins) row(paramValue(optin.params, input.param) ?? NO_VALUE).optins += 1;
+  return [...rows.values()]
+    .map((item) => ({ ...item, clickRate: pct(item.clickers, item.visitors) }))
+    .sort((a, b) => (a.value === NO_VALUE ? 1 : b.value === NO_VALUE ? -1 : b.visitors - a.visitors || b.optins - a.optins || a.value.localeCompare(b.value)));
+}

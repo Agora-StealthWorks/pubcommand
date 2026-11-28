@@ -66,6 +66,24 @@ model Funnel {
   lockedKeyMsg           String          @default("{day} unlocks from the link in your email.") @map("locked_key_msg")
   lockedLiveMsg          String          @default("{day} goes live on {unlock_date}.") @map("locked_live_msg")
   lockedPassedMsg        String          @default("{day} is no longer available. {next_day} is open now.") @map("locked_passed_msg")
+  /// Docuseries: hours each module stays open after it opens for the viewer, then "expired". Null = never.
+  accessHours            Int?            @map("access_hours")
+  lockedExpiredMsg       String          @default("{day} is no longer available. Get full access to watch every episode any time.") @map("locked_expired_msg")
+  /// boxes | flip: the look of every countdown (waitlist, video box, deadline bar, blocks).
+  countdownStyle         String          @default("boxes") @map("countdown_style")
+  /// When a countdown runs out: reload (into the newly open page) | stay (show 00:00:00).
+  countdownZero          String          @default("reload") @map("countdown_zero")
+  /// Locked module box: background / text colours (null = design colours) and minimal (headline + countdown only).
+  lockedBoxBg            String?         @map("locked_box_bg")
+  lockedBoxText          String?         @map("locked_box_text")
+  lockedBoxMinimal       Boolean         @default(false) @map("locked_box_minimal")
+  /// Module navigation: strip (thumbnail tiles above the video) | sidebar (episode list beside the video).
+  navLayout              String          @default("strip") @map("nav_layout")
+  /// Blur the thumbnails of locked / expired modules in the navigation.
+  navBlurLocked          Boolean         @default(false) @map("nav_blur_locked")
+  /// Offer section under module pages (anchor #offer), validated by modules/funnels/blocks.ts.
+  offerBlocks            Json            @default("[]") @map("offer_blocks")
+  offerBlocksDraft       Json?           @map("offer_blocks_draft")
   comingSoonTitle        String          @default("Coming soon") @map("coming_soon_title")
   comingSoonMessage      String          @default("This video will be available shortly. Check back soon!") @map("coming_soon_message")
   replayPendingTitle     String          @default("The replay is on its way") @map("replay_pending_title")
@@ -241,6 +259,10 @@ model FunnelDay {
   unlockOffsetHours Int       @default(0) @map("unlock_offset_hours")
   unlockAt          DateTime? @map("unlock_at")
   unlockKey         String    @map("unlock_key")
+  /// Per-module override of the funnel's access window (hours). Null = the funnel's.
+  accessHours       Int?      @map("access_hours")
+  /// Show the funnel's offer section under this module.
+  showOffer         Boolean   @default(true) @map("show_offer")
   isLive            Boolean   @default(false) @map("is_live")
   liveStartAt       DateTime? @map("live_start_at")
   liveEndAt         DateTime? @map("live_end_at")
@@ -389,6 +411,8 @@ model FunnelEvent {
   visitorId      String   @map("visitor_id")
   /// Why this looks automated (user_agent | datacenter | webdriver); null = a person. Stats leave these out by default.
   botReason      String?  @map("bot_reason")
+  /// The visitor's tracked URL parameters (org Funnels settings), e.g. {"utm_source":"fb"}. Null = none.
+  params         Json?
   createdAt      DateTime @default(now()) @map("created_at")
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 
@@ -425,6 +449,8 @@ model FunnelOptin {
   pageUrl        String?  @map("page_url")
   /// Set from the unsubscribe link in an invite or reminder. No further emails.
   unsubscribedAt DateTime? @map("unsubscribed_at")
+  /// The visitor's tracked URL parameters when they opted in. Null = none.
+  params         Json?
   createdAt      DateTime @default(now()) @map("created_at")
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
   sends          FunnelEmailSend[]
@@ -528,6 +554,8 @@ model FunnelSmsOptin {
   ipHash         String?       @map("ip_hash")
   pageUrl        String?       @map("page_url")
   userAgent      String?       @map("user_agent")
+  /// The visitor's tracked URL parameters when they signed up. Null = none.
+  params         Json?
   createdAt      DateTime      @default(now()) @map("created_at")
   funnel         Funnel        @relation(fields: [funnelId], references: [id], onDelete: Cascade)
   form           FunnelSmsForm @relation(fields: [formId], references: [id], onDelete: Cascade)
@@ -550,4 +578,19 @@ model FunnelDelegate {
   @@unique([funnelId, userId])
   @@index([organizationId, userId])
   @@map("funnel_delegates")
+}
+
+/// Organization-wide Funnels settings (Funnels → Settings, funnels.publish): the URL parameters
+/// every funnel in the org tracks, and whether a visitor keeps their first or latest values.
+model FunnelsSettings {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @unique @map("organization_id") @db.Uuid
+  trackedParams  String[] @default(["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) @map("tracked_params")
+  /// first | last
+  attribution    String   @default("first")
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("funnels_settings")
 }

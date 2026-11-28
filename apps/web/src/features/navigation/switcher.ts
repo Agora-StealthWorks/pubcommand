@@ -2,12 +2,13 @@ import { buildSiteUrl } from "@pubcommand/core";
 
 /**
  * The site switcher at the top of every signed-in sidebar: where you are, and links to every
- * organization you belong to, the Platform console (staff), Your account and the workspace list.
+ * organization you can open (each with its brands, when it has more than one), the Platform
+ * console (staff), Your account and the workspace list. The super admin sees every organization.
  * Pure: the caller looks up memberships and staff status. Links to another host are built with
  * buildSiteUrl, so they follow the environment (localhost locally, *.pubcommand.com in production).
  */
 
-export type SwitcherHere = { kind: "org"; slug: string; name: string } | { kind: "admin" } | { kind: "app" };
+export type SwitcherHere = { kind: "org"; slug: string; name: string; brandId?: string | null } | { kind: "admin" } | { kind: "app" };
 
 export type SwitcherLink = {
   key: string;
@@ -17,6 +18,8 @@ export type SwitcherLink = {
   current: boolean;
   /** Small text under the label. */
   hint?: string;
+  /** An organization's brands, each opening the organization with that brand picked. Only when there are two or more. */
+  brands?: SwitcherLink[];
 };
 
 export type SwitcherModel = {
@@ -32,7 +35,15 @@ export type SwitcherModel = {
 
 export type SwitcherInput = {
   here: SwitcherHere;
-  organizations: { slug: string; name: string; suspended?: boolean }[];
+  organizations: {
+    slug: string;
+    name: string;
+    suspended?: boolean;
+    /** The brands this person can work in there (all of them, or the one their membership is limited to). */
+    brands?: { id: string; name: string }[];
+    /** False when the super admin can open it without being a member. */
+    member?: boolean;
+  }[];
   /** Null when not platform staff. `ready` is false while staff two-factor is unfinished. */
   staff: { ready: boolean } | null;
   rootDomain: string;
@@ -45,14 +56,32 @@ export function buildSwitcher(input: SwitcherInput): SwitcherModel {
   const here = input.here;
   const hereSlug = here.kind === "org" ? here.slug : null;
 
-  const organizations: SwitcherLink[] = input.organizations.map((org) => ({
-    key: `org:${org.slug}`,
-    label: org.name,
+  const hereBrand = here.kind === "org" ? here.brandId ?? null : null;
+
+  const organizations: SwitcherLink[] = input.organizations.map((org) => {
+    const isHere = org.slug === hereSlug;
     // Stay on this host for the current organization (a relative link keeps any local ?org= routing simple).
-    href: org.slug === hereSlug ? "/" : url({ kind: "org", slug: org.slug }),
-    current: org.slug === hereSlug,
-    ...(org.suspended ? { hint: "Suspended" } : {}),
-  }));
+    const orgUrl = (pathname: string) => (isHere ? pathname : url({ kind: "org", slug: org.slug }, pathname));
+    const brands = org.brands ?? [];
+    const hint = org.suspended ? "Suspended" : org.member === false ? "Super admin access" : brands.length === 1 ? brands[0]!.name : undefined;
+    return {
+      key: `org:${org.slug}`,
+      label: org.name,
+      href: orgUrl("/"),
+      current: isHere,
+      ...(hint ? { hint } : {}),
+      ...(brands.length > 1
+        ? {
+            brands: brands.map((brand) => ({
+              key: `brand:${org.slug}:${brand.id}`,
+              label: brand.name,
+              href: orgUrl(`/switch-brand/${brand.id}`),
+              current: isHere && brand.id === hereBrand,
+            })),
+          }
+        : {}),
+    };
+  });
 
   const consoleLink: SwitcherLink | null = input.staff
     ? {
@@ -86,10 +115,13 @@ export function buildSwitcher(input: SwitcherInput): SwitcherModel {
   return { currentLabel, currentKind, organizations, console: consoleLink, account, chooser };
 }
 
-/** The same places as flat ⌘K palette entries, leaving out the one you are on. */
+/** The same places (brands too) as flat ⌘K palette entries, leaving out the one you are on. */
 export function switcherPaletteItems(model: SwitcherModel): { label: string; href: string; group: string }[] {
   const items: { label: string; href: string; group: string }[] = [];
-  for (const org of model.organizations) if (!org.current) items.push({ label: org.label, href: org.href, group: "Organizations" });
+  for (const org of model.organizations) {
+    if (!org.current) items.push({ label: org.label, href: org.href, group: "Organizations" });
+    for (const brand of org.brands ?? []) if (!brand.current) items.push({ label: `${org.label} · ${brand.label}`, href: brand.href, group: "Brands" });
+  }
   if (model.console && !model.console.current) items.push({ label: model.console.label, href: model.console.href, group: "Sites" });
   if (model.chooser && !model.chooser.current) items.push({ label: model.chooser.label, href: model.chooser.href, group: "Sites" });
   if (model.account) items.push({ label: "Your account (password, name)", href: model.account.href, group: "Sites" });

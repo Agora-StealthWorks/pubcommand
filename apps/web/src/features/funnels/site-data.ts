@@ -66,11 +66,24 @@ export function applyDesignDraft(funnel: FunnelRow): FunnelRow {
     const draft = parseHomeDraft(funnel.homeBlocksDraft, funnel);
     next = { ...next, homeBlocks: draft.blocks as unknown as FunnelRow["homeBlocks"], homeShell: draft.shell, homeTitle: draft.title };
   }
+  if (hasDraft(funnel.offerBlocksDraft)) {
+    next = { ...next, offerBlocks: parseOfferDraft(funnel.offerBlocksDraft, funnel).blocks as unknown as FunnelRow["offerBlocks"] };
+  }
   return next;
 }
 
 export function homeBlocks(funnel: Pick<FunnelRow, "homeBlocks">): Block[] {
   return normalizeBlocks(funnel.homeBlocks, { sanitizeRich: (html) => richFromInput(html) });
+}
+
+/** The offer section under module pages (anchor #offer). Same blocks as the home page. */
+export function offerBlocks(funnel: Pick<FunnelRow, "offerBlocks">): Block[] {
+  return normalizeBlocks(funnel.offerBlocks, { sanitizeRich: (html) => richFromInput(html) });
+}
+
+export function parseOfferDraft(raw: unknown, funnel: Pick<FunnelRow, "offerBlocks">): { blocks: Block[] } {
+  const input = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return { blocks: normalizeBlocks("blocks" in input ? input.blocks : funnel.offerBlocks, { sanitizeRich: (html) => richFromInput(html) }) };
 }
 
 export type FunnelTheme = {

@@ -11,7 +11,7 @@ import { UUID_RE } from "./data";
 import { bool, optional, optionalInt, pickOne, storeImage, text, url } from "./form-input";
 import { funnelAction, funnelWriteCtx, withMessage, type FunnelsCtx } from "./guard";
 import { richFromInput, sanitizeRich } from "./sanitize";
-import { parseDesignDraft, parseHomeDraft } from "./site-data";
+import { parseDesignDraft, parseHomeDraft, parseOfferDraft } from "./site-data";
 import { ownSmsFormId } from "./sms-data";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -78,6 +78,30 @@ export async function saveHomePage(funnelId: string, payload: unknown): Promise<
 }
 
 // ---------------------------------------------------------------------------
+// Offer section (blocks under module pages)
+
+export async function saveOfferDraft(funnelId: string, payload: unknown): Promise<Result> {
+  const access = await writeAccess(funnelId);
+  if ("error" in access) return { ok: false, error: access.error ?? "Not allowed." };
+  if (tooBig(payload)) return { ok: false, error: "The section is too large to preview." };
+  const draft = parseOfferDraft(payload, access.funnel);
+  await tenantDb(access.organizationId).funnel.updateMany({ where: { id: access.funnel.id }, data: { offerBlocksDraft: json(draft), updatedAt: access.funnel.updatedAt } });
+  return { ok: true };
+}
+
+/** Save the offer section: blocks validated, rich text sanitized. */
+export async function saveOfferSection(funnelId: string, payload: unknown): Promise<Result> {
+  const access = await writeAccess(funnelId);
+  if ("error" in access) return { ok: false, error: access.error ?? "Not allowed." };
+  if (tooBig(payload)) return { ok: false, error: "The section is too large. Remove some blocks." };
+  const draft = parseOfferDraft(payload, access.funnel);
+  await tenantDb(access.organizationId).funnel.updateMany({ where: { id: access.funnel.id }, data: { offerBlocks: json(draft.blocks), offerBlocksDraft: NO_DRAFT } });
+  await audit(access.organizationId, access.actorId, "funnels.offer.updated", "funnel", access.funnel.id, { blocks: draft.blocks.length });
+  if (access.funnel.status === "published") after(() => teachFunnel({ organizationId: access.organizationId, funnelId: access.funnel.id, actorId: access.actorId }));
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Design
 
 export async function saveDesignDraft(funnelId: string, payload: unknown): Promise<Result> {
@@ -126,12 +150,12 @@ export async function saveDesign(funnelId: string, payload: unknown): Promise<Re
 }
 
 /** Throw away an unsaved preview draft (the design or the home page). */
-export async function discardDrafts(funnelId: string, which: "design" | "home"): Promise<Result> {
+export async function discardDrafts(funnelId: string, which: "design" | "home" | "offer"): Promise<Result> {
   const access = await writeAccess(funnelId);
   if ("error" in access) return { ok: false, error: access.error ?? "Not allowed." };
   await tenantDb(access.organizationId).funnel.updateMany({
     where: { id: access.funnel.id },
-    data: { ...(which === "design" ? { designDraft: NO_DRAFT } : { homeBlocksDraft: NO_DRAFT }), updatedAt: access.funnel.updatedAt },
+    data: { ...(which === "design" ? { designDraft: NO_DRAFT } : which === "offer" ? { offerBlocksDraft: NO_DRAFT } : { homeBlocksDraft: NO_DRAFT }), updatedAt: access.funnel.updatedAt },
   });
   return { ok: true };
 }

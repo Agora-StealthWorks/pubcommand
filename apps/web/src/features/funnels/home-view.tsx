@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { blockBandStyle, WIDTH_PX, type Block } from "../../../../../modules/funnels/blocks";
+import { blockBandStyle, lines, parseBonus, WIDTH_PX, type Block } from "../../../../../modules/funnels/blocks";
 import { eventBoxEvent } from "../../../../../modules/funnels/calendar";
 import { agendaSequence } from "../../../../../modules/funnels/nav";
 import { effectiveEnd, effectiveStart, isOpen, type DayState } from "../../../../../modules/funnels/state";
@@ -9,6 +9,7 @@ import { orgPublicUrl } from "./guard";
 import type { LoadedFunnel } from "./public";
 import { viewerFacts } from "./public";
 import { Countdown } from "./public-client";
+import { LoadMore } from "./site-client";
 import { AddToCalendar } from "./public-shell";
 import { Agenda, dayWhen, EmailOptin, FormOptin, Rich, type AgendaPlaceholder } from "./public-view";
 import { HtmlFrame } from "./site-client";
@@ -80,9 +81,12 @@ type HomeContext = {
   origin: string;
   query: { joined?: string; error?: string; block?: string; sms_done?: string; sms_form?: string; sms_error?: string };
   host: string;
+  /** On a module page (offer section): when the module on screen stops being available. */
+  episodeExpiresAt?: Date | null;
 };
 
 function resolveHref(ctx: HomeContext, target: string): { href: string; external: boolean } | null {
+  if (target === "#offer") return { href: "#offer", external: false };
   const module = /^module:(\d{1,3})$/.exec(target);
   if (module) return ctx.days.some((day) => day.position === Number(module[1])) ? { href: `${ctx.base}/day-${module[1]}${ctx.loaded.carry}`, external: false } : null;
   const page = /^page:([a-z0-9-]+)$/.exec(target);
@@ -166,6 +170,7 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
   const viewer = viewerFacts(ctx.viewer);
   const start = effectiveStart(rules, viewer, now);
   const { branding } = ctx.theme;
+  const look = funnel.countdownStyle === "flip" ? "flip" : "boxes";
   switch (block.type) {
     case "headline":
       if (!block.heading && !block.accent && !block.sub) return null;
@@ -205,13 +210,14 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
       );
     }
     case "countdown": {
-      const target = block.target === "custom" ? (block.at ? new Date(block.at) : null) : block.target === "end" ? effectiveEnd(rules, viewer, now) : start;
+      const target =
+        block.target === "custom" ? (block.at ? new Date(block.at) : null) : block.target === "end" ? effectiveEnd(rules, viewer, now) : block.target === "episode" ? (ctx.episodeExpiresAt ?? null) : start;
       if (!target || target <= now) return null;
       return (
         <>
           <Heading text={block.heading} />
           <div className="mx-auto max-w-xl">
-            <Countdown target={target.getTime()} serverNow={now.getTime()} reloadTo={null} labelColor="currentColor" boxColor="#ffffff" digitColor="#111827" />
+            <Countdown target={target.getTime()} serverNow={now.getTime()} reloadTo={null} labelColor="currentColor" boxColor={look === "flip" ? "#3a423e" : "#ffffff"} digitColor={look === "flip" ? "#ffffff" : "#111827"} look={look} />
           </div>
         </>
       );
@@ -269,7 +275,10 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
       return (
         <>
           <Heading text={block.heading} />
-          <HostCards funnel={funnel} hosts={ctx.loaded.hosts} layout={block.layout} />
+          {/* Long lists show the first six, then a "Load more" button. */}
+          <LoadMore first={6} count={ctx.loaded.hosts.length} label="Load more">
+            <HostCards funnel={funnel} hosts={ctx.loaded.hosts} layout={block.layout} />
+          </LoadMore>
         </>
       );
     case "button": {
@@ -298,6 +307,150 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
       return block.html.trim() ? <HtmlFrame html={block.html} title={block.title} height={block.height} textColor={block.style.text ?? ctx.theme.design.page.text} linkColor={ctx.theme.design.page.accent} /> : null;
     case "divider":
       return <hr className="border-0 border-t border-current opacity-20" />;
+    case "pricing": {
+      const tiers = block.tiers.filter((tier) => tier.name || tier.price);
+      if (!tiers.length) return null;
+      return (
+        <>
+          <Heading text={block.heading} />
+          <div className="pcf-tiers" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 280px), 1fr))` }}>
+            {tiers.map((tier, index) => {
+              const link = tier.url ? resolveHref(ctx, tier.url) : null;
+              return (
+                <article key={index} className={`pcf-tier${tier.highlight ? " is-on" : ""}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-2xl font-extrabold [overflow-wrap:anywhere]">{tier.name}</h3>
+                    {tier.badge ? <span className="pcf-tier-badge">{tier.badge}</span> : null}
+                  </div>
+                  {tier.price ? (
+                    <p className="flex flex-wrap items-baseline gap-2">
+                      <span className="text-4xl font-extrabold">{tier.price}</span>
+                      {tier.was ? <s className="opacity-70">{tier.was}</s> : null}
+                    </p>
+                  ) : null}
+                  {lines(tier.features).length ? (
+                    <ul className="list-disc space-y-1 pl-5 text-left">
+                      {lines(tier.features).map((item, at) => (
+                        <li key={at} className="[overflow-wrap:anywhere]">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {lines(tier.bonuses).length ? (
+                    <ul className="space-y-2 text-left">
+                      {lines(tier.bonuses).map((item, at) => {
+                        const bonus = parseBonus(item);
+                        return (
+                          <li key={at} className="pcf-bonus">
+                            <span className="[overflow-wrap:anywhere]">
+                              <b className="pcf-accent">BONUS:</b> {bonus.name}
+                            </span>
+                            {bonus.value ? <span className="shrink-0 opacity-80">Value: {bonus.value}</span> : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                  {link && tier.buttonText ? (
+                    <a href={link.href} className="pcf-btn mt-auto w-full text-lg" data-track="offer" data-track-target={tier.name || tier.buttonText} {...(link.external ? { rel: "noopener" } : {})}>
+                      {tier.buttonText}
+                    </a>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+          {block.footnote ? <p className="mt-4 whitespace-pre-line text-sm opacity-80 [overflow-wrap:anywhere]">{block.footnote}</p> : null}
+        </>
+      );
+    }
+    case "testimonials": {
+      const items = block.items.filter((item) => item.quote);
+      if (!items.length) return null;
+      return (
+        <>
+          <Heading text={block.heading} />
+          <div className="grid gap-4 text-left sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((item, index) => (
+              <figure key={index} className="pcf-content m-0 flex flex-col gap-2">
+                {item.rating ? (
+                  <span className="pcf-stars" role="img" aria-label={`${item.rating} out of 5 stars`}>
+                    {"★".repeat(item.rating)}
+                    <span className="opacity-30">{"★".repeat(5 - item.rating)}</span>
+                  </span>
+                ) : null}
+                <blockquote className="m-0 whitespace-pre-line [overflow-wrap:anywhere]">{item.quote}</blockquote>
+                {item.name || item.role ? <figcaption className="text-sm opacity-80 [overflow-wrap:anywhere]">— {[item.name, item.role].filter(Boolean).join(", ")}</figcaption> : null}
+              </figure>
+            ))}
+          </div>
+        </>
+      );
+    }
+    case "logos": {
+      const items = block.items.map((item) => ({ ...item, url: item.assetId ? assetSrc(funnel, item.assetId) : item.src })).filter((item) => item.url);
+      if (!items.length) return null;
+      return (
+        <>
+          <Heading text={block.heading} />
+          <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
+            {items.map((item, index) => (
+              <img key={index} src={item.url} alt={item.alt} className="h-10 w-auto max-w-[160px] object-contain sm:h-12" loading="lazy" />
+            ))}
+          </div>
+        </>
+      );
+    }
+    case "faq": {
+      const items = block.items.filter((item) => item.q);
+      if (!items.length) return null;
+      return (
+        <>
+          <Heading text={block.heading} />
+          <div className="pcf-faq text-left">
+            {items.map((item, index) => (
+              <details key={index}>
+                <summary>
+                  <span className="[overflow-wrap:anywhere]">{item.q}</span>
+                  <span aria-hidden="true" className="pcf-faq-mark">+</span>
+                </summary>
+                {item.a ? <p className="whitespace-pre-line [overflow-wrap:anywhere]">{item.a}</p> : null}
+              </details>
+            ))}
+          </div>
+        </>
+      );
+    }
+    case "episodes": {
+      if (!ctx.days.length) return null;
+      const link = block.target ? resolveHref(ctx, block.target) : null;
+      return (
+        <>
+          <Heading text={block.heading} />
+          <ol className="grid gap-4 text-left sm:grid-cols-2 lg:grid-cols-3">
+            {ctx.days.map((day) => {
+              const index = ctx.loaded.days.findIndex((item) => item.id === day.id);
+              const thumb = dayThumb(day, ctx.base, ctx.states[index]?.kind === "video");
+              return (
+                <li key={day.id} className="pcf-content flex flex-col gap-2">
+                  <span className="pcf-thumb relative block bg-black/80" style={{ aspectRatio: "16 / 9" }}>
+                    {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
+                  </span>
+                  <span className="text-xs font-bold uppercase tracking-wider opacity-70">{dayLabel(day)}</span>
+                  <span className="flex-1 font-semibold [overflow-wrap:anywhere]">{day.title || dayLabel(day)}</span>
+                  {link && block.buttonText ? (
+                    <a href={link.href} className="pcf-btn w-full" data-track="offer" data-track-target={dayLabel(day)}>
+                      {block.buttonText}
+                    </a>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        </>
+      );
+    }
   }
 }
 

@@ -6,6 +6,8 @@ import { pageContext } from "@/features/funnels/public-context";
 import { FunnelShell, NavStrip, funnelIcons } from "@/features/funnels/public-shell";
 import { SmsSlot, smsFormFor, type SmsQuery } from "@/features/funnels/sms-slot";
 import { ClosedPage, DayView, PreviewBar, previewLabel } from "@/features/funnels/public-view";
+import { HomeBlocks } from "@/features/funnels/home-view";
+import { offerBlocks } from "@/features/funnels/site-data";
 
 type Params = Promise<{ slug: string; funnelSlug: string; day: string }>;
 type Search = Promise<PreviewOptions & SmsQuery & { k?: string }>;
@@ -42,12 +44,37 @@ export default async function FunnelDayPage({ params, searchParams }: { params: 
   const previewBar = preview ? <PreviewBar asOf={now} label={previewLabel(loaded, query.fresh)} timeZone={timeZone} /> : null;
   const nav = <NavStrip funnel={funnel} days={safeDays} states={states} navItems={loaded.navItems} base={base} carry={carry} currentDayId={day.id} />;
   const sms = smsFormFor(loaded, day.smsFormId);
+  // Docuseries: the open module's access window drives the header clock and "episode" countdowns.
+  const dayState = states[loaded.days.findIndex((item) => item.id === day.id)];
+  // On an expired or upcoming episode, the clock follows the episode that is open now.
+  const openExpiry = states.find((state) => state.kind === "video" && state.expiresAt);
+  const expiresAt = dayState?.kind === "video" && dayState.expiresAt ? dayState.expiresAt : openExpiry?.kind === "video" ? (openExpiry.expiresAt ?? null) : null;
+  const offer = offerBlocks(funnel);
   return (
-    <FunnelShell theme={theme} loaded={loaded} viewer={viewer} preview={previewBar} showDeadline={!closed} page={closed ? "close" : "day"} base={base} nav={closed ? null : nav}>
+    <FunnelShell
+      theme={theme}
+      loaded={loaded}
+      viewer={viewer}
+      preview={previewBar}
+      showDeadline={!closed}
+      page={closed ? "close" : "day"}
+      base={base}
+      nav={closed || funnel.navLayout === "sidebar" ? null : nav}
+      episodeExpiresAt={expiresAt}
+      reloadTo={preview && query.as_of ? null : `${base}/day-${day.position}${carry}`}
+    >
       {closed ? (
         <ClosedPage loaded={loaded} ctx={ctx} />
       ) : (
-        <DayView loaded={loaded} ctx={ctx} day={safeDays.find((item) => item.id === day.id)!} presentedKey={presentedKey} nav={null} sms={sms ? <SmsSlot loaded={loaded} form={sms} base={base} back={`${base}/day-${day.position}`} query={query} /> : null} />
+        <DayView
+          loaded={loaded}
+          ctx={ctx}
+          day={safeDays.find((item) => item.id === day.id)!}
+          presentedKey={presentedKey}
+          nav={null}
+          sms={sms ? <SmsSlot loaded={loaded} form={sms} base={base} back={`${base}/day-${day.position}`} query={query} /> : null}
+          offer={offer.length ? <HomeBlocks ctx={{ loaded, theme, viewer, states, days: safeDays, base, origin: ctx.origin, query, host: ctx.host, episodeExpiresAt: expiresAt }} blocks={offer} /> : null}
+        />
       )}
     </FunnelShell>
   );

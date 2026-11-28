@@ -4,12 +4,14 @@ import { Denied, Flash, PageHeader } from "@/components/ui";
 import { TableScroll } from "@/components/table-scroll";
 import { dayLabel, funnelStats, loadFunnelForBrand } from "@/features/funnels/data";
 import { funnelsAccess } from "@/features/funnels/guard";
-import { funnelReport, percent, type ReportPage } from "../../../../../../../../../../modules/funnels/stats";
+import { NO_VALUE, funnelReport, paramBreakdown, percent, type ReportPage } from "../../../../../../../../../../modules/funnels/stats";
+import { normalizeParamKey } from "../../../../../../../../../../modules/funnels/tracking";
+import { loadFunnelsSettings } from "@/features/funnels/tracking-data";
 import { BOT_REASON_LABELS, CLICK_LABELS, filterTraffic, isClickKind, type BotReason } from "../../../../../../../../../../modules/funnels/traffic";
 import { orgTimezone } from "@/features/funnels/data";
 import { tenantDb } from "@pubcommand/db";
 
-export default async function FunnelStatsPage({ params, searchParams }: { params: Promise<{ slug: string; funnelId: string }>; searchParams: Promise<{ error?: string; notice?: string; bots?: string; range?: string }> }) {
+export default async function FunnelStatsPage({ params, searchParams }: { params: Promise<{ slug: string; funnelId: string }>; searchParams: Promise<{ error?: string; notice?: string; bots?: string; range?: string; by?: string }> }) {
   const { slug, funnelId } = await params;
   const query = await searchParams;
   const access = await funnelsAccess(slug, "funnels.read", funnelId);
@@ -24,22 +26,31 @@ export default async function FunnelStatsPage({ params, searchParams }: { params
   const RANGES = [["1d", "24 hours", 1], ["7d", "7 days", 7], ["30d", "30 days", 30], ["90d", "90 days", 90], ["all", "All time", 0]] as const;
   const range = RANGES.find(([key]) => key === query.range) ?? RANGES[4];
   const since = range[2] ? new Date(Date.now() - range[2] * 86_400_000) : null;
-  const timeZone = await orgTimezone(ctx.resolved.id);
-  const rows = await tenantDb(ctx.resolved.id).funnelEvent.findMany({
-    where: { funnelId: funnel.id, ...(since ? { createdAt: { gte: since } } : {}) },
-    select: { dayId: true, page: true, kind: true, target: true, device: true, visitorId: true, botReason: true, createdAt: true },
-    take: 200_000,
-  });
+  const [timeZone, tracking] = await Promise.all([orgTimezone(ctx.resolved.id), loadFunnelsSettings(ctx.resolved.id)]);
+  // "Break down by": one of the org's tracked URL parameters (Funnels → Settings).
+  const requestedBy = normalizeParamKey(query.by);
+  const by = requestedBy && tracking.trackedParams.includes(requestedBy) ? requestedBy : null;
+  const db = tenantDb(ctx.resolved.id);
+  const [rows, optinRows] = await Promise.all([
+    db.funnelEvent.findMany({
+      where: { funnelId: funnel.id, ...(since ? { createdAt: { gte: since } } : {}) },
+      select: { dayId: true, page: true, kind: true, target: true, device: true, visitorId: true, botReason: true, createdAt: true, params: true },
+      take: 200_000,
+    }),
+    by ? db.funnelOptin.findMany({ where: { funnelId: funnel.id, ...(since ? { createdAt: { gte: since } } : {}) }, select: { params: true }, take: 200_000 }) : Promise.resolve([]),
+  ]);
   const pageList: ReportPage[] = [
     ...(funnel.siteType === "microsite" ? [{ key: "home:", page: "home", id: null, label: "Home page" }] : [{ key: "waitlist:", page: "waitlist", id: null, label: "Waitlist" }]),
     ...days.map((day) => ({ key: `day:${day.id}`, page: "day", id: day.id, label: `${dayLabel(day)}${day.title ? ` · ${day.title}` : ""}` })),
     ...loaded.navItems.filter((item) => item.kind === "page").map((item) => ({ key: `custom:${item.id}`, page: "custom", id: item.id, label: `Page · ${item.title || item.label || item.slug}` })),
     ...(funnel.closeMode === "page" ? [{ key: "close:", page: "close", id: null, label: "Close page" }] : []),
   ];
-  const report = funnelReport({ events: filterTraffic(rows, includeBots).kept, pages: pageList, timeZone });
+  const keptEvents = filterTraffic(rows, includeBots).kept;
+  const report = funnelReport({ events: keptEvents, pages: pageList, timeZone });
+  const breakdown = by ? paramBreakdown({ param: by, events: keptEvents, optins: optinRows, attribution: tracking.attribution }) : [];
   const qs = (patch: Record<string, string | null>) => {
     const params = new URLSearchParams();
-    const next = { range: range[0] === "all" ? null : range[0], bots: includeBots ? "1" : null, ...patch };
+    const next = { range: range[0] === "all" ? null : range[0], bots: includeBots ? "1" : null, by, ...patch };
     for (const [key, value] of Object.entries(next)) if (value) params.set(key, value);
     const text = params.toString();
     return `/funnels/${funnel.id}/stats${text ? `?${text}` : ""}`;
@@ -139,6 +150,73 @@ export default async function FunnelStatsPage({ params, searchParams }: { params
             <p className="mt-1 text-2xl font-semibold tabular-nums">{value.toLocaleString("en-US")}</p>
           </div>
         ))}
+      </div>
+      <h2 className="mb-2 text-base font-semibold">By URL parameter</h2>
+      <div className="mb-6 rounded-xl border border-line bg-white">
+        {tracking.trackedParams.length ? (
+          <form method="get" action={`/funnels/${funnel.id}/stats`} className="flex flex-wrap items-end gap-2 border-b border-line px-4 py-3">
+            {range[0] !== "all" ? <input type="hidden" name="range" value={range[0]} /> : null}
+            {includeBots ? <input type="hidden" name="bots" value="1" /> : null}
+            <label className="min-w-0 flex-1 text-sm sm:flex-none">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-muted">Break down by</span>
+              <select name="by" defaultValue={by ?? ""} className="pc-control mt-1 w-full text-sm sm:w-56">
+                <option value="">Choose a parameter</option>
+                {tracking.trackedParams.map((param) => (
+                  <option key={param} value={param}>
+                    {param}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
+              Show
+            </button>
+            <p className="w-full text-xs text-muted">
+              Each visitor counts once, under their {tracking.attribution === "last" ? "latest" : "first"} value ({tracking.attribution} touch, set in <Link href="/funnels/settings" className="text-accent">Funnels settings</Link>). Opt-ins use the value saved with the opt-in. Offer clicks are CTA, deadline-bar, close-page and home-page buttons.
+            </p>
+          </form>
+        ) : (
+          <p className="px-4 py-3 text-sm text-muted">
+            No URL parameters are tracked. Add some in <Link href="/funnels/settings" className="font-semibold text-accent">Funnels settings</Link>.
+          </p>
+        )}
+        {by ? (
+          <TableScroll>
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="border-b border-line text-left text-xs uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="px-4 py-2.5">{by}</th>
+                  <th className="px-4 py-2.5 text-right">Visitors</th>
+                  <th className="px-4 py-2.5 text-right">Opt-ins</th>
+                  <th className="px-4 py-2.5 text-right">Views</th>
+                  <th className="px-4 py-2.5 text-right">Offer clicks</th>
+                  <th className="px-4 py-2.5 text-right">Click rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {breakdown.map((row) => (
+                  <tr key={row.value} className="border-b border-line last:border-0">
+                    <td className={`max-w-[280px] truncate px-4 py-3 ${row.value === NO_VALUE ? "text-muted" : "font-semibold"}`} title={row.value}>
+                      {row.value}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.visitors.toLocaleString("en-US")}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.optins.toLocaleString("en-US")}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.views.toLocaleString("en-US")}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.offerClicks.toLocaleString("en-US")}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.clickRate}%</td>
+                  </tr>
+                ))}
+                {breakdown.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center text-muted">
+                      No visits in this range.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </TableScroll>
+        ) : null}
       </div>
       <h2 className="mb-2 text-base font-semibold">Pages</h2>
       <div className="mb-6 rounded-xl border border-line bg-white">
