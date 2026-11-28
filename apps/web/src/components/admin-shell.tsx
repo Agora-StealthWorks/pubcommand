@@ -18,6 +18,7 @@ const links: { href: string; label: string; permissions: string[]; superAdminOnl
   { href: "/brain/chat", label: "BrainChat", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
   { href: "/promo-studio", label: "Promo Analyzer", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
   { href: "/intel/videos", label: "VidRipper", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
+  { href: "/ispy", label: "ISpy", permissions: [PLATFORM_PERMISSIONS.manageIspy] },
   // Usage holds the dashboard plus Activity, Audit and Jobs (tabs on the Usage page).
   { href: "/usage", label: "Usage", permissions: [PLATFORM_PERMISSIONS.viewAudit, PLATFORM_PERMISSIONS.manageJobs] },
   { href: "/agents", label: "AI Agents", permissions: [PLATFORM_PERMISSIONS.manageStaff], superAdminOnly: true },
