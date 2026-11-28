@@ -1,13 +1,14 @@
 import { after } from "next/server";
 import { resolveInboxForAddress } from "@/features/ispy/inboxes";
-import { ingestAndProcess } from "@/features/ispy/pipeline";
+import { ingestMessage } from "@/features/ispy/ingest";
 import { getMachineMailMessage, machineMailConfig, messageMeta, providerExtras, rawMachineMailMessage, verifyWebhookSignature } from "@/features/ispy/providers/machinemail";
 import { openSecret, readIspySettings } from "@/features/ispy/settings";
 
 /**
  * MachineMail webhook: `message.received*` events for every ISpy inbox. The signature is
  * checked against the webhook's secret; the message is then fetched (raw MIME + full
- * object) and ingested after the response, so MachineMail gets its 200 quickly.
+ * object) and stored after the response, so MachineMail gets its 200 quickly. Promo
+ * resolution and the AI extraction run in the ISpy service's jobs (ispy.inbox-poll).
  */
 export async function POST(request: Request) {
   const config = machineMailConfig();
@@ -35,7 +36,8 @@ export async function POST(request: Request) {
     const [raw, full] = await Promise.all([rawMachineMailMessage(config, inboxAddress, messageId), getMachineMailMessage(config, inboxAddress, messageId).catch(() => message as Record<string, unknown>)]);
     const meta = messageMeta(full);
     const extras = providerExtras(meta);
-    await ingestAndProcess([{ raw, inboxId, providerMessageId: messageId, receivedAt: full.timestamp ? new Date(String(full.timestamp)) : null, providerMeta: meta, spamScore: extras.spamScore, authResults: extras.auth }]);
+    // Store only: the ISpy service's jobs follow the links and run the AI (heavy work stays off the web server).
+    await ingestMessage({ raw, inboxId, providerMessageId: messageId, receivedAt: full.timestamp ? new Date(String(full.timestamp)) : null, providerMeta: meta, spamScore: extras.spamScore, authResults: extras.auth });
   });
   return Response.json({ accepted: true });
 }

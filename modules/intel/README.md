@@ -1,9 +1,9 @@
-# Intel
+# Intel (My captures)
 
-Competitor intelligence: what competing publishers send and promote. Route `/intel`. Permissions `intel.read` (view) and `intel.write` (change). Plan entitlement `intel`. Data belongs to the current brand.
+The `intel` module is shown as **ISpy**: its main screens are the shared ISpy feed (see `modules/ispy/README.md`). This file covers **My captures**, the part that stays private to one brand: competitor mail and videos an organization uploads or syncs itself. Permissions `intel.read` (view) and `intel.write` (change). Plan entitlement `intel`. Data belongs to the current brand and never reaches other organizations.
 
 ## Screens
-- **Inbox** (`/intel`): competitor emails with filters (competitor, type, date range, search, and list / expert / topic), plus **Export CSV** of exactly what is filtered.
+- **Inbox** (`/intel/captures`): competitor emails with filters (competitor, type, date range, search, and list / expert / topic), plus **Export CSV** of exactly what is filtered.
 - **Email** (`/intel/emails/<id>`): sanitized HTML in a sandboxed iframe (remote images blocked unless turned on), plain text, links, the AI extraction, its list/experts/topics, the captured **landing page** (text only, "Fetch page" re-runs extraction with it), manual competitor assignment, raw `.eml` download, Send to Promo Analyzer.
 - **Promo Radar** (`/intel/radar?week=YYYY-MM-DD`): one week grouped by competitor, promos merged across re-sends, new promos flagged, recurring angles, and an AI read when a key is set.
 - **Videos** (`/intel/videos`, `/intel/videos/<id>`), the old VidRipper: paste a sales page, webinar replay, YouTube, Vimeo or Wistia link. A background capture finds the player on the page, downloads it (yt-dlp, max 480p), takes the transcript (platform captions first, else speech-to-text), keeps up to six small keyframes and the page text, then runs the same AI extraction as emails. The video file is deleted. Transcript download, re-capture, competitor assignment, Send transcript to Promo Analyzer.

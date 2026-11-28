@@ -18,6 +18,8 @@ import {
 import { mainBrain } from "../main-brain/db";
 import { uniqueMainSlug } from "../main-brain/learn";
 import { getMainNote, provenanceNames, searchMainNotes } from "../main-brain/notes";
+import type { AgentContext } from "../agents/context";
+import { ISPY_TOOLS } from "../agents/ispy-tools";
 import { syncPushDown } from "../main-brain/push";
 
 /** Below this many characters, a PDF is treated as scanned and sent to the AI as a document. */
@@ -205,7 +207,34 @@ function brainTools(staff: Staff, savedNoteIds: string[]): ChatTool[] {
       return `Saved [${parsed.title}](/brain/${note.id}) (id ${note.id}) in ${parsed.folder ?? "Top level"}.`;
     },
   };
-  return BRAINCHAT_TOOLS.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema as unknown as Record<string, unknown>, run: run[tool.name]! }));
+  return [...BRAINCHAT_TOOLS.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema as unknown as Record<string, unknown>, run: run[tool.name]! })), ...ispyChatTools()];
+}
+
+/**
+ * ISpy's read tools (the live shared feed: emails, copies, promos, radar, trends, alerts),
+ * adapted to BrainChat's strict schemas: every property becomes required-but-nullable and
+ * nulls are dropped before the call. Platform view (both feeds); nothing here writes.
+ */
+function ispyChatTools(): ChatTool[] {
+  const ctx = { scope: "platform" } as unknown as AgentContext;
+  return ISPY_TOOLS.filter((tool) => tool.readOnly).map((tool) => {
+    const schema = tool.inputSchema as { properties?: Record<string, Record<string, unknown>> };
+    const properties = Object.fromEntries(Object.entries(schema.properties ?? {}).map(([key, value]) => [key, { anyOf: [value, { type: "null" }], ...(value.description ? { description: value.description } : {}) }]));
+    return {
+      name: tool.name,
+      description: tool.description,
+      inputSchema: { type: "object", additionalProperties: false, required: Object.keys(properties), properties },
+      async run(input) {
+        const args = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== null && value !== undefined));
+        try {
+          const result = await tool.run(ctx, args);
+          return JSON.stringify(result.data).slice(0, 40_000);
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : "The ISpy tool failed." };
+        }
+      },
+    };
+  });
 }
 
 /** Answer one user turn in the background, streaming into the assistant message row. */

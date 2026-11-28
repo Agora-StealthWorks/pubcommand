@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { after } from "next/server";
 import { resolveInboxForAddress } from "@/features/ispy/inboxes";
-import { ingestAndProcess } from "@/features/ispy/pipeline";
+import { ingestMessage } from "@/features/ispy/ingest";
 
 /**
  * Generic inbound: any inbound-mail service (Cloudflare Email Workers, Postmark, SES…)
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
   if (!raw.byteLength || raw.byteLength > 15 * 1024 * 1024) return new Response("Empty or too large", { status: 413 });
   const inboxId = await resolveInboxForAddress(to);
   if (!inboxId) return new Response("Unknown inbox", { status: 404 });
-  after(() => ingestAndProcess([{ raw, inboxId, providerMeta: { provider: "inbound", to } }]).then(() => undefined));
+  // Store only: the ISpy service's jobs follow the links and run the AI.
+  after(() => ingestMessage({ raw, inboxId, providerMeta: { provider: "inbound", to } }).then(() => undefined));
   return Response.json({ accepted: true });
 }

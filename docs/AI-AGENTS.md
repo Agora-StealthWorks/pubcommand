@@ -65,6 +65,19 @@ The MCP server is `POST /api/mcp`: Streamable HTTP, stateless, JSON responses. C
 `modules/pubsetup/README.md`) and the Brain (`search_brain`, `read_brain_note`, `list_brain_notes`,
 `save_brain_note`).
 
+ISpy (`features/agents/ispy-tools.ts`; listed when the organization has ISpy and the agent can
+read it): `ispy_feed` (emails, filtered by feed, kind INTERNAL/EXTERNAL/AFFILIATE, type, publisher,
+publication, list, guru, topic, search, dates and re-sent only; sorted by date, type, sender,
+subject or times seen; paged), `ispy_email` (one email: text, links, why it was routed there,
+sender and deliverability facts), `ispy_copy` (one copy: every send with date, list, kind and
+subject, takeaways, offer, topics), `ispy_promo` (landing page, aliases, transcript link or not
+detected, sightings, copies), `ispy_promos` (a week's Promo Radar, sortable), `ispy_trends` (a
+week's niche-wide trends), `ispy_registry` (publishers, publications, lists with their type and
+gurus; search, or the linked dropdown options), `ispy_routing` (a publisher's or publication's
+routing rules in plain words, with hits) and `ispy_alerts` (reuse, new-subject and frequency
+alerts). BrainChat in the console has the same read tools over both feeds. All read-only, limited to the feeds the organization sees; "internal" means the
+organization's own linked publications. See `modules/ispy/README.md`.
+
 The Brain tools see what a person of that brand sees: the brand's notes and other brands'
 SHARED notes (`modules/knowledge/visibility.ts`). They need `knowledge.read`, and `save_brain_note`
 also needs `knowledge.write`. Saved notes are private to the brand, carry source `ai-agent`, and
@@ -126,6 +139,11 @@ with a `pca_` key.
     `usage_activity` (what people made, with copy snapshots) and `server_health`.
   - Operations Brain: `search_operations_brain`, `list_operations_brain`,
     `read_operations_note`, `save_operations_note`.
+  - ISpy: the same `ispy_*` read tools over both feeds, plus `ispy_unsorted` (emails no rule
+    placed, and candidate lists' mail) and `ispy_list_candidates` (new lists waiting for
+    approval). Behind **Can make admin changes**: `ispy_send_to_analyzer` (a promo or copy into
+    the console workspace's Promo Analyzer, audited). Approving lists, merges and rule edits stay
+    with people in Admin → ISpy.
   - Admin changes, only when the agent's **Can make admin changes** is on (default on, can be
     switched off per agent): `suspend_organization` (and resume), `change_organization_plan`,
     `set_organization_app_access`, `add_organization_member` and `run_job`. Each one needs a

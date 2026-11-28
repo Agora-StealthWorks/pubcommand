@@ -16,6 +16,10 @@ The app sets the organization with `set_config('app.current_org_id', ..., true)`
 
 Do not query tenant tables with the raw client from an organization request. Bootstrap queries that must see every membership for the signed-in user filter on `userId` explicitly.
 
+### Shared platform data (ISpy, the Master Brain)
+
+Some data belongs to no organization: the Master Brain (`main_brain_*`) and ISpy's shared competitor-email registry and feed (`ispy_*`). These tables have no `organization_id`, so the tenant client cannot reach them, and row-level security only allows a transaction that sets `app.bypass_rls` (`mainBrain()` and `ispyDb()`). Organizations read ISpy only through `features/ispy/read.ts`, which filters by the feeds the organization may see: its brands' niche (finance/general → FinPub, health → Health) plus staff overrides in `ispy_feed_access`. Staff change the registry in the console (`platform.ispy.manage`). A publisher or publication can be linked to an organization and brand; that organization then sees its mail as Internal and its Brain learns from it. `ispy_analyzer_sends` is the one ISpy tenant table (an organization's Promo Analyzer copies).
+
 ## Permissions
 
 `can(subject, permission, scope)` in `@pubcommand/core` is the only organization check. It passes only when:
@@ -92,6 +96,8 @@ Objects, when a later phase uploads them, use:
 ## Jobs and events
 
 Modules declare jobs and events. The worker lists jobs, probes Redis when `REDIS_URL` is set, and does not attach a queue.
+
+Scheduled jobs run inside the web app's job runner (`lib/jobs/runner.ts`). `JOBS_INCLUDE` / `JOBS_EXCLUDE` (comma-separated name prefixes) choose which jobs a server runs: the `ispy` Railway service runs the same app with `JOBS_INCLUDE=ispy.` so ISpy's mail polling, landing-page fetching and imports never run on the web server, and the web service sets `JOBS_EXCLUDE=ispy.`. Slot claims in `job_runs` stop two servers from running the same slot either way.
 
 ## Phase 6, not built
 

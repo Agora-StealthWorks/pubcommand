@@ -47,6 +47,32 @@ Worker service, when added:
 
 The worker does not need `DATABASE_URL`, `AUTH_SECRET`, or the `S3_*` variables in Phase 1.
 
+## ISpy service
+
+ISpy's background work (MachineMail polling, legacy Gmail sync, following email links to landing pages, trends, digest, the iSpy import) runs on its own Railway service so it never slows the web app. Same repository, same image, same Postgres and bucket.
+
+1. In project **divine-nourishment**, add a service from this repository named `ispy` and set its config file to `railway.ispy.json`. It starts with `sh scripts/start-ispy.sh` (the web app with only `ispy.*` jobs; migrations stay on the web service). It needs no public domain.
+2. Variables on **ispy** (reference syntax where shown):
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+| `AUTH_SECRET` | `${{pubcommand.AUTH_SECRET}}` (must match the web service: it encrypts Gmail tokens and signs image URLs) |
+| `ROOT_DOMAIN` | `${{pubcommand.ROOT_DOMAIN}}` |
+| `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION` | the same references as the web service |
+| `ANTHROPIC_API_KEY` | `${{pubcommand.ANTHROPIC_API_KEY}}` (one small call per new email copy; one paragraph per feed per week) |
+| `MACHINEMAIL_API_KEY` | the MachineMail API key (`mm_live_…`) |
+| `MACHINEMAIL_DOMAIN` | optional: the custom inbox domain added in MachineMail (catch-all on). Unset = `machinemail.dev` addresses |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | copied from the old iSpy service, so the imported Gmail tokens keep working |
+| `ISPY_LEGACY_DATABASE_URL` | the old iSpy service's `DATABASE_URL` (read only; only needed for the import) |
+| `JOBS_INCLUDE` | `ispy.` (start-ispy.sh sets it by default) |
+
+3. On the **pubcommand** web service add `MACHINEMAIL_API_KEY` (and `MACHINEMAIL_DOMAIN` if used), `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, and `JOBS_EXCLUDE=ispy.` once the `ispy` service is running. Until then the web service runs the ISpy jobs itself. The web service serves the MachineMail webhook (`https://app.<ROOT_DOMAIN>/api/ispy/inbound/machinemail`) and the image proxy; it only stores mail, and the `ispy` service does the rest.
+4. In Admin → ISpy → Settings press **Register MachineMail webhook** (it stores the signing secret), or set `MACHINEMAIL_WEBHOOK_SECRET` to a webhook you created yourself.
+5. Optional: `ISPY_INBOUND_SECRET` (16+ characters) enables `POST /api/ispy/inbound` for another inbound-mail service; `ISPY_INBOX_DOMAIN` names the domain of inboxes created without MachineMail.
+
+MachineMail's free plan allows 100 messages a day (3,000 a month) and one custom domain; ISpy's volume needs a paid plan.
+
 ## DNS
 
 One wildcard and the apex, both on the **pubcommand** service. A new organization slug does not need a Railway change and this app does not call the Railway API per organization.
