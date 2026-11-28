@@ -85,7 +85,7 @@ END $$;
 
 These are shared and edited only by the lead, to avoid conflicts:
 
-- `apps/web/src/lib/apps.ts` (dashboard cards and sidebar), `apps/web/src/components/app-thumbnail.tsx`, `org-shell.tsx`, `app-frame.tsx`
+- `apps/web/src/lib/apps.ts` (dashboard cards and sidebar; a new app without a built-in card can be given one, with artwork, in Admin → App cards — see `docs/APP-CARDS.md`), `apps/web/src/components/app-thumbnail.tsx`, `org-shell.tsx`, `app-frame.tsx`
 - `packages/db/prisma/schema/schema.prisma` and other apps' schema files, `packages/db/src/tenant.ts`
 - `packages/ai/src/index.ts`, `features/ai/*`, `features/brain/teach.ts`
 - Other apps' folders

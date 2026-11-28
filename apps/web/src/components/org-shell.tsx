@@ -1,7 +1,7 @@
 import type { AccessSubject } from "@pubcommand/core";
 import { brandProfile, can } from "@pubcommand/core";
 import Link from "next/link";
-import { appForPath, CATEGORY_ORDER, visibleApps } from "@/lib/apps";
+import { appForPath, CATEGORY_ORDER, visibleApps, type AppCardSettings } from "@/lib/apps";
 import { canManagePublications } from "@/features/pubsetup/module";
 import { stopImpersonation } from "@/server/platform-actions";
 import { AppFrame } from "./app-frame";
@@ -27,6 +27,7 @@ export function OrgShell({
   impersonating,
   switcher,
   brandLogos = {},
+  cardSettings = {},
   children,
 }: {
   organization: { id: string; name: string; slug: string };
@@ -39,10 +40,12 @@ export function OrgShell({
   switcher: SwitcherModel;
   /** Brand id → logo URL (and a tile color when the logo is made for dark backgrounds), for brands that uploaded one. */
   brandLogos?: Record<string, { src: string; background: string | null }>;
+  /** Staff app-card settings (Admin → App cards): app names and apps added under "More apps". */
+  cardSettings?: AppCardSettings;
   children: React.ReactNode;
 }) {
   const scope = { organizationId: organization.id, brandId: subject.membershipBrandId ?? brand?.id ?? null };
-  const apps = visibleApps(subject, scope, brandProfile({ name: brand?.name ?? "", niche: brand?.niche }).niche);
+  const apps = visibleApps(subject, scope, brandProfile({ name: brand?.name ?? "", niche: brand?.niche }).niche, cardSettings);
   const current = appForPath(apps, pathname);
   const inSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const inAgents = pathname === "/agents" || pathname.startsWith("/agents/");
@@ -58,8 +61,8 @@ export function OrgShell({
   const sidebar = (
     <div className="flex min-h-full flex-col">
       <div className="space-y-3 px-4 py-4">
-        <Link href="/" className="flex items-center" aria-label="PubCommand dashboard">
-          <BrandLogo className="h-8 w-auto" />
+        <Link href="/" className="block" aria-label="PubCommand dashboard">
+          <BrandLogo fill className="w-full" />
         </Link>
         <SiteSwitcher model={switcher} />
         <div className="rounded-lg border border-line px-2 py-1.5">

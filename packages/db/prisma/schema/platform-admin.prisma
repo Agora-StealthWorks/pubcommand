@@ -51,3 +51,23 @@ model PlatformSetting {
 
   @@map("platform_settings")
 }
+
+/// How one app shows up as a card on organization dashboards, set by staff in Admin → App cards.
+/// Platform table (no organizationId). No row means the built-in defaults (apps/web/src/lib/apps.ts).
+model AppCard {
+  moduleId    String   @id @map("module_id")
+  /// Card title on the dashboard. Null keeps the app's built-in name.
+  name        String?
+  /// Shown on dashboards of organizations that have the app. Null keeps the default
+  /// (built-in apps on, apps without a built-in card off until staff turn them on).
+  onDashboard Boolean? @map("on_dashboard")
+  /// Dashboard order, lowest first. Null keeps the built-in order.
+  position    Int?
+  /// Uploaded card artwork (2:1, PNG, JPEG or WebP). Null uses the bundled default or a drawing.
+  imageMime   String?  @map("image_mime")
+  imageData   Bytes?   @map("image_data")
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("app_cards")
+}
