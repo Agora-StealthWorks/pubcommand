@@ -12,6 +12,7 @@ const links: { href: string; label: string; permissions: string[]; superAdminOnl
   { href: "/users", label: "Users", permissions: [PLATFORM_PERMISSIONS.viewUsers] },
   { href: "/plans", label: "Plans", permissions: [PLATFORM_PERMISSIONS.managePlans, PLATFORM_PERMISSIONS.manageModules] },
   { href: "/domains", label: "Domains", permissions: [PLATFORM_PERMISSIONS.manageDomains] },
+  { href: "/app-cards", label: "App cards", permissions: [PLATFORM_PERMISSIONS.manageModules] },
   { href: "/emails", label: "Emails", permissions: [PLATFORM_PERMISSIONS.manageSystemEmails] },
   { href: "/staff", label: "Staff", permissions: [PLATFORM_PERMISSIONS.manageStaff] },
   { href: "/brain", label: "Master Brain", permissions: [PLATFORM_PERMISSIONS.manageBrain] },
@@ -42,8 +43,8 @@ export function AdminShell({
       <AppFrame
         sidebar={
           <div className="px-3 py-4">
-            <div className="px-2">
-              <BrandLogo className="h-8 w-auto" />
+            <div className="px-1">
+              <BrandLogo fill className="w-full" />
             </div>
             <div className="mt-3 px-1">
               <SiteSwitcher model={switcher} />

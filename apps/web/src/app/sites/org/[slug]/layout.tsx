@@ -2,6 +2,7 @@ import type { Viewport } from "next";
 import { brandMetadata, brandThemeColor } from "@/components/brand";
 import { buildSiteUrl } from "@pubcommand/core";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
+import { loadAppCardSettings } from "@/features/app-cards/store";
 import { OrgShell } from "@/components/org-shell";
 import { Denied } from "@/components/ui";
 import { rootDomain } from "@/lib/auth";
@@ -64,14 +65,16 @@ export default async function OrgLayout({
   }
   if (ctx.kind === "forbidden") return <Denied title="You are not a member of this organization" />;
 
-  const [target, switcher, logos] = await Promise.all([
+  const [target, switcher, logos, cardSettings] = await Promise.all([
     ctx.impersonatingHere ? rawPrisma().user.findUnique({ where: { id: ctx.impersonatingHere.targetUserId } }) : null,
-    loadSwitcher({ userId: ctx.auth.user.id, session: ctx.auth.session, here: { kind: "org", slug: ctx.resolved.slug, name: ctx.resolved.name, brandId: ctx.subject.membershipBrandId ?? ctx.brand?.id ?? null } }),
+    loadSwitcher({ userId: ctx.auth.user.id, session: ctx.auth.session, here: { kind: "org", slug: ctx.resolved.slug, name: ctx.resolved.name } }),
     // Brands with a logo (Settings → Brands → Brand defaults), shown in the sidebar.
     tenantDb(ctx.resolved.id).pubBrandBranding.findMany({
       where: { OR: [{ logoMime: { not: null } }, { logoOnDarkMime: { not: null } }] },
       select: { brandId: true, updatedAt: true, logoMime: true, primaryColor: true },
     }),
+    // App names and apps added by staff (Admin → App cards) also show in the sidebar.
+    loadAppCardSettings(),
   ]);
   // Only a logo for dark backgrounds (light artwork): the sidebar shows it on the brand's header color.
   const brandLogos = Object.fromEntries(
@@ -91,6 +94,7 @@ export default async function OrgLayout({
       impersonating={target ? { targetEmail: target.email } : null}
       switcher={switcher}
       brandLogos={brandLogos}
+      cardSettings={cardSettings}
     >
       {children}
     </OrgShell>

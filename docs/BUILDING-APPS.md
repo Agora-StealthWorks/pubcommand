@@ -6,7 +6,7 @@ How every app (module) in PubCommand is built. Read this before you change anyth
 
 - PubCommand replaces Stephen's old OxfordHub suite of internal tools with one app.
 - **One team uses it for now.** Several teams later. Do not build selling features (billing, plans, signup).
-- Inside a workspace, **brands are publishers** (MTA is the first, used as the sandbox). **Not finance-specific:** a brand has a `niche` (finance, health, general), an `audience` and `complianceNotes`. Build every prompt from `brandPromptContext(brandProfile(ctx.brand))` (`@pubcommand/core`) and never hardcode an investing reader, stocks or finance-only rules unless the app is finance-only. The sidebar has a brand switcher, and the site switcher lists each organization's brands (`docs/ARCHITECTURE.md`, Site switcher). App data belongs to the current brand (`ctx.brand`), unless the app says otherwise.
+- Inside a workspace, **brands are publishers** (MTA is the first, used as the sandbox). **Not finance-specific:** a brand has a `niche` (finance, health, general), an `audience` and `complianceNotes`. Build every prompt from `brandPromptContext(brandProfile(ctx.brand))` (`@pubcommand/core`) and never hardcode an investing reader, stocks or finance-only rules unless the app is finance-only. The sidebar has a brand switcher. App data belongs to the current brand (`ctx.brand`), unless the app says otherwise.
 - **Brain:** each brand has a mini-brain. The main Brain is platform-level and staff-only (see `modules/knowledge/README.md`). Apps teach the brand's Brain through `teachBrain()` (below).
 - Light theme: white cards (`rounded-xl border border-line bg-white`) on `bg-canvas`, one blue accent (`text-accent` / `bg-accent`), muted text `text-muted`. No dark theme.
 - Must work on a phone at 375px wide with no sideways scroll.
@@ -85,7 +85,7 @@ END $$;
 
 These are shared and edited only by the lead, to avoid conflicts:
 
-- `apps/web/src/lib/apps.ts` (dashboard cards and sidebar), `apps/web/src/components/app-thumbnail.tsx`, `org-shell.tsx`, `app-frame.tsx`
+- `apps/web/src/lib/apps.ts` (dashboard cards and sidebar; a new app without a built-in card can be given one, with artwork, in Admin → App cards — see `docs/APP-CARDS.md`), `apps/web/src/components/app-thumbnail.tsx`, `org-shell.tsx`, `app-frame.tsx`
 - `packages/db/prisma/schema/schema.prisma` and other apps' schema files, `packages/db/src/tenant.ts`
 - `packages/ai/src/index.ts`, `features/ai/*`, `features/brain/teach.ts`
 - Other apps' folders

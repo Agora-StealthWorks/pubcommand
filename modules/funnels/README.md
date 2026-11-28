@@ -52,7 +52,7 @@ Preview: `?preview=1` shows drafts; `&as_of=YYYY-MM-DDTHH:mm` (org time zone) ti
 - **How it is captured**: the page's `/sync` call reads the tracked parameters from the address of the page it came from (its Referer), keeps them in the visitor's signed cookie (`p` in `pcf_<id>`, size-capped; older cookies without it still work) and stores them on every page view and click (`funnel_events.params`). The front door keeps them when it redirects to a module. Email opt-ins and SMS sign-ups store the visitor's values too (`params` on `funnel_optins` / `funnel_sms_optins`), merged with the form page's address. Values are trimmed and cut to 200 characters. Previews record nothing. Bot flagging is unchanged.
 - **Stats**: the funnel's Stats page has **By URL parameter → Break down by** over the org's tracked parameters: per value, visitors, opt-ins, views, offer clicks (CTA, deadline bar, close page and home page buttons) and click rate (visitors who made an offer click ÷ visitors). Each visitor counts once, under their first or latest value (the org's attribution); visitors without it are "(none)". It follows the page's date range and bot filter.
 - **Exports**: the email and SMS opt-in CSVs have one column per tracked parameter (plus any older key a row carries).
-- Tracking parameters never go to the Brain (same rule as all funnel traffic). Pure code: `tracking.ts` (key list, picking, first/last touch, cookie budget, CSV columns) and `paramBreakdown` in `stats.ts`. Tests: `tracking.test.ts`.
+- Totals per tracked parameter value (visitors and opt-ins, never the visitors themselves) go to the Operations Brain with the rest of the funnel traffic (see Rules). Pure code: `tracking.ts` (key list, picking, first/last touch, cookie budget, CSV columns) and `paramBreakdown` in `stats.ts`. Tests: `tracking.test.ts`.
 
 ## Videos
 
@@ -61,12 +61,22 @@ Preview: `?preview=1` shows drafts; `&as_of=YYYY-MM-DDTHH:mm` (org time zone) ti
 - Vidalytics: no public metadata, so title, length and thumbnail are set by hand. The player loads from `fast.vidalytics.com/embeds/<account>/<embed>/`; progress is read from the `<video>` it renders, else time on the page (the builder says so).
 - Watch % from every provider goes through the same `/sync` route, which accepts it only for a module the state engine says is open. Locked modules never render any provider's id; a Wistia poster (no id in it) may still show on the nav tile, as in the old app.
 
+## AI agents
+
+Agents use the builder's ordinary tabs through the page tools (`open_page`, `submit_form`). The
+Design, Home page and Offer section editors save structured data from the browser, so agents
+edit those with `get_funnel_editor` (the current JSON, the choices and every block type),
+`save_funnel_editor` (part `design`, `home` or `offer`) and `add_funnel_image` (an image from a
+public https address). These go through `/agent-api/funnels/<id>`, which only accepts a valid
+agent pass and calls the editors' own save actions, so permissions, validation, sanitizing and the
+audit log are the same as for a person. See `docs/AI-AGENTS.md`.
+
 ## Rules worth keeping
 
 - Rich text is sanitized on save and on render (`features/funnels/sanitize.ts`); calendar-button embeds (`sanitizeEmbed`) lose scripts, handlers and iframes. Images are Postgres `bytea` (`FunnelAsset`).
 - Publishing is blocked by check errors; a published funnel stays live while you edit.
 - Countdowns use the server clock (skew-corrected) and only reload when they run out on an open page, never twice in 15 s (`guardedReload`). Locked pages reload themselves when they unlock (`UnlockRefresh`).
-- **No Brain learning from funnel traffic.** The brand Brain only gets the funnel's structure and agenda (`funnel:<id>`), never views, watch %, clicks or opt-ins.
+- **Funnel traffic teaches the Operations Brain, in aggregate only.** Every night the Master Brain's Operations Brain gets per-funnel totals across all organizations: visitors, views, opt-ins and opt-in rate, offer clickers, device mix, reach per module / episode, and visitors and opt-ins per tracked parameter value (`brain-traffic.ts`, `docs/USAGE.md`). Bots are left out. No visitor ids, emails, IPs, page URLs or person-like parameter values are passed on. The brand Brain still only gets the funnel's structure and agenda (`funnel:<id>`), never traffic.
 - Opt-in emails/phones are PII: only `funnels.publish` CSV exports carry them, each export audited.
 
 ## Beyond the old app

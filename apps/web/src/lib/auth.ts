@@ -16,8 +16,10 @@ import {
   type MagicLinkStore,
 } from "@pubcommand/auth";
 import { buildSiteUrl, isAgentEmail, platformCan, PLATFORM_PERMISSIONS, safeNextUrl, sessionIdleExpired, sessionNeedsTouch } from "@pubcommand/core";
-import { activateInvitedMemberships, rawPrisma } from "@pubcommand/db";
-import { cookies } from "next/headers";
+import { activateInvitedMemberships, rawPrisma, tenantDb } from "@pubcommand/db";
+import { cookies, headers } from "next/headers";
+import { cache } from "react";
+import { AGENT_HEADER, readAgentPass, type AgentPass } from "@/features/agents/assertion";
 import { recordLogin, type LoginMethod } from "@/features/usage/record";
 
 const lucia = createLucia(rawPrisma());
@@ -55,7 +57,36 @@ const magicLinks: MagicLinkStore = {
  * request counts as activity (written at most once a minute) unless `touch` is false, which
  * the usage heartbeat uses when the person has not touched the page.
  */
+/**
+ * The AI agent a page request acts for, from the page bridge's signed pass (x-pc-agent), after
+ * re-checking that the agent and its token are still live. Null for every other request.
+ */
+export const readAgentPassFromRequest = cache(async (): Promise<AgentPass | null> => {
+  const pass = readAgentPass((await headers()).get(AGENT_HEADER));
+  if (!pass) return null;
+  const db = tenantDb(pass.h);
+  const [agent, token] = await Promise.all([
+    db.aiAgent.findFirst({ where: { id: pass.a, userId: pass.u }, select: { pausedAt: true, removedAt: true, scope: true, allowAdminActions: true } }),
+    db.aiAgentToken.findFirst({ where: { id: pass.t, agentId: pass.a }, select: { revokedAt: true, expiresAt: true } }),
+  ]);
+  if (!agent || agent.pausedAt || agent.removedAt || !token || token.revokedAt || (token.expiresAt && token.expiresAt <= new Date())) return null;
+  // An organization agent works only in its own organization; only a platform agent gets full access.
+  if (agent.scope !== "platform" && (pass.o !== pass.h || pass.s)) return null;
+  return pass;
+});
+
 export async function readSession(options: { touch?: boolean } = {}) {
+  // An AI agent using the app through the MCP page bridge: it is its own user, with no session row.
+  const pass = await readAgentPassFromRequest();
+  if (pass) {
+    const user = await rawPrisma().user.findUnique({ where: { id: pass.u }, select: { id: true, email: true, name: true, disabledAt: true } });
+    if (!user || user.disabledAt) return { user: null, session: null };
+    const now = new Date();
+    return {
+      user: { id: user.id, email: user.email, name: user.name, idleTimeoutMinutes: null },
+      session: { id: `agent:${pass.t}`, userId: user.id, expiresAt: new Date(pass.e), fresh: false, mfaVerified: false, lastActiveAt: now },
+    } as Awaited<ReturnType<typeof lucia.validateSession>>;
+  }
   const jar = await cookies();
   const sessionId = jar.get(SESSION_COOKIE)?.value ?? null;
   if (!sessionId) return { user: null, session: null };

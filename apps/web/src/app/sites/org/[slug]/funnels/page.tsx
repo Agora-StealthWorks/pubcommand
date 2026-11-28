@@ -29,7 +29,9 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
   // A delegate without funnels.read sees only the funnels they were given.
   const visible = new Set(visibleFunnelIds({ read: !delegateOnly, write: canWrite, publish: false }, all.map((funnel) => funnel.id), delegated));
   const funnels = all.filter((funnel) => visible.has(funnel.id));
-  const small = "inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-line bg-white px-2.5 text-xs font-semibold hover:bg-canvas";
+  const smallBase = "inline-flex min-h-9 items-center whitespace-nowrap rounded-md border px-2.5 text-xs font-semibold";
+  const small = `${smallBase} border-line bg-white hover:bg-canvas`;
+  const smallPrimary = `${smallBase} border-accent bg-accent text-white hover:opacity-90`;
 
   return (
     <div>
@@ -133,7 +135,7 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
                             </button>
                           </form>
                         ) : null}
-                        <Link href={`/funnels/${funnel.id}`} className={`${small} border-accent bg-accent text-white hover:bg-accent`}>
+                        <Link href={`/funnels/${funnel.id}`} className={smallPrimary}>
                           Edit
                         </Link>
                       </div>

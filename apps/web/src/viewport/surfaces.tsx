@@ -28,8 +28,8 @@ const SHARE_URL =
 const organization = { id: VIEWPORT_ORG_ID, name: "Northstar Publishing Desk", slug: SLUG };
 const brands = [{ id: "brand-desk", name: "Northstar Desk" }];
 const switcherOrgs = [
-  { ...organization, brands: [...brands, { id: "brand-money", name: "Northstar Money Weekly and a Long Brand Name" }] },
-  { slug: "harbor-research-and-a-very-long-organization-name", name: "Harbor Research and a Very Long Organization Name", brands: [{ id: "brand-harbor", name: "Harbor Daily" }], member: false },
+  organization,
+  { slug: "harbor-research-and-a-very-long-organization-name", name: "Harbor Research and a Very Long Organization Name", member: false },
 ];
 const switcherBase = { organizations: switcherOrgs, staff: { ready: true }, rootDomain: "pubcommand.com", requestHost: `${SLUG}.pubcommand.com` };
 
@@ -43,7 +43,7 @@ function orgFrame(pathname: string, children: React.ReactNode, impersonating = f
       pathname={pathname}
       email={EMAIL}
       impersonating={impersonating ? { targetEmail: EMAIL } : null}
-      switcher={buildSwitcher({ ...switcherBase, here: { kind: "org", slug: SLUG, name: organization.name, brandId: brands[0]!.id } })}
+      switcher={buildSwitcher({ ...switcherBase, here: { kind: "org", slug: SLUG, name: organization.name } })}
     >
       {children}
     </OrgShell>
@@ -617,7 +617,7 @@ export async function ViewportSurface({
         {orgFrame(
           "/intel",
           <div>
-            <PageHeader title="Intel" description="Competitor emails, AI extraction and the weekly Promo Radar." />
+            <PageHeader title="iSpy" description="Competitor emails, AI extraction and the weekly Promo Radar." />
             <ul className="divide-y divide-line rounded-lg border border-line bg-white">
               <li className="px-4 py-3">
                 <p className="text-sm font-semibold">The 3-minute morning habit most readers have never heard of</p>

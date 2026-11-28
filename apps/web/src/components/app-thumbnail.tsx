@@ -7,7 +7,7 @@ const G = "#12B76A";
 
 function Frame({ tint, children }: { tint: string; children: React.ReactNode }) {
   return (
-    <svg viewBox="0 0 320 150" className="block h-auto w-full" role="presentation" aria-hidden>
+    <svg viewBox="0 0 320 150" preserveAspectRatio="xMidYMid slice" className="block h-auto w-full" role="presentation" aria-hidden>
       <rect width="320" height="150" fill={tint} />
       <rect x="16" y="14" width="288" height="136" rx="8" fill="#fff" stroke={L} />
       <rect x="16" y="14" width="288" height="18" rx="8" fill="#F9FAFB" />
