@@ -4,8 +4,9 @@ import { moduleRegistry } from "@pubcommand/modules";
 import { visibleApps } from "@/lib/apps";
 import { CONSOLE_ORG_SLUG } from "@/lib/console-workspace";
 import { pickBrand, scopeFor, type AgentContext } from "./context";
-import { describeForm, openPage, submitForm, type BridgeAgent } from "./page-bridge";
+import { callAgentApi, describeForm, openPage, submitForm, type BridgeAgent } from "./page-bridge";
 import { ToolError, UUID, str, type Tool } from "./tool-kit";
+import { newBlockId } from "../../../../../modules/funnels/blocks";
 
 /**
  * Using the apps: list_app_pages, open_page and submit_form let an agent work in any app the way a
@@ -35,6 +36,19 @@ async function bridgeAgent(ctx: AgentContext, args: Record<string, unknown>, sub
   const brands = await tenantDb(ctx.organization.id).brand.findMany({ where: { id: { in: ctx.brands.map((x) => x.id) } }, orderBy: { name: "asc" }, select: { id: true, name: true, slug: true, niche: true } });
   return { ...base, organizationId: ctx.organization.id, organizationSlug: ctx.organization.slug, brandId: brand?.id ?? null, fullAccess: false, brands };
 }
+
+
+/** The funnel's own brand (an organization agent must have access to it). */
+async function funnelAgent(ctx: AgentContext, args: Record<string, unknown>, submitting: boolean): Promise<{ agent: BridgeAgent; funnelId: string }> {
+  const agent = await bridgeAgent(ctx, { ...args, brand: undefined }, submitting);
+  const funnelId = (str(args, "funnel", 40) ?? "").trim().toLowerCase();
+  if (!UUID.test(funnelId)) throw new ToolError("funnel must be the funnel's id (from /funnels or its page address).");
+  const row = await tenantDb(agent.organizationId).funnel.findFirst({ where: { id: funnelId, deletedAt: null }, select: { brandId: true } });
+  if (!row || (!agent.fullAccess && !ctx.brands.some((b) => b.id === row.brandId))) throw new ToolError("No funnel with that id you can work on.");
+  return { agent: { ...agent, brandId: row.brandId }, funnelId };
+}
+
+const PARTS = ["design", "home", "offer"] as const;
 
 const where = {
   organization: { type: "string", description: "Platform agents only: the organization (slug or id)." },
@@ -112,6 +126,61 @@ export const APP_TOOLS: Tool[] = [
       const result = await submitForm(agent, str(args, "path", 500) ?? "", { form, fields, button: str(args, "button", 100), files });
       if (result.result === "error") throw new ToolError(`The app said: ${result.message}`);
       return { data: result, targetType: "page", targetId: result.now_at.slice(0, 200) };
+    },
+  },
+  {
+    name: "get_funnel_editor",
+    title: "Read a funnel's Design, Home page and Offer section",
+    description:
+      "The funnel builder's Design tab (header, page, content box, tiles, footer, fonts, logo, legal links, Forms theme), Home page blocks and Offer section blocks as JSON, plus the choices they can use (forms, SMS forms, module and page targets, themes) and every block type with its fields. Change what you need and send it back with save_funnel_editor.",
+    inputSchema: { type: "object", properties: { funnel: { type: "string", description: "The funnel id." }, organization: where.organization }, required: ["funnel"], additionalProperties: false },
+    readOnly: true,
+    available: () => true,
+    run: async (ctx, args) => {
+      const { agent, funnelId } = await funnelAgent(ctx, args, false);
+      return { data: await callAgentApi(agent, `/agent-api/funnels/${funnelId}`), targetType: "funnel", targetId: funnelId };
+    },
+  },
+  {
+    name: "save_funnel_editor",
+    title: "Save a funnel's Design, Home page or Offer section",
+    description:
+      'Save one part of the funnel builder, exactly as its Save button does. part "design": data is the design object from get_funnel_editor (design, logoAssetId, logoUrl, companyName, privacyUrl, termsUrl, footerHtml, formThemeId; fields left out keep their values). part "offer": data is { blocks }. part "home": data is { blocks, shell, title }. Blocks replace the whole list: send every block, in order, each with a type and its fields (new blocks need no id). Images: add them with add_funnel_image and use the id and src it returns. It goes live on the funnel\'s pages at once.',
+    inputSchema: {
+      type: "object",
+      properties: { funnel: { type: "string", description: "The funnel id." }, part: { type: "string", enum: [...PARTS] }, data: { type: "object" }, organization: where.organization },
+      required: ["funnel", "part", "data"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    available: () => true,
+    run: async (ctx, args) => {
+      const { agent, funnelId } = await funnelAgent(ctx, args, true);
+      const part = String(args.part ?? "");
+      if (!(PARTS as readonly string[]).includes(part)) throw new ToolError('part must be "design", "home" or "offer".');
+      const data = args.data && typeof args.data === "object" && !Array.isArray(args.data) ? (args.data as Record<string, unknown>) : {};
+      if (part !== "design" && Array.isArray(data.blocks)) data.blocks = data.blocks.map((block: unknown) => (block && typeof block === "object" && !(block as { id?: unknown }).id ? { ...block, id: newBlockId() } : block));
+      await callAgentApi(agent, `/agent-api/funnels/${funnelId}`, "PUT", { part, data });
+      const now = await callAgentApi(agent, `/agent-api/funnels/${funnelId}`);
+      return { data: { saved: part, now: now[part] }, targetType: "funnel", targetId: funnelId };
+    },
+  },
+  {
+    name: "add_funnel_image",
+    title: "Add an image to a funnel",
+    description: 'Store an image from a public https address in the funnel, for its logo (kind "logo"), header or page background ("header_bg", "page_bg"), footer logo ("footer_logo") or an image block ("block", the default). Returns the id and src to put in save_funnel_editor (e.g. logoAssetId, or an image block\'s assetId and src).',
+    inputSchema: {
+      type: "object",
+      properties: { funnel: { type: "string", description: "The funnel id." }, image_url: { type: "string" }, kind: { type: "string", enum: ["logo", "header_bg", "page_bg", "footer_logo", "block"] }, organization: where.organization },
+      required: ["funnel", "image_url"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    available: () => true,
+    run: async (ctx, args) => {
+      const { agent, funnelId } = await funnelAgent(ctx, args, true);
+      const result = await callAgentApi(agent, `/agent-api/funnels/${funnelId}`, "POST", { image_url: str(args, "image_url", 2000), kind: str(args, "kind", 20) ?? "block" });
+      return { data: { id: result.id, src: result.src }, targetType: "funnel_asset", targetId: String(result.id ?? "") };
     },
   },
 ];

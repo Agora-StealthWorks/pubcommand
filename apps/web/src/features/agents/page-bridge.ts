@@ -307,3 +307,18 @@ export async function submitForm(agent: BridgeAgent, rawPath: string, input: Sub
   const shown = readPage(page.path, response.status, await response.text());
   return { result: "shown", message: shown.message.error ?? shown.message.notice ?? null, now_at: page.path, page: { title: shown.title, text: shown.text.slice(0, 4000), links: shown.links.slice(0, 40), forms: shown.forms.map(describeForm) } };
 }
+
+/** JSON endpoints made for agents (app/sites/org/[slug]/agent-api), for editors that have no HTML form. */
+export async function callAgentApi(agent: BridgeAgent, path: string, method: "GET" | "PUT" | "POST" = "GET", body?: unknown): Promise<Record<string, unknown>> {
+  if (!path.startsWith("/agent-api/")) throw new ToolError("Not an agent endpoint.");
+  const response = await fetch(`${base()}${path}`, {
+    method,
+    headers: { ...bridgeHeaders(agent), ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    redirect: "manual",
+    signal: AbortSignal.timeout(60_000),
+  });
+  const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!response.ok || !data) throw new ToolError(typeof data?.error === "string" ? data.error : `The app answered ${response.status}.`);
+  return data;
+}

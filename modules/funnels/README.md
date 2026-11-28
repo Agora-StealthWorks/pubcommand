@@ -60,6 +60,16 @@ Preview: `?preview=1` shows drafts; `&as_of=YYYY-MM-DDTHH:mm` (org time zone) ti
 - Vidalytics: no public metadata, so title, length and thumbnail are set by hand. The player loads from `fast.vidalytics.com/embeds/<account>/<embed>/`; progress is read from the `<video>` it renders, else time on the page (the builder says so).
 - Watch % from every provider goes through the same `/sync` route, which accepts it only for a module the state engine says is open. Locked modules never render any provider's id; a Wistia poster (no id in it) may still show on the nav tile, as in the old app.
 
+## AI agents
+
+Agents use the builder's ordinary tabs through the page tools (`open_page`, `submit_form`). The
+Design, Home page and Offer section editors save structured data from the browser, so agents
+edit those with `get_funnel_editor` (the current JSON, the choices and every block type),
+`save_funnel_editor` (part `design`, `home` or `offer`) and `add_funnel_image` (an image from a
+public https address). These go through `/agent-api/funnels/<id>`, which only accepts a valid
+agent pass and calls the editors' own save actions, so permissions, validation, sanitizing and the
+audit log are the same as for a person. See `docs/AI-AGENTS.md`.
+
 ## Rules worth keeping
 
 - Rich text is sanitized on save and on render (`features/funnels/sanitize.ts`); calendar-button embeds (`sanitizeEmbed`) lose scripts, handlers and iframes. Images are Postgres `bytea` (`FunnelAsset`).
