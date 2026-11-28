@@ -11,9 +11,9 @@ Permissions: `funnels.read` (see everything, stats, previews), `funnels.write` (
 
 **New funnel presets**: Live challenge · Evergreen launch · Docuseries (expiring episodes) · Microsite (`presets.ts`). A preset only fills starting values for existing settings; everything stays editable.
 
-The builder's tabs are gathered into nine groups (each tab keeps its `?tab=` key, so links and saves land where they did; a group with several tabs shows them as a second row): **Setup & publish** (Setup, Publish) · **Design** · **Schedule & access** (Mode & schedule, Progression & messages) · **Modules** · **Pages** (Home page or Waitlist page, Pages & links, Hosts, Close page) · **Countdowns & bars** (episode page settings + deadline bar) · **Offer section** · **Forms, SMS & email** (SMS forms, Invites & reminders) · **Advanced** (Advanced, Delegates). A **Show advanced options** switch (remembered per browser) hides rarely used settings (calendar invite details, join early / today's session, lock-first-module, force-unlock, hide passed, build mode, page messages, bar spacing and dismiss, locked-box colours, what happens at zero). Hidden fields still submit, so saving never loses a value.
+The builder's tabs are gathered into nine groups (each tab keeps its `?tab=` key, so links and saves land where they did; a group with several tabs shows them as a second row): **Setup & publish** (Setup, Publish) · **Design** · **Schedule & access** (Mode & schedule, Progression & messages) · **Modules** · **Pages** (Home page or Waitlist page, Pages & links, Hosts, Close page) · **Countdowns & bars** (episode page settings + deadline bar) · **Offer section** · **Links** · **SMS forms** · **Advanced** (Advanced, Delegates). A **Show advanced options** switch (remembered per browser) hides rarely used settings (calendar invite details, join early / today's session, lock-first-module, force-unlock, hide passed, build mode, page messages, bar spacing and dismiss, locked-box colours, what happens at zero). Hidden fields still submit, so saving never loses a value.
 
-The tabs themselves: Setup (publish checklist, name, link, custom domain) · Mode & schedule (type, evergreen/live, add-to-calendar, between sessions, session-day countdown, "join today's session", join early, timing, close behaviour) · Progression & messages (A–D, lock the first module, email force-unlock, lock passed modules / hide them from the nav, release countdown, build mode, every page message) · Modules (list + editor: type, live session, video, unlocking, agenda box, CTA, SMS form, calendar buttons, resources) · Pages & links · Waitlist page / Home page (+ agenda settings) · Hosts · Deadline bar · Design · Close page · Invites & reminders · SMS forms · Advanced (code, favicon, unpublish/delete) · Delegates · Publish. The header has Stats, Preview, **Preview as of** (time travel as a first-time visitor), Duplicate and Publish. Old tab links (`?tab=branding`) still work. The funnel type is shown as “Launch funnel” or “Microsite”, never “waitlist”.
+The tabs themselves: Setup (publish checklist, name, link, custom domain) · Mode & schedule (type, evergreen/live, add-to-calendar, between sessions, session-day countdown, "join today's session", join early, timing, close behaviour) · Progression & messages (A–D, lock the first module, email force-unlock, lock passed modules / hide them from the nav, release countdown, build mode, every page message) · Modules (list + editor: type, live session, video, unlocking, agenda box, CTA, SMS form, calendar buttons, resources) · Pages & links · Waitlist page / Home page (+ agenda settings) · Hosts · Deadline bar · Design · Close page · Links · SMS forms · Advanced (code, favicon, unpublish/delete) · Delegates · Publish. The header has Stats, Preview, **Preview as of** (time travel as a first-time visitor), Duplicate and Publish. Old tab links (`?tab=branding`, `?tab=emails` → Links) still work. The funnel type is shown as “Launch funnel” or “Microsite”, never “waitlist”.
 
 ## Docuseries episode pages
 
@@ -24,6 +24,24 @@ A docuseries (the preset sets all of this up) is an evergreen, per-viewer funnel
 - **Deadline bar** additions: position **In the header** (logo · message + flip clock · button in one sticky bar; phones show the message, clock and button, without the logo) and target **When the episode on screen expires**. Buttons may point to `#offer`.
 - **Offer section tab**: the home page block builder, saved as `Funnel.offerBlocks` and shown under every module (anchor `#offer`; turn it off per module with “Show the offer section under this module”). New block types (also on home pages): **Pricing** (1–3 packages: price, crossed-out price, badge, features, bonus value stack `Name | $value`, order link, highlight), **Testimonials** (quote, name, stars), **Logo strip**, **FAQ** (opens on click), **Episode grid** (every module as a card with an Unlock button). The Countdown block can count to the episode's expiry; Meet your hosts shows six, then **Load more**.
 - **Locked teasers**: a module resource with the style “Locked teaser” shows a lock (e.g. Download transcript / audio / video) and links to `#offer` or a URL. Clicks on offer buttons, teasers and the episode grid count as the click kind `offer` (and as offer clicks in the parameter breakdown).
+
+## Links (no funnel emails)
+
+PubCommand does **not** send funnel invites, confirmations or reminders. There is no reminder job and
+an email opt-in triggers no email. Instead the builder's **Links** tab (`?tab=links`,
+`features/funnels/links-tab.tsx`) lists the links a team pastes into its own email tool (Gmail,
+Iterable, Mailchimp…): the funnel's main link, every module (`/day-<n>`), and for live funnels
+"add every session to your calendar" (`/ics?series=1`). The org's tracked URL parameters appear
+as fields, pre-filled with `utm_source=email`, `utm_medium=email`, `utm_campaign=<funnel link>`, and
+are added to every link, so Stats can break visitors down by email. When link keys unlock modules
+(progression D, or force-unlock), module links can carry the module's key. Each link copies as a
+plain URL, a formatted text link, a formatted button (button text and colour, default the funnel's
+accent) or the button's HTML. Nothing is saved, so nothing is audited.
+
+Email opt-ins are still collected (waitlist / opt-in blocks) and exported as CSV for the team's
+own email tool. The old email templates and send log stay in the database (`funnel_emails`,
+`funnel_email_sends`) but nothing reads or sends them, and a duplicated funnel no longer copies
+them. Unsubscribe links in emails sent earlier still work (`/l/<funnel>/unsubscribe`).
 
 ## Public URLs (org host, no sign-in)
 
@@ -80,4 +98,4 @@ audit log are the same as for a person. See `docs/AI-AGENTS.md`.
 
 ## Beyond the old app
 
-Microsites and the block home page, the Design tab, email opt-ins with invites and reminders (job `funnels.reminders`), SMS forms, Forms embeds, YouTube and Vidalytics videos, notes under a video, bot filtering, delegates per funnel.
+Microsites and the block home page, the Design tab, email opt-ins (collected for your own email tool; PubCommand sends no funnel emails), SMS forms, Forms embeds, YouTube and Vidalytics videos, notes under a video, bot filtering, delegates per funnel.

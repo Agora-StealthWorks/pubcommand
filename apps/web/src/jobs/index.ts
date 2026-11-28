@@ -8,7 +8,6 @@ import { formsMirrorRetry } from "./forms-mirror-retry";
 import { formsNotifications } from "./forms-notifications";
 import { formsOrphanCleanup } from "./forms-orphan-cleanup";
 import { formsSchedule } from "./forms-schedule";
-import { funnelsReminders } from "./funnels-reminders";
 import { intelDigest } from "./intel-digest";
 import { intelGmailSync } from "./intel-gmail-sync";
 import { intelRadar } from "./intel-radar";
@@ -51,7 +50,6 @@ export const JOBS: JobDefinition[] = [
   formsNotifications,
   formsOrphanCleanup,
   formsSchedule,
-  funnelsReminders,
   intelDigest,
   intelGmailSync,
   intelRadar,

@@ -1,5 +1,4 @@
 import { tenantDb } from "@pubcommand/db";
-import { after } from "next/server";
 import { verifyUnsubscribeToken } from "../../../../../modules/funnels/emails";
 import { captureSmsOptin, isValidEmail } from "../../../../../modules/funnels/sms";
 import { classifyTraffic, clientIpOf, deviceOf, isClickKind, isPageKind } from "../../../../../modules/funnels/traffic";
@@ -10,7 +9,7 @@ import { eventBoxEvent, icsFile } from "../../../../../modules/funnels/calendar"
 import { sessionEvent, upcomingSessions } from "./calendar-view";
 import { effectiveStart, keyUnlocks } from "../../../../../modules/funnels/state";
 import { emailConsent, funnelBranding, funnelRules } from "./data";
-import { sendConfirmation, unsubscribeOptin, unsubscribeSecret } from "./emails";
+import { unsubscribeOptin, unsubscribeSecret } from "./emails";
 import { acceptsEmailOptin, homeBlocks } from "./site-data";
 import {
   clientIp,
@@ -147,7 +146,7 @@ export async function handleFunnelOptin(request: Request, orgSlug: string, funne
   const params = await requestParams(request, loaded.organizationId, loaded.funnel.id);
   const existing = await db.funnelOptin.findFirst({ where: { funnelId: loaded.funnel.id, email }, select: { id: true } });
   if (!existing) {
-    const created = await db.funnelOptin
+    await db.funnelOptin
       .create({
         data: {
           organizationId: loaded.organizationId,
@@ -158,15 +157,8 @@ export async function handleFunnelOptin(request: Request, orgSlug: string, funne
           pageUrl: (request.headers.get("referer") ?? "").slice(0, 500) || null,
           ...(params ? { params } : {}),
         },
-        select: { id: true },
       })
       .catch(() => null);
-    // The registration confirmation (if the funnel has one switched on), after the response.
-    if (created) {
-      const origin = requestOrigin(request);
-      const base = back.startsWith(`/l/${loaded.funnel.slug}`) ? `/l/${loaded.funnel.slug}` : "";
-      after(() => sendConfirmation({ organizationId: loaded.organizationId, funnelId: loaded.funnel.id, optinId: created.id, origin, base }).catch((error: unknown) => console.error("[funnels] confirmation failed", error)));
-    }
   }
   return seeOther(withQuery(back, { joined: "1" }));
 }
@@ -271,13 +263,6 @@ export async function funnelIcs(request: Request, orgSlug: string, funnelSlug: s
   return event ? icsResponse(icsFile([event], { timeZone, calendarName: funnel.name, domain: host }), funnel.slug) : new Response("Not found", { status: 404 });
 }
 
-function requestOrigin(request: Request): string {
-  const url = new URL(request.url);
-  const host = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || request.headers.get("host") || url.host;
-  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(":", "");
-  return `${proto}://${host}`;
-}
-
 /**
  * POST /l/<funnel>/sms: an SMS opt-in. The form must belong to this funnel and
  * be placed somewhere on it; the consent text must match the form's current
@@ -367,6 +352,6 @@ export async function handleUnsubscribe(request: Request, orgSlug: string, funne
   if (optin.unsubscribedAt) return page("Unsubscribed", `<h1>You're already unsubscribed</h1><p>You will not get any more emails about ${name}.</p>`);
   return page(
     "Unsubscribe",
-    `<h1>Unsubscribe from ${name}?</h1><p>You will stop getting invites and reminders for this event.</p><form method="post" action="${esc(url.pathname + url.search)}"><button type="submit">Unsubscribe</button></form>`,
+    `<h1>Unsubscribe from ${name}?</h1><p>You will stop getting emails about this event from this link.</p><form method="post" action="${esc(url.pathname + url.search)}"><button type="submit">Unsubscribe</button></form>`,
   );
 }

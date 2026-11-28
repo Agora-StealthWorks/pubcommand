@@ -7,17 +7,17 @@ import { deleteFunnel, duplicateFunnel, publishFunnel } from "@/features/funnels
 import { DeadlineTab, DesignTab, HomeTab, HostsTab, OfferTab, PagesTab } from "@/features/funnels/builder-tabs";
 import { AdvancedToggle } from "@/features/funnels/advanced-toggle";
 import { AgendaSettings, ChecksList, CloseTab, LandingTab, ModulesTab, ProgressionTab, ScheduleTab, SetupTab } from "@/features/funnels/builder-main-tabs";
-import { loadFunnelForBrand, orgTimezone, statusBadge, type FunnelRow, type NavItemRow } from "@/features/funnels/data";
+import { dayLabel, funnelDesign, loadFunnelForBrand, orgTimezone, statusBadge, type DayRow, type FunnelRow } from "@/features/funnels/data";
 import { Field, LinkBox, Section } from "@/features/funnels/fields";
 import { funnelCheckInput } from "@/features/funnels/site-data";
 import { actionQuery, funnelsAccess, orgPublicUrl, publicLink } from "@/features/funnels/guard";
 import { SectionTabs } from "@/features/funnels/tabs";
-import { AdvancedTab, DelegatesTab, EmailsTab, SmsFormsTab } from "@/features/funnels/more-tabs";
+import { AdvancedTab, DelegatesTab, SmsFormsTab } from "@/features/funnels/more-tabs";
+import { LinksTab, type FunnelLink } from "@/features/funnels/links-tab";
+import { loadFunnelsSettings } from "@/features/funnels/tracking-data";
 import { listSmsForms, type SmsFormRow } from "@/features/funnels/sms-data";
-import { emailConfigured, emailSendCounts, funnelSessions } from "@/features/funnels/emails";
-import { acceptsEmailOptin } from "@/features/funnels/site-data";
 import { checkFunnel } from "../../../../../../../../../modules/funnels/checks";
-import { PROGRESSIONS, PROGRESSION_LABELS, SITE_TYPE_LABELS, type Progression } from "../../../../../../../../../modules/funnels/state";
+import { PROGRESSIONS, PROGRESSION_LABELS, SITE_TYPE_LABELS, keyUnlocks, type Progression } from "../../../../../../../../../modules/funnels/state";
 import { utcToZonedLocal, zoneLabel } from "../../../../../../../../../modules/funnels/time";
 
 /** The builder tabs, grouped the way the old Launch Funnels editor grouped them, plus PubCommand's own. */
@@ -33,7 +33,7 @@ const TABS = [
   { key: "deadline", label: "Deadline bar" },
   { key: "design", label: "Design" },
   { key: "close", label: "Close page" },
-  { key: "emails", label: "Invites & reminders" },
+  { key: "links", label: "Links" },
   { key: "sms", label: "SMS forms" },
   { key: "advanced", label: "Advanced" },
   { key: "delegates", label: "Delegates" },
@@ -55,12 +55,13 @@ const GROUPS: { key: string; label: string; tabs: Tab[] }[] = [
   { key: "pages", label: "Pages", tabs: ["home", "waitlist", "pages", "hosts", "close"] },
   { key: "deadline", label: "Countdowns & bars", tabs: ["deadline"] },
   { key: "offer", label: "Offer section", tabs: ["offer"] },
-  { key: "forms", label: "Forms, SMS & email", tabs: ["sms", "emails"] },
+  { key: "links", label: "Links", tabs: ["links"] },
+  { key: "forms", label: "SMS forms", tabs: ["sms"] },
   { key: "advanced", label: "Advanced", tabs: ["advanced", "delegates"] },
 ];
 
 /** Old tab names still open the right tab. */
-const ALIASES: Record<string, string> = { branding: "design", landing: "waitlist", messages: "progression" };
+const ALIASES: Record<string, string> = { branding: "design", landing: "waitlist", messages: "progression", emails: "links" };
 
 export default async function FunnelBuilderPage({
   params,
@@ -202,7 +203,7 @@ export default async function FunnelBuilderPage({
       {tab === "pages" ? <PagesTab funnel={funnel} days={days} navItems={navItems} forms={forms} smsForms={smsOptions} openId={query.item} canWrite={canWrite} publicUrl={publicUrl} /> : null}
       {tab === "offer" ? <OfferTab funnel={funnel} days={days} navItems={navItems} hosts={hosts} forms={forms} smsForms={smsOptions} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
       {tab === "deadline" ? <DeadlineTab funnel={funnel} days={days} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
-      {tab === "emails" ? await emailsTab(ctx.resolved.id, funnel, navItems, timeZone, canWrite, query.email) : null}
+      {tab === "links" ? await linksTab(ctx.resolved.id, funnel, days, publicUrl) : null}
       {tab === "sms" ? await smsTab(ctx.resolved.id, funnel, smsForms, canWrite, canPublish, query.form) : null}
       {tab === "advanced" && canPublish ? (
         <div className="space-y-4">
@@ -303,15 +304,22 @@ function StatusSection({ funnel }: { funnel: FunnelRow }) {
   );
 }
 
-async function emailsTab(organizationId: string, funnel: FunnelRow, navItems: NavItemRow[], timeZone: string, canWrite: boolean, openId?: string) {
-  const db = tenantDb(organizationId);
-  const [emails, counts, sessions, optinCount] = await Promise.all([
-    db.funnelEmail.findMany({ where: { funnelId: funnel.id }, orderBy: { createdAt: "asc" } }),
-    emailSendCounts(organizationId, funnel.id),
-    funnelSessions(organizationId, funnel),
-    db.funnelOptin.count({ where: { funnelId: funnel.id, unsubscribedAt: null } }),
-  ]);
-  return <EmailsTab funnel={funnel} emails={emails} counts={counts} sessions={sessions} timeZone={timeZone} openId={openId} canWrite={canWrite} emailReady={emailConfigured()} optinCount={optinCount} usesEmailOptin={acceptsEmailOptin(funnel, navItems)} />;
+async function linksTab(organizationId: string, funnel: FunnelRow, days: DayRow[], publicUrl: string) {
+  const settings = await loadFunnelsSettings(organizationId);
+  const keyLinks = keyUnlocks(funnel);
+  const links: FunnelLink[] = [
+    { id: "main", label: funnel.name, detail: "The funnel's main link: it opens whatever each visitor should see now.", url: publicUrl },
+    ...days.map((day) => ({
+      id: day.id,
+      label: day.title ? `${dayLabel(day)}: ${day.title}` : dayLabel(day),
+      detail: `Module ${day.position}`,
+      url: publicLink(publicUrl, `/day-${day.position}`),
+      keyUrl: keyLinks ? publicLink(publicUrl, `/day-${day.position}`, { k: day.unlockKey }) : null,
+    })),
+    ...(funnel.mode === "live" ? [{ id: "calendar", label: "Add every session to your calendar", detail: "Downloads a calendar file with all live sessions.", url: publicLink(publicUrl, "/ics", { series: "1" }) }] : []),
+  ];
+  const defaults: Record<string, string> = { utm_source: "email", utm_medium: "email", utm_campaign: funnel.slug };
+  return <LinksTab links={links} trackedParams={settings.trackedParams} defaults={defaults} accent={funnelDesign(funnel).page.accent} keyLinks={keyLinks} />;
 }
 
 async function smsTab(organizationId: string, funnel: FunnelRow, forms: SmsFormRow[], canWrite: boolean, canPublish: boolean, openId?: string) {

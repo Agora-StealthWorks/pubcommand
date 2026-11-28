@@ -2,11 +2,8 @@
 
 import { appendOrgAudit, tenantDb, type Prisma } from "@pubcommand/db";
 import { redirect } from "next/navigation";
-import { EMAIL_KINDS, offsetFromInput } from "../../../../../modules/funnels/emails";
-import { isValidEmail } from "../../../../../modules/funnels/sms";
 import { UUID_RE } from "./data";
-import { ensureStarterEmails, sendTestEmail } from "./emails";
-import { bool, color, pickOne, text, url } from "./form-input";
+import { bool, color, text, url } from "./form-input";
 import { funnelAction, funnelsAction, withMessage, type FunnelsCtx } from "./guard";
 import { richFromInput } from "./sanitize";
 
@@ -22,101 +19,6 @@ async function ownFunnel(ctx: FunnelsCtx, funnelId: string, back: string) {
 }
 
 const tab = (funnelId: string, name: string, extra = "") => `/funnels/${funnelId}?tab=${name}${extra}`;
-
-// ---------------------------------------------------------------------------
-// Invites & reminders
-
-export async function setupStarterEmails(formData: FormData) {
-  const funnelId = text(formData, "funnelId", 40);
-  const back = tab(funnelId, "emails");
-  const ctx = await funnelAction(back, funnelId, "funnels.write");
-  const funnel = await ownFunnel(ctx, funnelId, back);
-  const created = await ensureStarterEmails(ctx.resolved.id, funnel);
-  if (created) await audit(ctx, "funnels.emails.created", "funnel", funnel.id, { count: created });
-  redirect(withMessage(back, "notice", created ? "Added a confirmation and three reminders. Edit them below." : "This funnel already has emails."));
-}
-
-export async function addEmail(formData: FormData) {
-  const funnelId = text(formData, "funnelId", 40);
-  const back = tab(funnelId, "emails");
-  const ctx = await funnelAction(back, funnelId, "funnels.write");
-  const funnel = await ownFunnel(ctx, funnelId, back);
-  const db = tenantDb(ctx.resolved.id);
-  const kind = pickOne(formData, "kind", EMAIL_KINDS, "reminder");
-  if ((await db.funnelEmail.count({ where: { funnelId: funnel.id } })) >= 20) redirect(withMessage(back, "error", "A funnel can have at most 20 emails."));
-  if (kind === "confirm" && (await db.funnelEmail.count({ where: { funnelId: funnel.id, kind: "confirm" } }))) redirect(withMessage(back, "error", "This funnel already has a confirmation email."));
-  const email = await db.funnelEmail.create({
-    data: {
-      organizationId: ctx.resolved.id,
-      funnelId: funnel.id,
-      kind,
-      enabled: false,
-      offsetMinutes: kind === "reminder" ? 60 : 0,
-      subject: kind === "reminder" ? "Starting soon: {session_title}" : "You're registered for {funnel}",
-      bodyHtml: kind === "reminder" ? "<p><strong>{session_title}</strong> starts {date}.</p><p><a href=\"{link}\">Join here</a></p>" : "<p>Thanks for signing up for <strong>{funnel}</strong>.</p>",
-    },
-  });
-  await audit(ctx, "funnels.email.created", "funnel_email", email.id, { kind });
-  redirect(`${tab(funnel.id, "emails", `&email=${email.id}`)}#email-${email.id}`);
-}
-
-export async function saveEmail(formData: FormData) {
-  const funnelId = text(formData, "funnelId", 40);
-  const emailId = text(formData, "emailId", 40);
-  const back = tab(funnelId, "emails", `&email=${emailId}`);
-  const ctx = await funnelAction(back, funnelId, "funnels.write");
-  const funnel = await ownFunnel(ctx, funnelId, back);
-  const db = tenantDb(ctx.resolved.id);
-  const email = UUID_RE.test(emailId) ? await db.funnelEmail.findFirst({ where: { id: emailId, funnelId: funnel.id } }) : null;
-  if (!email) redirect(withMessage(tab(funnel.id, "emails"), "error", "That email no longer exists."));
-  const subject = text(formData, "subject", 250);
-  const bodyHtml = richFromInput(String(formData.get("bodyHtml") ?? "").slice(0, 50_000));
-  if (!subject || !bodyHtml) redirect(withMessage(back, "error", "An email needs a subject and a message."));
-  await db.funnelEmail.updateMany({
-    where: { id: email.id },
-    data: {
-      enabled: bool(formData, "enabled"),
-      subject,
-      bodyHtml,
-      ...(email.kind === "reminder" ? { offsetMinutes: offsetFromInput(formData.get("offsetAmount"), formData.get("offsetUnit")) } : {}),
-    },
-  });
-  await audit(ctx, "funnels.email.updated", "funnel_email", email.id);
-  redirect(withMessage(`${back}#email-${email.id}`, "notice", "Email saved."));
-}
-
-export async function deleteEmail(formData: FormData) {
-  const funnelId = text(formData, "funnelId", 40);
-  const emailId = text(formData, "emailId", 40);
-  const back = tab(funnelId, "emails");
-  const ctx = await funnelAction(back, funnelId, "funnels.write");
-  const funnel = await ownFunnel(ctx, funnelId, back);
-  if (!UUID_RE.test(emailId)) redirect(back);
-  const removed = await tenantDb(ctx.resolved.id).funnelEmail.deleteMany({ where: { id: emailId, funnelId: funnel.id } });
-  if (removed.count) await audit(ctx, "funnels.email.deleted", "funnel_email", emailId);
-  redirect(withMessage(back, "notice", "Email removed."));
-}
-
-/** Send one template to the signed-in person, with sample merge values. */
-export async function testEmail(formData: FormData) {
-  const funnelId = text(formData, "funnelId", 40);
-  const emailId = text(formData, "emailId", 40);
-  const back = tab(funnelId, "emails", `&email=${emailId}`);
-  const ctx = await funnelAction(back, funnelId, "funnels.write");
-  const funnel = await ownFunnel(ctx, funnelId, back);
-  const to = ctx.auth.user.email;
-  if (!to || !isValidEmail(to)) redirect(withMessage(back, "error", "Your account has no email address to send a test to."));
-  const result = await sendTestEmail({ organizationId: ctx.resolved.id, funnel, emailId, to, origin: ctx.request.origin });
-  const message =
-    result === "sent"
-      ? `Test sent to ${to}.`
-      : result === "logged"
-        ? "Email is not set up yet (no email service key), so the test was not sent."
-        : result === "missing"
-          ? "That email no longer exists."
-          : "The email service refused the test. Try again later.";
-  redirect(withMessage(`${back}#email-${emailId}`, result === "sent" ? "notice" : "error", message));
-}
 
 // ---------------------------------------------------------------------------
 // SMS opt-in forms

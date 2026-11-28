@@ -12,7 +12,6 @@ import { DEADLINE_PAGES, DEADLINE_POSITIONS, DEADLINE_TARGETS, normalizeDeadline
 import { BETWEEN_SESSIONS, CLOSE_MODES, CTA_REVEALS, FUNNEL_MODES, LIVE_OVERRIDES, PROGRESSIONS, SITE_TYPES, TIMING_MODES } from "../../../../../modules/funnels/state";
 import { parseReminders } from "../../../../../modules/funnels/calendar";
 import { linkItemsFromForm } from "../../../../../modules/funnels/links";
-import { isValidEmail } from "../../../../../modules/funnels/sms";
 import { PROVIDER_LABELS, VIDEO_PROVIDERS, oembedUrl, parseDuration, parseVideo, type VideoProvider } from "../../../../../modules/funnels/video";
 import { teachFunnel } from "./brain";
 import { UUID_RE, orgTimezone } from "./data";
@@ -253,10 +252,6 @@ export async function saveFunnel(formData: FormData) {
       navLayout: pickOne(formData, "navLayout", ["strip", "sidebar"] as const, "strip"),
       navBlurLocked: bool(formData, "navBlurLocked"),
     };
-  } else if (section === "emails") {
-    const replyTo = text(formData, "emailReplyTo", 254).toLowerCase();
-    if (replyTo && !isValidEmail(replyTo)) redirect(withMessage(back, "error", "The reply-to address is not a valid email."));
-    data = { emailFromName: text(formData, "emailFromName", 80), emailReplyTo: replyTo || null };
   } else if (section === "advanced") {
     // Header/footer code runs on public pages: funnels.publish only, never delegates.
     if (!can(ctx.subject, "funnels.publish", ctx.scope)) redirect(withMessage(back, "error", "Header and footer code need the funnels.publish permission."));
@@ -402,12 +397,11 @@ export async function duplicateFunnel(formData: FormData) {
   const ctx = await funnelsAction("/funnels", "funnels.write");
   const source = await ownFunnel(ctx, funnelId);
   const db = tenantDb(ctx.resolved.id);
-  const [days, navItems, hosts, smsForms, emails] = await Promise.all([
+  const [days, navItems, hosts, smsForms] = await Promise.all([
     db.funnelDay.findMany({ where: { funnelId: source.id }, orderBy: { position: "asc" } }),
     db.funnelNavItem.findMany({ where: { funnelId: source.id } }),
     db.funnelHost.findMany({ where: { funnelId: source.id } }),
     db.funnelSmsForm.findMany({ where: { funnelId: source.id } }),
-    db.funnelEmail.findMany({ where: { funnelId: source.id } }),
   ]);
   const strip = <T extends Record<string, unknown>>(row: T, drop: string[]) => Object.fromEntries(Object.entries(row).filter(([key]) => !drop.includes(key))) as Record<string, unknown>;
   const json = (value: unknown) => (value === null || value === undefined ? undefined : (JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue));
@@ -441,9 +435,6 @@ export async function duplicateFunnel(formData: FormData) {
   }
   for (const host of hosts) {
     await db.funnelHost.create({ data: { ...(strip(host, ["id", "createdAt", "updatedAt", "funnelId"]) as Prisma.FunnelHostUncheckedCreateInput), organizationId: ctx.resolved.id, funnelId: copy.id } });
-  }
-  for (const email of emails) {
-    await db.funnelEmail.create({ data: { ...(strip(email, ["id", "createdAt", "updatedAt", "funnelId"]) as Prisma.FunnelEmailUncheckedCreateInput), organizationId: ctx.resolved.id, funnelId: copy.id } });
   }
   await db.funnel.updateMany({ where: { id: copy.id }, data: { optinSmsFormId: source.optinSmsFormId ? smsMap.get(source.optinSmsFormId) ?? null : null } });
   await audit(ctx, "funnels.funnel.duplicated", "funnel", copy.id, { from: source.id });

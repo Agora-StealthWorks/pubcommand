@@ -1,16 +1,12 @@
 import { Badge, Button, Input, Textarea } from "@pubcommand/ui";
-import { MERGE_TAGS, describeOffset, noSessionsReason, offsetToInput, reminderSendAt, unknownTags, type ReminderSession } from "../../../../../modules/funnels/emails";
 import { maskPhone, smsConsentText, smsFormProblems } from "../../../../../modules/funnels/sms";
-import { formatZoned } from "../../../../../modules/funnels/time";
 import { saveFunnel } from "./actions";
 import type { FunnelRow } from "./data";
 import { Check, ColorField, Field, Section } from "./fields";
-import { addDelegate, addEmail, addSmsForm, deleteEmail, deleteSmsForm, removeDelegate, saveEmail, saveSmsForm, setupStarterEmails, testEmail } from "./more-actions";
+import { addDelegate, addSmsForm, deleteSmsForm, removeDelegate, saveSmsForm } from "./more-actions";
 import { RichTextArea } from "./rich-text-area";
 import type { SmsFormRow } from "./sms-data";
 import { SmsOptinForm } from "./sms-view";
-
-type EmailRow = { id: string; kind: string; enabled: boolean; offsetMinutes: number; subject: string; bodyHtml: string };
 
 function Hidden({ funnel, section }: { funnel: FunnelRow; section?: string }) {
   return (
@@ -27,167 +23,6 @@ function Notice({ tone = "info", children }: { tone?: "info" | "warn"; children:
 }
 
 // ---------------------------------------------------------------------------
-
-export function EmailsTab({
-  funnel,
-  emails,
-  counts,
-  sessions,
-  timeZone,
-  openId,
-  canWrite,
-  emailReady,
-  optinCount,
-  usesEmailOptin,
-}: {
-  funnel: FunnelRow;
-  emails: EmailRow[];
-  counts: Map<string, { sent: number; logged: number }>;
-  sessions: ReminderSession[];
-  timeZone: string;
-  openId?: string;
-  canWrite: boolean;
-  emailReady: boolean;
-  optinCount: number;
-  usesEmailOptin: boolean;
-}) {
-  const reason = noSessionsReason(funnel, sessions);
-  const confirm = emails.find((email) => email.kind === "confirm");
-  const reminders = emails.filter((email) => email.kind === "reminder").sort((a, b) => b.offsetMinutes - a.offsetMinutes);
-  const now = new Date();
-  return (
-    <div className="space-y-4">
-      {!emailReady ? <Notice tone="warn">Email is not set up yet (no email service key on this server). Emails are recorded as “not sent” until it is. Everything else here works.</Notice> : null}
-      {!usesEmailOptin ? <Notice tone="warn">Nobody can register by email yet: turn on “Simple email capture” on the {funnel.siteType === "microsite" ? "home page (an Opt-in block)" : "Waitlist tab"} or a custom page. Invites and reminders go to email opt-ins only.</Notice> : null}
-      <Section title="Invites and reminders" description="A confirmation right after someone registers, then reminders a set time before each session. People who unsubscribe get nothing more; every email carries an unsubscribe link.">
-        <p className="text-sm text-muted">
-          {optinCount} registered{reason ? "" : ` · ${sessions.length} session${sessions.length === 1 ? "" : "s"}: ${sessions.slice(0, 4).map((session) => `${session.label} (${formatZoned(session.startAt, timeZone, { weekday: false })})`).join(", ")}${sessions.length > 4 ? "…" : ""}`}
-        </p>
-        {reason ? <p className="text-sm text-[#93370d]">Reminders: {reason}</p> : null}
-        {emails.length === 0 && canWrite ? (
-          <form action={setupStarterEmails}>
-            <Hidden funnel={funnel} />
-            <Button type="submit">Add the starter confirmation and reminders</Button>
-          </form>
-        ) : null}
-        <form action={saveFunnel} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-          <Hidden funnel={funnel} section="emails" />
-          <Field label="Sender name" htmlFor="emailFromName" hint="Empty = your company name.">
-            <Input id="emailFromName" name="emailFromName" defaultValue={funnel.emailFromName} maxLength={80} disabled={!canWrite} />
-          </Field>
-          <Field label="Reply-to address" htmlFor="emailReplyTo" hint="Optional.">
-            <Input id="emailReplyTo" name="emailReplyTo" type="email" defaultValue={funnel.emailReplyTo ?? ""} maxLength={254} disabled={!canWrite} />
-          </Field>
-          {canWrite ? (
-            <Button type="submit" variant="secondary" className="mb-0.5">
-              Save sender
-            </Button>
-          ) : null}
-        </form>
-      </Section>
-
-      {[...(confirm ? [confirm] : []), ...reminders].map((email) => {
-        const count = counts.get(email.id) ?? { sent: 0, logged: 0 };
-        const next = email.kind === "reminder" ? sessions.map((session) => reminderSendAt(session, email.offsetMinutes)).find((at) => at > now) : null;
-        const offset = offsetToInput(email.offsetMinutes);
-        const unknown = [...unknownTags(email.subject), ...unknownTags(email.bodyHtml)];
-        return (
-          <details key={email.id} id={`email-${email.id}`} open={openId === email.id} className="rounded-xl border border-line bg-white">
-            <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-4 py-3">
-              <Badge tone={email.enabled ? "ok" : "neutral"}>{email.enabled ? "On" : "Off"}</Badge>
-              <span className="font-semibold">{email.kind === "confirm" ? "Registration confirmation" : `Reminder · ${describeOffset(email.offsetMinutes)}`}</span>
-              <span className="min-w-0 flex-1 truncate text-sm text-muted">{email.subject}</span>
-              <span className="text-xs text-muted">
-                {count.sent} sent{count.logged ? ` · ${count.logged} not sent (email off)` : ""}
-                {next ? ` · next ${formatZoned(next, timeZone, { weekday: false })}` : ""}
-              </span>
-            </summary>
-            <div className="border-t border-line p-4">
-              <form action={saveEmail} className="space-y-4">
-                <Hidden funnel={funnel} />
-                <input type="hidden" name="emailId" value={email.id} />
-                <fieldset disabled={!canWrite} className="space-y-4">
-                  <Check name="enabled" label={email.kind === "confirm" ? "Send right after someone registers" : "Send this reminder before each session"} defaultChecked={email.enabled} />
-                  {email.kind === "reminder" ? (
-                    <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,10rem)] items-end gap-2">
-                      <Field label="Send" htmlFor={`amount-${email.id}`}>
-                        <Input id={`amount-${email.id}`} name="offsetAmount" type="number" min={0} max={43200} defaultValue={offset.amount} />
-                      </Field>
-                      <div>
-                        <select aria-label="Unit" name="offsetUnit" defaultValue={offset.unit} className="pc-control w-full text-sm">
-                          <option value="minutes">minutes before</option>
-                          <option value="hours">hours before</option>
-                          <option value="days">days before</option>
-                        </select>
-                      </div>
-                    </div>
-                  ) : null}
-                  <Field label="Subject" htmlFor={`subject-${email.id}`} hint="Merge tags work here too, e.g. {funnel} or {session_title}.">
-                    <Input id={`subject-${email.id}`} name="subject" defaultValue={email.subject} maxLength={250} required />
-                  </Field>
-                  <Field label="Message" htmlFor={`body-${email.id}`}>
-                    <RichTextArea funnelId={funnel.id} id={`body-${email.id}`} name="bodyHtml" defaultValue={email.bodyHtml} rows={7} embeds={false} mergeTags={MERGE_TAGS} disabled={!canWrite} />
-                  </Field>
-                  {unknown.length ? <p className="text-xs text-[#93370d]">Not merge tags (they will show as typed): {unknown.map((tag) => `{${tag}}`).join(", ")}</p> : null}
-                  <details className="text-xs text-muted">
-                    <summary className="cursor-pointer font-semibold">Merge tags</summary>
-                    <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-                      {MERGE_TAGS.map((item) => (
-                        <li key={item.tag}>
-                          <code className="text-ink">{`{${item.tag}}`}</code> {item.description}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                  {canWrite ? <Button type="submit">Save email</Button> : null}
-                </fieldset>
-              </form>
-              {canWrite ? (
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-                  <form action={testEmail}>
-                    <Hidden funnel={funnel} />
-                    <input type="hidden" name="emailId" value={email.id} />
-                    <Button type="submit" variant="secondary" size="sm">
-                      Send me a test
-                    </Button>
-                  </form>
-                  <form action={deleteEmail}>
-                    <Hidden funnel={funnel} />
-                    <input type="hidden" name="emailId" value={email.id} />
-                    <Button type="submit" variant="danger" size="sm">
-                      Remove
-                    </Button>
-                  </form>
-                </div>
-              ) : null}
-            </div>
-          </details>
-        );
-      })}
-
-      {canWrite && emails.length ? (
-        <div className="flex flex-wrap gap-2">
-          <form action={addEmail}>
-            <Hidden funnel={funnel} />
-            <input type="hidden" name="kind" value="reminder" />
-            <Button type="submit" variant="secondary">
-              + Add a reminder
-            </Button>
-          </form>
-          {!confirm ? (
-            <form action={addEmail}>
-              <Hidden funnel={funnel} />
-              <input type="hidden" name="kind" value="confirm" />
-              <Button type="submit" variant="secondary">
-                + Add a confirmation
-              </Button>
-            </form>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 

@@ -1,24 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canOpenFunnels, delegateAllows, funnelAccess, visibleFunnelIds } from "./delegates";
 import { deadlineButtonHref, deadlineShowsOn, dismissKey, isDismissed, normalizeDeadlineButtonUrl, normalizeDeadlinePages, rememberDismiss } from "./deadline";
-import {
-  MAX_LATE_MINUTES,
-  describeOffset,
-  dueReminders,
-  fillMergeTags,
-  mergeValues,
-  noSessionsReason,
-  offsetFromInput,
-  offsetToInput,
-  reminderSendAt,
-  reminderSessions,
-  renderEmail,
-  sendKey,
-  unknownTags,
-  unsubscribeToken,
-  verifyUnsubscribeToken,
-  type ReminderSession,
-} from "./emails";
+import { unsubscribeToken, verifyUnsubscribeToken } from "./emails";
 import { captureSmsOptin, smsConsentText, smsFormProblems } from "./sms";
 import { reactAttrs, splitHeadCode } from "./code";
 import { classifyTraffic, clientIpOf, filterTraffic, ipv4ToInt, ipv6ToBigInt, isBotUserAgent, isDatacenterIp, parseCidr4 } from "./traffic";
@@ -99,105 +82,7 @@ describe("bot and data-center traffic", () => {
   });
 });
 
-const T0 = new Date("2026-12-01T19:00:00Z");
-const session = (key: string, startAt: Date): ReminderSession => ({ key, label: key, title: `Session ${key}`, startAt, path: `/day-${key}`, roomUrl: "https://room.example.com" });
-
-describe("invites and reminders", () => {
-  const reminders = [
-    { id: "r24", enabled: true, offsetMinutes: 1440 },
-    { id: "r1", enabled: true, offsetMinutes: 60 },
-    { id: "r0", enabled: true, offsetMinutes: 0 },
-    { id: "off", enabled: false, offsetMinutes: 30 },
-  ];
-  const optins = [
-    { id: "early", createdAt: new Date("2026-11-20T00:00:00Z"), unsubscribedAt: null },
-    { id: "late", createdAt: new Date("2026-12-01T18:30:00Z"), unsubscribedAt: null },
-    { id: "gone", createdAt: new Date("2026-11-20T00:00:00Z"), unsubscribedAt: new Date("2026-11-25T00:00:00Z") },
-  ];
-  const sessions = [session("1", T0), session("2", new Date(T0.getTime() + 86_400_000))];
-
-  it("times each reminder against each session", () => {
-    expect(reminderSendAt(sessions[0]!, 1440).toISOString()).toBe("2026-11-30T19:00:00.000Z");
-    expect(reminderSendAt(sessions[0]!, 0)).toEqual(T0);
-  });
-
-  it("sends the 24-hour reminder for session 1 one day ahead, only to people who signed up before then", () => {
-    const due = dueReminders({ reminders, sessions, optins, sent: new Set(), now: new Date("2026-11-30T19:05:00Z") });
-    expect(due.map((item) => `${item.emailId}:${item.optinId}:${item.sessionKey}`)).toEqual(["r24:early:1"]);
-  });
-
-  it("skips people who joined after a reminder's send time", () => {
-    const due = dueReminders({ reminders, sessions, optins, sent: new Set(), now: new Date("2026-12-01T18:00:30Z") });
-    expect(due.map((item) => `${item.emailId}:${item.optinId}`)).toEqual(["r1:early"]);
-    const later = dueReminders({ reminders, sessions, optins, sent: new Set(), now: new Date("2026-12-01T19:00:10Z") });
-    expect(later.map((item) => `${item.emailId}:${item.optinId}:${item.sessionKey}`).sort()).toEqual(["r0:early:1", "r0:late:1", "r24:early:2", "r24:late:2"]);
-  });
-
-  it("never sends twice, never to the unsubscribed, never a disabled template", () => {
-    const now = new Date("2026-11-30T19:05:00Z");
-    const sent = new Set([sendKey("r24", "early", "1")]);
-    expect(dueReminders({ reminders, sessions, optins, sent, now })).toEqual([]);
-    expect(dueReminders({ reminders, sessions, optins, sent: new Set(), now }).some((item) => item.optinId === "gone" || item.emailId === "off")).toBe(false);
-  });
-
-  it("skips a reminder that is too late or whose session already started", () => {
-    const tooLate = new Date(new Date("2026-11-30T19:00:00Z").getTime() + (MAX_LATE_MINUTES + 1) * 60_000);
-    expect(dueReminders({ reminders: [reminders[0]!], sessions: [sessions[0]!], optins, sent: new Set(), now: tooLate })).toEqual([]);
-    expect(dueReminders({ reminders: [reminders[1]!], sessions: [sessions[0]!], optins, sent: new Set(), now: new Date(T0.getTime() + 1000) })).toEqual([]);
-    // "At the start" stays due for 30 minutes.
-    expect(dueReminders({ reminders: [reminders[2]!], sessions: [sessions[0]!], optins, sent: new Set(), now: new Date(T0.getTime() + 29 * 60_000) })).toHaveLength(2);
-    expect(dueReminders({ reminders: [reminders[2]!], sessions: [sessions[0]!], optins, sent: new Set(), now: new Date(T0.getTime() + 31 * 60_000) })).toHaveLength(0);
-  });
-
-  it("finds sessions: live days on a live funnel, the start on a fixed evergreen funnel, none per viewer", () => {
-    const days = [
-      { id: "d1", position: 1, label: "Day 1", title: "Kickoff", isLive: true, liveStartAt: T0, liveUrl: null, liveOverride: "auto" },
-      { id: "d2", position: 2, label: "Day 2", title: "Cancelled", isLive: true, liveStartAt: T0, liveUrl: null, liveOverride: "off" },
-      { id: "d3", position: 3, label: "Day 3", title: "Replay", isLive: false, liveStartAt: null, liveUrl: null, liveOverride: "auto" },
-    ];
-    const live = { mode: "live", timing: "fixed", startAt: T0, livestreamUrl: "https://room", name: "Launch" };
-    expect(reminderSessions(live, days).map((item) => [item.key, item.path, item.roomUrl])).toEqual([["d1", "/day-1", "https://room"]]);
-    expect(reminderSessions({ ...live, mode: "evergreen" }, days).map((item) => item.key)).toEqual(["start"]);
-    const perViewer = { ...live, mode: "evergreen", timing: "per_viewer" };
-    expect(reminderSessions(perViewer, days)).toEqual([]);
-    expect(noSessionsReason(perViewer, [])).toMatch(/Per-viewer/);
-  });
-
-  it("fills merge tags, escaping values in HTML and keeping unknown tags visible", () => {
-    const values = { funnel: "Fish & <Chips>", session: "Day 1", unsubscribe_url: "https://x/u?a=1&b=2" };
-    expect(fillMergeTags("Hi {funnel} {session} {nope} {date}", values, "text")).toBe("Hi Fish & <Chips> Day 1 {nope} ");
-    expect(fillMergeTags("<p>{funnel}</p>", values, "html")).toBe("<p>Fish &amp; &lt;Chips&gt;</p>");
-    expect(unknownTags("{funnel} {first_name} {first_name}")).toEqual(["first_name"]);
-  });
-
-  it("builds merge values from a session in the org time zone", () => {
-    const values = mergeValues({ funnelName: "Launch", company: "Acme", email: "a@b.co", session: session("1", T0), timeZone: "America/New_York", now: new Date(T0.getTime() - 60 * 60_000), pageUrl: "https://acme/l/x/day-1", unsubscribeUrl: "https://u" });
-    expect(values.date).toBe("Tuesday, December 1 at 2:00 PM EST");
-    expect(values.time).toBe("2:00 PM EST");
-    expect(values.starts_in).toBe("1 hour");
-    expect(values.room_url).toBe("https://room.example.com");
-  });
-
-  it("always carries an unsubscribe link", () => {
-    const withTag = renderEmail({ subject: "{funnel}", bodyHtml: '<p>Hi</p><p><a href="{unsubscribe_url}">Stop</a></p>' }, { funnel: "Launch", unsubscribe_url: "https://u/1" });
-    expect(withTag.html.match(/https:\/\/u\/1/g)).toHaveLength(1);
-    const without = renderEmail({ subject: "", bodyHtml: "<p>Hi</p>" }, { funnel: "Launch", unsubscribe_url: "https://u/1" });
-    expect(without.subject).toBe("Launch");
-    expect(without.html).toContain('href="https://u/1"');
-    expect(without.text).toContain("Unsubscribe (https://u/1)");
-  });
-
-  it("converts offsets to and from the builder's fields", () => {
-    expect(offsetFromInput("2", "hours")).toBe(120);
-    expect(offsetFromInput("1", "days")).toBe(1440);
-    expect(offsetFromInput("-5", "minutes")).toBe(0);
-    expect(offsetFromInput("99", "days")).toBe(30 * 1440);
-    expect(offsetToInput(1440)).toEqual({ amount: 1, unit: "days" });
-    expect(offsetToInput(90)).toEqual({ amount: 90, unit: "minutes" });
-    expect(describeOffset(60)).toBe("1 hour before");
-    expect(describeOffset(0)).toBe("At the start");
-  });
-
+describe("unsubscribe links (emails sent before)", () => {
   it("signs unsubscribe links", () => {
     const token = unsubscribeToken("optin-1", "secret-secret-secret");
     expect(token).toHaveLength(32);
