@@ -10,7 +10,7 @@ import { AgendaSettings, ChecksList, CloseTab, LandingTab, ModulesTab, Progressi
 import { dayLabel, funnelDesign, loadFunnelForBrand, orgTimezone, statusBadge, type DayRow, type FunnelRow } from "@/features/funnels/data";
 import { Field, LinkBox, Section } from "@/features/funnels/fields";
 import { funnelCheckInput } from "@/features/funnels/site-data";
-import { funnelLinks, funnelsAccess } from "@/features/funnels/guard";
+import { funnelLinks, funnelsAccess, type FunnelLinks } from "@/features/funnels/guard";
 import { SectionTabs } from "@/features/funnels/tabs";
 import { AdvancedTab, DelegatesTab, SmsFormsTab } from "@/features/funnels/more-tabs";
 import { LinksTab, type FunnelLink } from "@/features/funnels/links-tab";
@@ -204,7 +204,7 @@ export default async function FunnelBuilderPage({
       {tab === "pages" ? <PagesTab funnel={funnel} days={days} navItems={navItems} forms={forms} smsForms={smsOptions} openId={query.item} canWrite={canWrite} links={links} /> : null}
       {tab === "offer" ? <OfferTab funnel={funnel} days={days} navItems={navItems} hosts={hosts} forms={forms} smsForms={smsOptions} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
       {tab === "deadline" ? <DeadlineTab funnel={funnel} days={days} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
-      {tab === "links" ? await linksTab(ctx.resolved.id, funnel, days, publicUrl) : null}
+      {tab === "links" ? await linksTab(ctx.resolved.id, funnel, days, links) : null}
       {tab === "sms" ? await smsTab(ctx.resolved.id, funnel, smsForms, canWrite, canPublish, query.form) : null}
       {tab === "advanced" && canPublish ? (
         <div className="space-y-4">
@@ -304,7 +304,9 @@ function StatusSection({ funnel }: { funnel: FunnelRow }) {
   );
 }
 
-async function linksTab(organizationId: string, funnel: FunnelRow, days: DayRow[], publicUrl: string) {
+async function linksTab(organizationId: string, funnel: FunnelRow, days: DayRow[], urls: FunnelLinks) {
+  // On the funnel's custom domain when one is Active; the PubCommand address only without one.
+  const publicUrl = urls.root;
   const settings = await loadFunnelsSettings(organizationId);
   const keyLinks = keyUnlocks(funnel);
   const links: FunnelLink[] = [
@@ -313,10 +315,10 @@ async function linksTab(organizationId: string, funnel: FunnelRow, days: DayRow[
       id: day.id,
       label: day.title ? `${dayLabel(day)}: ${day.title}` : dayLabel(day),
       detail: `Module ${day.position}`,
-      url: publicLink(publicUrl, `/day-${day.position}`),
-      keyUrl: keyLinks ? publicLink(publicUrl, `/day-${day.position}`, { k: day.unlockKey }) : null,
+      url: urls.at(`/day-${day.position}`),
+      keyUrl: keyLinks ? urls.at(`/day-${day.position}`, { k: day.unlockKey }) : null,
     })),
-    ...(funnel.mode === "live" ? [{ id: "calendar", label: "Add every session to your calendar", detail: "Downloads a calendar file with all live sessions.", url: publicLink(publicUrl, "/ics", { series: "1" }) }] : []),
+    ...(funnel.mode === "live" ? [{ id: "calendar", label: "Add every session to your calendar", detail: "Downloads a calendar file with all live sessions.", url: urls.at("/ics", { series: "1" }) }] : []),
   ];
   const defaults: Record<string, string> = { utm_source: "email", utm_medium: "email", utm_campaign: funnel.slug };
   return <LinksTab links={links} trackedParams={settings.trackedParams} defaults={defaults} accent={funnelDesign(funnel).page.accent} keyLinks={keyLinks} />;
