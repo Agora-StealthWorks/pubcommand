@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { Denied, Flash, PageHeader } from "@/components/ui";
 import { chooseSite, createSite } from "@/features/websites/actions";
 import { websitesAccess } from "@/features/websites/guard";
+import { websiteLinks } from "@/features/websites/links";
 
 export default async function WebsitesPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
   const { slug } = await params;
@@ -24,7 +25,9 @@ export default async function WebsitesPage({ params, searchParams }: { params: P
         db.webSignup.count({ where: { siteId: item.id, status: "subscribed" } }),
         db.customDomain.findMany({ where: { targetPath: { in: [`/w/${item.slug}`, `/w/${item.slug}/my`] } }, select: { hostname: true, status: true, targetPath: true } }),
       ]);
-      return { id: item.id, posts, pages, members, signups, domains };
+      // The site's custom domain when one is Active; the PubCommand address only without one.
+      const link = (await websiteLinks(item)).site;
+      return { id: item.id, posts, pages, members, signups, domains, link };
     }),
   );
   return (
@@ -43,10 +46,10 @@ export default async function WebsitesPage({ params, searchParams }: { params: P
                 {current ? <Badge tone="accent">Editing</Badge> : null}
               </div>
               <p className="mt-1 text-sm text-muted">
-                <a className="text-accent" href={`/w/${item.slug}`} target="_blank" rel="noreferrer">
-                  /w/{item.slug}
+                <a className="text-accent [overflow-wrap:anywhere]" href={stat.link} target="_blank" rel="noreferrer">
+                  {stat.link.replace(/^https?:\/\//, "").replace(/\?.*$/, "")}
                 </a>
-                {stat.domains.length ? ` · ${stat.domains.map((domain) => `${domain.hostname}${domain.status === "ACTIVE" ? "" : " (DNS pending)"}`).join(", ")}` : " · no custom domain yet"}
+                {stat.domains.some((domain) => domain.status !== "ACTIVE") ? ` · ${stat.domains.filter((domain) => domain.status !== "ACTIVE").map((domain) => `${domain.hostname} (DNS pending)`).join(", ")}` : stat.domains.length ? "" : " · no custom domain yet"}
               </p>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 {[

@@ -10,7 +10,7 @@ import { AgendaSettings, ChecksList, CloseTab, LandingTab, ModulesTab, Progressi
 import { dayLabel, funnelDesign, loadFunnelForBrand, orgTimezone, statusBadge, type DayRow, type FunnelRow } from "@/features/funnels/data";
 import { Field, LinkBox, Section } from "@/features/funnels/fields";
 import { funnelCheckInput } from "@/features/funnels/site-data";
-import { actionQuery, funnelsAccess, orgPublicUrl, publicLink } from "@/features/funnels/guard";
+import { funnelLinks, funnelsAccess } from "@/features/funnels/guard";
 import { SectionTabs } from "@/features/funnels/tabs";
 import { AdvancedTab, DelegatesTab, SmsFormsTab } from "@/features/funnels/more-tabs";
 import { LinksTab, type FunnelLink } from "@/features/funnels/links-tab";
@@ -97,7 +97,9 @@ export default async function FunnelBuilderPage({
   const available = new Set<string>(tabs.map((item) => item.key));
   const groups = GROUPS.map((group) => ({ ...group, tabs: group.tabs.filter((key) => available.has(key)) })).filter((group) => group.tabs.length > 0);
   const activeGroup = groups.find((group) => group.tabs.includes(tab)) ?? groups[0]!;
-  const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, `/l/${funnel.slug}`);
+  // The funnel's custom domain when one is Active; the PubCommand address only without one.
+  const links = await funnelLinks({ organizationId: ctx.resolved.id, orgSlug: ctx.resolved.slug, requestHost: ctx.request.host, funnel });
+  const publicUrl = links.root;
   const zone = zoneLabel(new Date(), timeZone);
   const local = (date: Date | null) => utcToZonedLocal(date, timeZone);
   const badge = statusBadge(funnel.status);
@@ -127,7 +129,7 @@ export default async function FunnelBuilderPage({
             <a href={publicUrl} target="_blank" rel="noopener" className="text-accent">
               {publicUrl}
             </a>
-            {domains.map((domain) => (
+            {domains.filter((domain) => !publicUrl.startsWith(`https://${domain.hostname}/`)).map((domain) => (
               <span key={domain.hostname}>
                 {" · "}
                 <a href={`https://${domain.hostname}`} target="_blank" rel="noopener" className="text-accent">
@@ -141,14 +143,13 @@ export default async function FunnelBuilderPage({
           <Link href={`/funnels/${funnel.id}/stats`} className={button}>
             Stats
           </Link>
-          <a href={publicLink(publicUrl, "", { preview: "1" })} target="_blank" rel="noopener" className={button}>
+          <a href={links.preview()} target="_blank" rel="noopener" className={button}>
             Preview
           </a>
-          <form action={publicLink(publicUrl).split("?")[0]} method="get" target="_blank" className="flex flex-wrap items-end gap-2" title="Preview as a first-time visitor at the chosen time">
-            {actionQuery(publicUrl).map(([key, value]) => (
+          <form action={links.formAction} method="get" target="_blank" className="flex flex-wrap items-end gap-2" title="Preview as a first-time visitor at the chosen time">
+            {links.previewFields.map(([key, value]) => (
               <input key={key} type="hidden" name={key} value={value} />
             ))}
-            <input type="hidden" name="preview" value="1" />
             <input type="hidden" name="fresh" value="1" />
             <label className="sr-only" htmlFor="as_of_head">
               Preview as of ({zone})
@@ -191,7 +192,7 @@ export default async function FunnelBuilderPage({
       {tab === "setup" ? <SetupTab funnel={funnel} canWrite={canWrite} checks={checks} publicUrl={publicUrl} domains={domains} /> : null}
       {tab === "schedule" ? <ScheduleTab funnel={funnel} canWrite={canWrite} local={local} zone={zone} timeZone={timeZone} /> : null}
       {tab === "progression" ? <ProgressionTab funnel={funnel} canWrite={canWrite} /> : null}
-      {tab === "days" ? <ModulesTab funnel={funnel} days={days} selectedId={query.day} smsForms={smsOptions} canWrite={canWrite} local={local} zone={zone} publicUrl={publicUrl} timeZone={timeZone} /> : null}
+      {tab === "days" ? <ModulesTab funnel={funnel} days={days} selectedId={query.day} smsForms={smsOptions} canWrite={canWrite} local={local} zone={zone} links={links} timeZone={timeZone} /> : null}
       {tab === "waitlist" ? <LandingTab funnel={funnel} canWrite={canWrite} local={local} timeZone={timeZone} forms={forms} smsForms={smsOptions} /> : null}
       {tab === "home" ? (
         <div className="space-y-4">
@@ -200,7 +201,7 @@ export default async function FunnelBuilderPage({
         </div>
       ) : null}
       {tab === "hosts" ? <HostsTab funnel={funnel} hosts={hosts} openId={query.host} canWrite={canWrite} /> : null}
-      {tab === "pages" ? <PagesTab funnel={funnel} days={days} navItems={navItems} forms={forms} smsForms={smsOptions} openId={query.item} canWrite={canWrite} publicUrl={publicUrl} /> : null}
+      {tab === "pages" ? <PagesTab funnel={funnel} days={days} navItems={navItems} forms={forms} smsForms={smsOptions} openId={query.item} canWrite={canWrite} links={links} /> : null}
       {tab === "offer" ? <OfferTab funnel={funnel} days={days} navItems={navItems} hosts={hosts} forms={forms} smsForms={smsOptions} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
       {tab === "deadline" ? <DeadlineTab funnel={funnel} days={days} timeZone={timeZone} zone={zone} canWrite={canWrite} /> : null}
       {tab === "links" ? await linksTab(ctx.resolved.id, funnel, days, publicUrl) : null}
@@ -220,13 +221,12 @@ export default async function FunnelBuilderPage({
           <Section title="Links">
             <div className="grid gap-4 sm:grid-cols-2">
               <LinkBox label="Public link" value={publicUrl} />
-              <LinkBox label="Day 1" value={publicLink(publicUrl, "/day-1")} />
+              <LinkBox label="Day 1" value={links.at("/day-1")} />
             </div>
-            <form action={publicLink(publicUrl).split("?")[0]} method="get" target="_blank" className="flex flex-wrap items-end gap-2">
-              {actionQuery(publicUrl).map(([key, value]) => (
+            <form action={links.formAction} method="get" target="_blank" className="flex flex-wrap items-end gap-2">
+              {links.previewFields.map(([key, value]) => (
                 <input key={key} type="hidden" name={key} value={value} />
               ))}
-              <input type="hidden" name="preview" value="1" />
               <Field label={`Preview as of (${zone})`} htmlFor="as_of" hint="Time travel: see exactly what a visitor would see at that moment. Drafts work too.">
                 <Input id="as_of" name="as_of" type="datetime-local" defaultValue={local(funnel.startAt ?? new Date())} />
               </Field>

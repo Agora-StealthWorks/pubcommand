@@ -1,4 +1,5 @@
 import { tenantDb } from "@pubcommand/db";
+import { websiteLinks } from "./links";
 import { Input, Label, Textarea } from "@pubcommand/ui";
 import { groupByFunnel } from "../../../../../modules/pubsetup/groups";
 import { utcToZonedLocal } from "../../../../../modules/miniblog/time";
@@ -24,6 +25,7 @@ const btn = "inline-flex min-h-11 items-center justify-center rounded-md border 
 
 /** The post/page editor: title, WYSIWYG body, and a WordPress-style sidebar. */
 export async function PostEditor({ organizationId, brandId, site, post, kind, canPublish, canWrite }: { organizationId: string; brandId: string; site: SiteRow; post: PostRow | null; kind: "post" | "page"; canPublish: boolean; canWrite: boolean }) {
+  const links = await websiteLinks(site);
   const now = new Date();
   const [pubs, editors, terms, media, timeZone, postTerms] = await Promise.all([
     sitePublications(organizationId, brandId),
@@ -64,7 +66,7 @@ export async function PostEditor({ organizationId, brandId, site, post, kind, ca
             <span>Address: /w/{site.slug}/</span>
             <input name="slug" defaultValue={post?.slug ?? ""} placeholder="made-from-the-title" aria-label="Address (slug)" className="min-w-0 flex-1 rounded border border-line px-2 py-1 text-xs sm:max-w-[320px]" />
             {post ? (
-              <a href={`/w/${site.slug}/${post.slug}?preview=1`} target="_blank" rel="noreferrer" className="font-semibold text-accent">
+              <a href={links.preview(post.slug)} target="_blank" rel="noreferrer" className="font-semibold text-accent">
                 {status === "published" ? "View ↗" : "Preview ↗"}
               </a>
             ) : null}

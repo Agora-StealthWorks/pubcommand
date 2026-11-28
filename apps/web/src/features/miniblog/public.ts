@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { getOrgContext } from "@/lib/org";
 import { currentRequest } from "@/lib/request";
 import { publicBaseFor } from "../../../../../modules/miniblog/paths";
+import { requestHasPreviewToken } from "@/lib/preview-token";
 import { isVisitorId } from "../../../../../modules/miniblog/stats";
 import { LINK_ID_RE } from "../../../../../modules/miniblog/links";
 import { orgTimezone, type SiteRow } from "./data";
@@ -36,17 +37,30 @@ async function previewer(orgSlug: string): Promise<boolean> {
   }
 }
 
+/** What a Mini-Blog preview token covers. */
+export function previewScope(siteId: string): string {
+  return `miniblog:${siteId}`;
+}
+
 export type LoadedSite = { organizationId: string; site: SiteRow; brandName: string; timeZone: string; preview: boolean; now: Date };
 
-export async function loadPublicSite(orgSlug: string, siteSlug: string, options: { preview?: string } = {}): Promise<LoadedSite | null> {
+/**
+ * The Mini-Blog for a public request. Previews (drafts, an offline Mini-Blog)
+ * need a signed-in member with miniblog.read, or a signed preview link
+ * (`pv`, see lib/preview-token.ts) for this Mini-Blog: that is what makes
+ * Preview links work on a custom domain, where the sign-in cookie is not sent.
+ * `assets`: logo and post images load even while the Mini-Blog is offline (an
+ * <img> request carries no preview token).
+ */
+export async function loadPublicSite(orgSlug: string, siteSlug: string, options: { preview?: string; assets?: boolean } = {}): Promise<LoadedSite | null> {
   if (!/^[a-z0-9-]{1,63}$/.test(orgSlug) || !/^[a-z0-9-]{1,60}$/.test(siteSlug)) return null;
   const org = await resolveOrgBySlug(orgSlug);
   if (!org || org.suspendedAt || !(await moduleEnabled(org.id))) return null;
   const db = tenantDb(org.id);
   const site = await db.textSite.findFirst({ where: { slug: siteSlug, deletedAt: null } });
   if (!site) return null;
-  const preview = options.preview === "1" || site.status !== "live" ? await previewer(orgSlug) : false;
-  if (site.status !== "live" && !preview) return null;
+  const preview = options.preview === "1" || site.status !== "live" ? (await requestHasPreviewToken(org.id, previewScope(site.id))) || (await previewer(orgSlug)) : false;
+  if (site.status !== "live" && !preview && !options.assets) return null;
   const [brand, timeZone] = await Promise.all([db.brand.findFirst({ where: { id: site.brandId }, select: { name: true } }), orgTimezone(org.id)]);
   return { organizationId: org.id, site, brandName: brand?.name ?? site.name, timeZone, preview, now: new Date() };
 }

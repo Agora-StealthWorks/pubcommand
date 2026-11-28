@@ -3,9 +3,11 @@ import Link from "next/link";
 import { effectiveStatus } from "../../../../../modules/websites/content";
 import { chooseSite } from "./actions";
 import type { SiteRow } from "./data";
+import { websiteLinks } from "./links";
 
 /** "Working on: <site>" with a switcher when the brand has more than one site. */
-export function SiteBar({ sites, site, back }: { sites: SiteRow[]; site: SiteRow; back: string }) {
+export async function SiteBar({ sites, site, back }: { sites: SiteRow[]; site: SiteRow; back: string }) {
+  const links = await websiteLinks(site);
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
       <span className="text-muted">Website:</span>
@@ -25,10 +27,10 @@ export function SiteBar({ sites, site, back }: { sites: SiteRow[]; site: SiteRow
         <b>{site.name}</b>
       )}
       <Badge tone={site.status === "live" ? "ok" : "warn"}>{site.status === "live" ? "Live" : "Not live yet"}</Badge>
-      <a href={`/w/${site.slug}`} target="_blank" rel="noreferrer" className="ml-auto font-semibold text-accent">
+      <a href={links.site} target="_blank" rel="noreferrer" className="ml-auto font-semibold text-accent">
         View site ↗
       </a>
-      <a href={`/w/${site.slug}/my`} target="_blank" rel="noreferrer" className="font-semibold text-accent">
+      <a href={links.members} target="_blank" rel="noreferrer" className="font-semibold text-accent">
         Members area ↗
       </a>
     </div>

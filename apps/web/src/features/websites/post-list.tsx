@@ -1,4 +1,5 @@
 import { tenantDb } from "@pubcommand/db";
+import { websiteLinks } from "./links";
 import Link from "next/link";
 import { contentTypeLabel, CONTENT_TYPES, ACCESS_LEVELS } from "../../../../../modules/websites/content";
 import { TableScroll } from "@/components/table-scroll";
@@ -13,6 +14,7 @@ const PAGE_SIZE = 25;
 
 /** WordPress-style list of posts or pages with status tabs and filters. */
 export async function PostList({ organizationId, brandId, site, kind, query, canWrite }: { organizationId: string; brandId: string; site: SiteRow; kind: "post" | "page"; query: ListQuery; canWrite: boolean }) {
+  const links = await websiteLinks(site);
   const now = new Date();
   const base = kind === "page" ? "/websites/pages" : "/websites/posts";
   const trash = query.status === "trash";
@@ -144,7 +146,7 @@ export async function PostList({ organizationId, brandId, site, kind, query, can
                     </Link>
                     <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-accent">
                       <Link href={`/websites/posts/${post.id}`}>Edit</Link>
-                      <a href={`/w/${site.slug}/${post.slug}?preview=1`} target="_blank" rel="noreferrer">
+                      <a href={links.preview(post.slug)} target="_blank" rel="noreferrer">
                         {post.status === "published" ? "View" : "Preview"}
                       </a>
                       {canWrite ? (

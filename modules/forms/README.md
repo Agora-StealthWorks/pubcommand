@@ -16,7 +16,7 @@ Permissions: `forms.read` (see forms and aggregate results), `forms.write` (buil
 
 - Server: `apps/web/src/features/forms/` (`actions.ts`, `data.ts`, `server.ts` for the AI summary, `public.ts` for anonymous submit/autosave).
 - Admin pages: `apps/web/src/app/sites/org/[slug]/forms/` (list, `[formId]` builder, `[formId]/results`, `themes`, export and file routes).
-- Public pages (no sign-in): `apps/web/src/app/sites/public/[slug]/f/[formSlug]` and `/embed/[formSlug]`. `middleware.ts` rewrites `/f/*` and `/embed/*` on an org host there, outside the org layout's login redirect.
+- Public pages (no sign-in): `apps/web/src/app/sites/public/[slug]/f/[formSlug]` and `/embed/[formSlug]`. `middleware.ts` rewrites `/f/*` and `/embed/*` on an org host there, outside the org layout's login redirect. The share link, embed code and public results link the admin shows use the form's Active custom domain (Settings → Domains), the PubCommand address only without one (`publicFormUrl` in `features/forms/guard.ts`, `docs/DOMAINS.md`).
 
 ## Notify, share, mirror, jobs
 

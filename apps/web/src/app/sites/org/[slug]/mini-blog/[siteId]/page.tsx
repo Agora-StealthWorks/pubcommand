@@ -9,7 +9,9 @@ import { TableScroll } from "@/components/table-scroll";
 import { loadMediums, loadSiteForBrand, orgTimezone, siteBranding, statusBadge } from "@/features/miniblog/data";
 import { Check, Field, LinkBox, Section, SectionTabs } from "@/features/miniblog/fields";
 import { LookEditor } from "@/features/miniblog/look-editor";
-import { miniblogAccess, orgPublicUrl } from "@/features/miniblog/guard";
+import { miniblogAccess } from "@/features/miniblog/guard";
+import { publicLinker } from "@/features/domains/public-links";
+import { previewScope } from "@/features/miniblog/public";
 import { sanitizeRich } from "@/features/miniblog/sanitize";
 import { loadPostStats, loadSiteTotals } from "@/features/miniblog/stats";
 import { createPost, deleteSite, restorePost, saveAdCodes, saveSite, setSiteStatus } from "@/features/miniblog/actions";
@@ -101,7 +103,10 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
   ]);
   const stats = tab === "posts" || tab === "stats" ? await loadPostStats(ctx.resolved.id, posts.map((post) => post.id)) : new Map<string, PostStats>();
   const totals = tab === "stats" ? await loadSiteTotals(ctx.resolved.id, site.id) : null;
-  const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug));
+  // The Mini-Blog's custom domain when one is Active (Settings → Domains); the PubCommand address only without one.
+  const links = await publicLinker({ organizationId: ctx.resolved.id, orgSlug: ctx.resolved.slug, requestHost: ctx.request.host });
+  const publicUrl = links.url(miniBlogPath(site.slug));
+  const previewUrl = links.preview(miniBlogPath(site.slug), previewScope(site.id));
   const badge = statusBadge(site.status);
   const checks = checkSite(site);
   const now = new Date();
@@ -109,7 +114,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
   const codes = parseAdCodes(site.adCodes);
   const categoryFilter = query.cat ?? "";
   const shownPosts = posts.filter((post) => (categoryFilter === "" ? true : categoryFilter === "__none" ? !post.category : post.category === categoryFilter));
-  const branding = siteBranding(site, ctx.brand.name, publicUrl);
+  const branding = siteBranding(site, ctx.brand.name, publicUrl.replace(/\/(\?.*)?$/, ""));
   const latest = posts[0];
   const editing = codes.find((code) => code.id === query.edit) ?? null;
 
@@ -129,7 +134,7 @@ export default async function MiniBlogPage({ params, searchParams }: { params: P
             <span>{optinCount} subscribers</span>
           </p>
         </div>
-        <a href={`${publicUrl}?preview=1`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
+        <a href={previewUrl} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
           Preview
         </a>
       </div>

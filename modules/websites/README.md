@@ -67,6 +67,8 @@ Emailed links are no longer a way to log in. They only set or reset a password.
 
 On the org host: `/w/<site>/…` (middleware rewrites to `app/sites/public/[slug]/w/[siteSlug]/…`). On the site's own domain (Settings → Domains, provider "Websites") the root is the site, so URLs are clean (`freemarketsociety.org/my`). `LoadedSite.base` is the link prefix: `/w/<site>` on the org host or a domain pointing elsewhere (e.g. a members subdomain), `""` on a domain whose target is the site root.
 
+Admin links (View site, Members area, post/page View and Preview, homepage Preview, the site list) use the site's Active custom domain, the PubCommand address only without one (`features/websites/links.ts`); previews carry a signed token so drafts open on the domain (`docs/DOMAINS.md`).
+
 | Path | Page |
 | --- | --- |
 | `/` | Home: featured post, latest, sign-up bar, picks, premium research, editors |

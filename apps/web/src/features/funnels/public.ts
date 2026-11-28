@@ -1,4 +1,5 @@
 import { can } from "@pubcommand/core";
+import { PREVIEW_PARAM, currentPreviewToken, requestHasPreviewToken } from "@/lib/preview-token";
 import { organizationHasModule, resolveOrgBySlug, tenantDb } from "@pubcommand/db";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
@@ -82,7 +83,8 @@ export async function loadPublicFunnel(orgSlug: string, funnelSlug: string, opti
   const row = await db.funnel.findFirst({ where: { slug: funnelSlug, deletedAt: null } });
   if (!row) return null;
   const wantsPreview = options.preview === "1" || Boolean(options.as_of) || options.fresh === "1" || options.draft === "1" || row.status !== "published";
-  const preview = wantsPreview ? await previewer(orgSlug, row.id) : false;
+  // A signed preview link (lib/preview-token.ts) works on a custom domain, where the sign-in cookie is not sent.
+  const preview = wantsPreview ? (await requestHasPreviewToken(org.id, `funnel:${row.id}`)) || (await previewer(orgSlug, row.id)) : false;
   if (row.status !== "published" && !preview) return null;
   const draft = preview && options.draft === "1";
   const funnel = draft ? applyDesignDraft(row) : row;
@@ -100,6 +102,9 @@ export async function loadPublicFunnel(orgSlug: string, funnelSlug: string, opti
     if (options.as_of && asOf) params.set("as_of", options.as_of);
     if (options.fresh === "1") params.set("fresh", "1");
     if (draft) params.set("draft", "1");
+    // Keep the signed preview token on every page of the preview (custom domains).
+    const token = await currentPreviewToken();
+    if (token && (await requestHasPreviewToken(org.id, `funnel:${row.id}`))) params.set(PREVIEW_PARAM, token);
   }
   const draftShown = draft && (hasDraft(row.designDraft) || hasDraft(row.homeBlocksDraft));
   return { organizationId: org.id, orgSlug, funnel, days, hosts, navItems, timeZone, smsForms, draftShown, preview, now: asOf ?? new Date(), carry: preview ? `?${params.toString()}` : "" };

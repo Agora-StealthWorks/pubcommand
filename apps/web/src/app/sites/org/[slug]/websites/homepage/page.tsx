@@ -6,6 +6,7 @@ import { saveHomepage } from "@/features/websites/actions";
 import { NoSite, SiteBar } from "@/features/websites/admin-ui";
 import { sitePublications } from "@/features/websites/data";
 import { websitesAccess } from "@/features/websites/guard";
+import { websiteLinks } from "@/features/websites/links";
 
 /** Homepage builder: turn sections on or off, put them in order, and set up the hero banner. */
 export default async function HomepagePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> }) {
@@ -109,7 +110,7 @@ export default async function HomepagePage({ params, searchParams }: { params: P
         </section>
         <div className="flex items-center gap-3">
           <Button>Save homepage</Button>
-          <a href={`/w/${site.slug}`} target="_blank" rel="noreferrer" className="text-sm font-semibold text-accent">
+          <a href={(await websiteLinks(site)).site} target="_blank" rel="noreferrer" className="text-sm font-semibold text-accent">
             Preview ↗
           </a>
         </div>

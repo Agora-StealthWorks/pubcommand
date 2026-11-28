@@ -49,8 +49,8 @@ export default async function FormBuilderPage({
     autoPublish: form.autoPublish,
   };
   const endRules = cleanEndRules(fields, form.endRules);
-  const url = publicFormUrl(ctx.request.host, ctx.resolved.slug, form.slug);
-  const embedUrl = publicFormUrl(ctx.request.host, ctx.resolved.slug, form.slug, "embed");
+  const url = await publicFormUrl(ctx.resolved.id, ctx.request.host, ctx.resolved.slug, form.slug);
+  const embedUrl = await publicFormUrl(ctx.resolved.id, ctx.request.host, ctx.resolved.slug, form.slug, "embed");
   const embedCode = `<iframe src="${embedUrl}" title="${form.title.replace(/"/g, "&quot;")}" style="width:100%;border:0" height="600" id="pc-form-${form.id.slice(0, 8)}"></iframe>
 <script>addEventListener("message",function(e){if(e.data&&e.data.type==="pubcommand-form:height"&&e.data.formId==="${form.id}"){document.getElementById("pc-form-${form.id.slice(0, 8)}").style.height=e.data.height+"px"}});</script>`;
   const tab = query.tab === "settings" || query.tab === "preview" ? query.tab : "build";

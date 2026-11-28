@@ -1,3 +1,4 @@
+import { publicLinker } from "../domains/public-links";
 import { buildSiteUrl, can } from "@pubcommand/core";
 import { tenantDb } from "@pubcommand/db";
 import { redirect } from "next/navigation";
@@ -132,4 +133,42 @@ export function actionQuery(publicUrl: string): [string, string][] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Links to one funnel's public pages for the builder: on its custom domain when
+ * one is Active (Settings → Domains), on the organization's PubCommand address
+ * only when there is none. Previews carry a signed token so they open on a
+ * custom domain too, where the builder's sign-in cookie is not sent.
+ */
+export type FunnelLinks = {
+  /** The funnel's public address. */
+  root: string;
+  /** A page of the funnel (`/day-2`, `/p/about`), with optional query params. */
+  at: (path: string, params?: Record<string, string>) => string;
+  /** A preview link to a page of the funnel (drafts and time travel work). */
+  preview: (path?: string, params?: Record<string, string>) => string;
+  /** Hidden fields a GET preview form needs (time travel): the preview flag and token. */
+  previewFields: [string, string][];
+  /** Where a GET preview form submits (the funnel's address without a query). */
+  formAction: string;
+};
+
+export async function funnelLinks(input: { organizationId: string; orgSlug: string; requestHost: string; funnel: { id: string; slug: string } }): Promise<FunnelLinks> {
+  const links = await publicLinker({ organizationId: input.organizationId, orgSlug: input.orgSlug, requestHost: input.requestHost });
+  const base = `/l/${input.funnel.slug}`;
+  const scope = `funnel:${input.funnel.id}`;
+  const query = (params: Record<string, string>) => {
+    const text = new URLSearchParams(params).toString();
+    return text ? `?${text}` : "";
+  };
+  const previewUrl = links.preview(base, scope);
+  const [formAction = previewUrl, previewQuery = ""] = previewUrl.split(/\?(.*)/s);
+  return {
+    root: links.url(base),
+    at: (path, params = {}) => links.url(`${base}${path}${query(params)}`),
+    preview: (path = "", params = {}) => links.preview(`${base}${path}`, scope, params),
+    previewFields: [...new URLSearchParams(previewQuery).entries()],
+    formAction,
+  };
 }

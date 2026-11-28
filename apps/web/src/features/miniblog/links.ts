@@ -3,6 +3,13 @@ import { LINK_ID_RE, postLinks, redirectTarget, trackedPath } from "../../../../
 import { postState } from "../../../../../modules/miniblog/site";
 import { classifyTraffic, clientIpOf } from "../../../../../modules/funnels/traffic";
 import { loadPublicSite, publicSiteMatches, visitorCookie, visitorOf } from "./public";
+import { PREVIEW_PARAM, currentPreviewToken } from "@/lib/preview-token";
+
+/** "?preview=1" plus the request's preview token, if it came with one. */
+async function currentPreviewQuery(): Promise<string> {
+  const token = await currentPreviewToken();
+  return token ? `?preview=1&${PREVIEW_PARAM}=${encodeURIComponent(token)}` : "?preview=1";
+}
 
 /**
  * Keep one TextLink row per link in the post (body links and the button).
@@ -35,12 +42,13 @@ export async function syncPostLinks(
 
 /** url → tracked href for one or more posts, for rendering. */
 export async function trackedHrefs(organizationId: string, postIds: string[], base: string, preview = false): Promise<Map<string, Map<string, string>>> {
+  const previewQuery = preview ? await currentPreviewQuery() : "";
   const rows = postIds.length ? await tenantDb(organizationId).textLink.findMany({ where: { postId: { in: postIds } }, select: { id: true, postId: true, url: true } }) : [];
   const byPost = new Map<string, Map<string, string>>();
   for (const row of rows) {
     const map = byPost.get(row.postId) ?? new Map<string, string>();
-    // Previews carry ?preview=1 so staff clicks are never counted.
-    map.set(row.url, `${trackedPath(base, row.id)}${preview ? "?preview=1" : ""}`);
+    // Previews carry ?preview=1 (and the preview token, for custom domains) so staff clicks are never counted.
+    map.set(row.url, `${trackedPath(base, row.id)}${preview ? previewQuery : ""}`);
     byPost.set(row.postId, map);
   }
   return byPost;
@@ -103,7 +111,7 @@ export async function handleLinkClick(request: Request, orgSlug: string, siteSlu
 /** GET /b/<site>/asset/<id>: an image uploaded into a post (public by nature). */
 export async function siteAsset(orgSlug: string, siteSlug: string, assetId: string): Promise<Response> {
   if (!LINK_ID_RE.test(assetId) || !(await publicSiteMatches(orgSlug))) return notFound();
-  const loaded = await loadPublicSite(orgSlug, siteSlug, { preview: "1" });
+  const loaded = await loadPublicSite(orgSlug, siteSlug, { preview: "1", assets: true });
   const asset = loaded ? await tenantDb(loaded.organizationId).funnelAsset.findFirst({ where: { id: assetId, ownerId: loaded.site.id, kind: { in: ["post_image", "logo"] } } }) : null;
   if (!asset) return notFound();
   return new Response(Buffer.from(asset.data), {

@@ -46,6 +46,7 @@ them. Unsubscribe links in emails sent earlier still work (`/l/<funnel>/unsubscr
 ## Public URLs (org host, no sign-in)
 
 `/l/<funnel>`, `/l/<funnel>/day-<n>`, `/l/<funnel>/p/<page>`. `middleware.ts` rewrites `/l/*` to `apps/web/src/app/sites/public/[slug]/l/…`. **Custom domains** come from Settings → Domains: a domain whose target is `/l/<funnel>` serves the front door at `/` and modules at `/day-<n>`; `publicBase` returns `""` for that host so every link stays on the domain.
+Links the builder shows (header link, Preview, Preview as of, Day 1 and unlock-key links, module and page previews) use that domain when it is Active, the PubCommand address only without one (`funnelLinks` in `features/funnels/guard.ts`); previews carry a signed token so they open on the domain (`docs/DOMAINS.md`).
 
 Preview: `?preview=1` shows drafts; `&as_of=YYYY-MM-DDTHH:mm` (org time zone) time-travels; `&fresh=1` ignores the viewer cookie (as_of or fresh alone also start a preview for signed-in members). Previews never write cookies or stats, but they DO follow the close redirect and the live redirect, so "preview as of" shows the real behaviour.
 

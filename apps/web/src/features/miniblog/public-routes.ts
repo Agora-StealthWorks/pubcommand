@@ -59,7 +59,7 @@ export async function handleSubscribe(request: Request, orgSlug: string, siteSlu
 /** The uploaded logo. Public by nature; only the logo attached to this site is served. */
 export async function siteLogo(orgSlug: string, siteSlug: string): Promise<Response> {
   if (!(await publicSiteMatches(orgSlug))) return new Response("Not found", { status: 404 });
-  const loaded = await loadPublicSite(orgSlug, siteSlug, { preview: "1" });
+  const loaded = await loadPublicSite(orgSlug, siteSlug, { preview: "1", assets: true });
   const id = loaded?.site.logoAssetId;
   const asset = loaded && id ? await tenantDb(loaded.organizationId).funnelAsset.findFirst({ where: { id, ownerId: loaded.site.id } }) : null;
   if (!asset) return new Response("Not found", { status: 404 });

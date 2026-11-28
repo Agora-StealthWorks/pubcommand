@@ -1,4 +1,5 @@
 import { can } from "@pubcommand/core";
+import { requestHasPreviewToken } from "@/lib/preview-token";
 import { organizationHasModule, resolveOrgBySlug, tenantDb, type Prisma } from "@pubcommand/db";
 import { cache } from "react";
 import { createHash } from "node:crypto";
@@ -66,7 +67,8 @@ export const loadSite = cache(async (orgSlug: string, siteSlug: string): Promise
   const db = tenantDb(org.id);
   const site = await db.webSite.findFirst({ where: { slug: siteSlug, deletedAt: null } });
   if (!site) return null;
-  const staff = await isStaffPreviewer(orgSlug);
+  // Signed-in staff, or a signed preview link for this site (works on a custom domain, where the sign-in cookie is not sent).
+  const staff = (await requestHasPreviewToken(org.id, `website:${site.id}`)) || (await isStaffPreviewer(orgSlug));
   if (site.status !== "live" && !staff) return null;
   const [brand, branding, timeZone, unsorted, editors, request, categories] = await Promise.all([
     db.brand.findFirst({ where: { id: site.brandId }, select: { name: true } }),
