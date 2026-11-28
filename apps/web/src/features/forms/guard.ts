@@ -1,5 +1,5 @@
-import { buildSiteUrl, can } from "@pubcommand/core";
-import { rootDomain } from "@/lib/auth";
+import { can } from "@pubcommand/core";
+import { publicLinker } from "../domains/public-links";
 import { getOrgContext } from "@/lib/org";
 
 export type FormsPermission = "forms.read" | "forms.write" | "forms.export";
@@ -19,6 +19,11 @@ export async function formsAccess(slug: string, permission: FormsPermission = "f
   };
 }
 
-export function publicFormUrl(requestHost: string, orgSlug: string, formSlug: string, kind: "f" | "embed" = "f"): string {
-  return buildSiteUrl({ rootDomain: rootDomain(), requestHost, site: { kind: "org", slug: orgSlug }, pathname: `/${kind}/${formSlug}` });
+/**
+ * A form's public link (`/f/<form>`, its embed, or a page under it like `/results`):
+ * on the form's custom domain when one is Active (Settings → Domains), on the
+ * organization's PubCommand address only when there is none.
+ */
+export async function publicFormUrl(organizationId: string, requestHost: string, orgSlug: string, formSlug: string, kind: "f" | "embed" = "f", rest = ""): Promise<string> {
+  return (await publicLinker({ organizationId, orgSlug, requestHost })).url(`/${kind}/${formSlug}${rest}`);
 }

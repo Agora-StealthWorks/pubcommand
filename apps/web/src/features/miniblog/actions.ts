@@ -14,7 +14,8 @@ import { acceptCategory, categoriesFromText } from "../../../../../modules/minib
 import { DEFAULT_THEME, isThemeId, themeById } from "../../../../../modules/miniblog/themes";
 import { bool, color, int, optional, optionalColor, storeLogo, text, url, zoned } from "./form-input";
 import { syncPostLinks } from "./links";
-import { miniblogAction, miniblogWriteCtx, orgPublicUrl, withMessage, type MiniBlogCtx } from "./guard";
+import { miniblogAction, miniblogWriteCtx, withMessage, type MiniBlogCtx } from "./guard";
+import { publicLinker } from "../domains/public-links";
 import { richFromInput } from "./sanitize";
 
 function audit(ctx: MiniBlogCtx, action: string, targetType: string, targetId: string, metadata?: Prisma.InputJsonValue) {
@@ -167,7 +168,7 @@ export async function createPost(formData: FormData) {
   // On the Calendar from the start (as Drafting, on its publish date).
   let notice = "";
   if (ctx.subject.entitledModuleIds.includes("editorial")) {
-    const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug, post.slug));
+    const publicUrl = (await publicLinker({ organizationId: ctx.resolved.id, orgSlug: ctx.resolved.slug, requestHost: ctx.request.host })).url(miniBlogPath(site.slug, post.slug));
     const synced = await syncPostToCalendar({ organizationId: ctx.resolved.id, postId: post.id, actorId: ctx.actorId, publicUrl }).catch((error) => {
       console.error("[miniblog] calendar sync failed", post.id, error);
       return "skipped" as const;
@@ -236,7 +237,7 @@ export async function savePost(formData: FormData) {
   if (status === "published") notice = publishAt > new Date() ? (publishing ? "Scheduled. It goes live at the publish time." : "Saved. Still scheduled.") : publishing ? "Published." : "Saved.";
   // Drafts are on the Calendar too (Drafting), on the publish date; saving keeps the issue in step.
   if (ctx.subject.entitledModuleIds.includes("editorial")) {
-    const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug, slug));
+    const publicUrl = (await publicLinker({ organizationId: ctx.resolved.id, orgSlug: ctx.resolved.slug, requestHost: ctx.request.host })).url(miniBlogPath(site.slug, slug));
     const synced = await syncPostToCalendar({ organizationId: ctx.resolved.id, postId: post.id, actorId: ctx.actorId, publicUrl }).catch((error) => {
       console.error("[miniblog] calendar sync failed", post.id, error);
       return "skipped" as const;
@@ -274,7 +275,7 @@ export async function restorePost(formData: FormData) {
   await db.textPost.updateMany({ where: { id: post.id }, data: { deletedAt: null, slug } });
   await audit(ctx, "miniblog.post.restored", "text_post", post.id);
   if (ctx.subject.entitledModuleIds.includes("editorial")) {
-    const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug, slug));
+    const publicUrl = (await publicLinker({ organizationId: ctx.resolved.id, orgSlug: ctx.resolved.slug, requestHost: ctx.request.host })).url(miniBlogPath(site.slug, slug));
     await syncPostToCalendar({ organizationId: ctx.resolved.id, postId: post.id, actorId: ctx.actorId, publicUrl }).catch((error) => console.error("[miniblog] calendar sync failed", post.id, error));
   }
   redirect(withMessage(`/mini-blog/${site.id}/posts/${post.id}`, "notice", "Post restored."));

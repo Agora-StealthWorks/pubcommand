@@ -6,7 +6,9 @@ import { notFound } from "next/navigation";
 import { Denied, Flash } from "@/components/ui";
 import { UUID_RE, loadSiteForBrand, orgTimezone, siteBranding, statusBadge } from "@/features/miniblog/data";
 import { LinkBox, Section } from "@/features/miniblog/fields";
-import { miniblogAccess, orgPublicUrl } from "@/features/miniblog/guard";
+import { miniblogAccess } from "@/features/miniblog/guard";
+import { publicLinker } from "@/features/domains/public-links";
+import { previewScope } from "@/features/miniblog/public";
 import { PostEditorForm } from "@/features/miniblog/post-editor";
 import { loadOnePostStats } from "@/features/miniblog/stats";
 import { deletePost, savePost } from "@/features/miniblog/actions";
@@ -32,8 +34,11 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
   const timeZone = await orgTimezone(ctx.resolved.id);
   const state = postState(post, new Date());
   const badge = statusBadge(state);
-  const siteUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug));
-  const publicUrl = orgPublicUrl(ctx.request.host, ctx.resolved.slug, miniBlogPath(site.slug, post.slug));
+  // The Mini-Blog's custom domain when one is Active; the PubCommand address only without one.
+  const links = await publicLinker({ organizationId: ctx.resolved.id, orgSlug: ctx.resolved.slug, requestHost: ctx.request.host });
+  const siteUrl = links.url(miniBlogPath(site.slug)).replace(/\/(\?.*)?$/, "");
+  const publicUrl = links.url(miniBlogPath(site.slug, post.slug));
+  const previewUrl = links.preview(miniBlogPath(site.slug, post.slug), previewScope(site.id));
   const stats = await loadOnePostStats(ctx.resolved.id, post.id);
   const kinds = byKind(stats.links);
   const branding = siteBranding(site, ctx.brand.name, siteUrl);
@@ -165,7 +170,7 @@ export default async function MiniBlogPostEditor({ params, searchParams }: { par
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Section title="Links">
           <LinkBox label={state === "published" ? "Public link" : "Public link (after publishing)"} value={publicUrl} />
-          <a href={`${publicUrl}?preview=1`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
+          <a href={previewUrl} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
             Preview post
           </a>
         </Section>

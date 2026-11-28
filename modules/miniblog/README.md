@@ -34,6 +34,7 @@ The T-Letter engine: a first-party view pixel (`/b/<site>/px?p=<post>`) and the 
 - `/t/<site>/…` (the old text-letter path) serves the same pages, so links already sent out keep working.
 - `middleware.ts` rewrites both to `apps/web/src/app/sites/public/[slug]/{b,t}/…`; the `t/` route files only re-export the `b/` ones.
 - Links inside the pages are built from the browser path (`publicBaseFor` in `paths.ts`), so a custom domain that maps its root to `/b/<site>` (Settings → Domains, group "Mini-Blogs") works unchanged.
+- Links the admin shows (Preview, Public link, post links, the Calendar issue's link) use the Mini-Blog's custom domain when one is Active, the PubCommand address only when there is none; Preview links carry a signed token so drafts open on the domain too (`docs/DOMAINS.md`).
 
 Admin preview: `?preview=1` shows drafts and scheduled posts. Previews never record views or opt-ins.
 

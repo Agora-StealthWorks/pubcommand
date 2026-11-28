@@ -1,6 +1,7 @@
 import { Button, Input, Textarea } from "@pubcommand/ui";
 import { normalizeBlocks } from "../../../../../modules/funnels/blocks";
 import { safeColor } from "../../../../../modules/funnels/checks";
+import type { FunnelLinks } from "./guard";
 import { DEADLINE_PAGES, DEADLINE_PAGE_LABELS, normalizeDeadlinePages } from "../../../../../modules/funnels/deadline";
 import { navSequence } from "../../../../../modules/funnels/nav";
 import { utcToZonedLocal } from "../../../../../modules/funnels/time";
@@ -169,7 +170,7 @@ export function HostsTab({ funnel, hosts, openId, canWrite }: { funnel: FunnelRo
 
 const KIND_LABEL = { page: "Custom page", link: "Link", placeholder: "Coming soon" } as const;
 
-export function PagesTab({ funnel, days, navItems, forms, smsForms = [], openId, canWrite, publicUrl }: { funnel: FunnelRow; days: DayRow[]; navItems: NavItemRow[]; forms: { slug: string; title: string }[]; smsForms?: { id: string; name: string }[]; openId?: string; canWrite: boolean; publicUrl: string }) {
+export function PagesTab({ funnel, days, navItems, forms, smsForms = [], openId, canWrite, links }: { funnel: FunnelRow; days: DayRow[]; navItems: NavItemRow[]; forms: { slug: string; title: string }[]; smsForms?: { id: string; name: string }[]; openId?: string; canWrite: boolean; links: FunnelLinks }) {
   const order = navSequence(days, navItems);
   const places: Option[] = [{ value: "0", label: "Before the first module" }, ...days.map((day, index) => ({ value: String(index + 1), label: `After ${dayLabel(day)}` })), { value: "", label: "At the end" }];
   return (
@@ -346,7 +347,7 @@ export function PagesTab({ funnel, days, navItems, forms, smsForms = [], openId,
                   <div className="flex flex-wrap items-center gap-2">
                     {canWrite ? <Button type="submit">Save</Button> : null}
                     {item.kind === "page" ? (
-                      <a href={`${publicUrl}/p/${item.slug}?preview=1`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
+                      <a href={links.preview(`/p/${item.slug}`)} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center rounded-md border border-line bg-white px-3.5 text-sm font-semibold hover:bg-canvas">
                         Preview page
                       </a>
                     ) : null}

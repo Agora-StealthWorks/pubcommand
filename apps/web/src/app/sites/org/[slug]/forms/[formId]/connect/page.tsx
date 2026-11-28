@@ -61,7 +61,7 @@ export default async function FormConnectPage({
   const emailFields = fields.filter((field) => field.type === "email");
   const mode = asNotifyMode(form.notifyMode);
   const chosen = new Set(form.notifyUserIds);
-  const resultsUrl = `${publicFormUrl(ctx.request.host, ctx.resolved.slug, form.slug)}/results`;
+  const resultsUrl = await publicFormUrl(ctx.resolved.id, ctx.request.host, ctx.resolved.slug, form.slug, "f", "/results");
   const mailReady = emailConfigured();
   const gaveUp = mirror ? await db.formResponse.count({ where: { formId: form.id, mirrorStatus: "failed", mirrorAttempts: { gte: MIRROR_MAX_ATTEMPTS } } }) : 0;
 

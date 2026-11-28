@@ -1,14 +1,14 @@
-import { agentPublishOutcome, buildSiteUrl } from "@pubcommand/core";
+import { agentPublishOutcome } from "@pubcommand/core";
 import { appendOrgAudit, tenantDb } from "@pubcommand/db";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { rootDomain } from "@/lib/auth";
 import { sanitizeRichText } from "@/components/rich-text-editor/sanitize";
 import { miniBlogPath } from "../../../../../modules/miniblog/paths";
 import { RESERVED_POST_SLUGS, normalizeSlug as miniSlug } from "../../../../../modules/miniblog/site";
 import { excerptFrom, isAccessLevel, isContentType, normalizeSlug, safePostSlug, statusForSave, teaserHtml } from "../../../../../modules/websites/content";
 import { teachPost } from "../miniblog/brain";
 import { syncPostToCalendar } from "../miniblog/calendar";
+import { publicLinker } from "../domains/public-links";
 import { syncPostLinks } from "../miniblog/links";
 import { richFromInput } from "../miniblog/sanitize";
 import { notifyExternalSite } from "../websites/api";
@@ -188,14 +188,15 @@ async function uniqueTextSlug(organizationId: string, siteId: string, wanted: st
   return slug;
 }
 
-function textPostUrl(host: string, orgSlug: string, siteSlug: string, postSlug: string) {
-  return buildSiteUrl({ rootDomain: rootDomain(), requestHost: host, site: { kind: "org", slug: orgSlug }, pathname: miniBlogPath(siteSlug, postSlug) });
+/** The post's public link: its custom domain when one is Active, else the organization's PubCommand address. */
+async function textPostUrl(organizationId: string, host: string, orgSlug: string, siteSlug: string, postSlug: string) {
+  return (await publicLinker({ organizationId, orgSlug, requestHost: host })).url(miniBlogPath(siteSlug, postSlug));
 }
 
 /** After a Mini-Blog post goes live: tracked links were synced on save; Calendar issue and Brain, as in the editor. */
 async function afterTextPublish(input: { organizationId: string; orgSlug: string; host: string; postId: string; actorId: string; siteSlug: string; slug: string; editorialEntitled: boolean }) {
   if (input.editorialEntitled) {
-    await syncPostToCalendar({ organizationId: input.organizationId, postId: input.postId, actorId: input.actorId, publicUrl: textPostUrl(input.host, input.orgSlug, input.siteSlug, input.slug) }).catch((error) =>
+    await syncPostToCalendar({ organizationId: input.organizationId, postId: input.postId, actorId: input.actorId, publicUrl: await textPostUrl(input.organizationId, input.host, input.orgSlug, input.siteSlug, input.slug) }).catch((error) =>
       console.error("[agents] calendar sync failed", input.postId, error),
     );
   }

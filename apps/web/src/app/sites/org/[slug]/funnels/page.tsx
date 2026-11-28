@@ -7,6 +7,7 @@ import { createFunnel, duplicateFunnel } from "@/features/funnels/actions";
 import { PROGRESSIONS, PROGRESSION_LABELS, type Progression } from "../../../../../../../../modules/funnels/state";
 import { listFunnels, orgTimezone, statusBadge } from "@/features/funnels/data";
 import { delegatedFunnelIds, funnelsAccess } from "@/features/funnels/guard";
+import { publicLinker } from "@/features/domains/public-links";
 import { visibleFunnelIds } from "../../../../../../../../modules/funnels/delegates";
 import { formatZoned } from "../../../../../../../../modules/funnels/time";
 
@@ -17,7 +18,13 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
   if (access.kind === "missing") notFound();
   if (access.kind === "denied") return <Denied title={access.title} />;
   const { ctx, canWrite, delegateOnly } = access;
-  const [all, timeZone, delegated] = await Promise.all([listFunnels(ctx.resolved.id, ctx.brand.id), orgTimezone(ctx.resolved.id), delegateOnly ? delegatedFunnelIds(ctx.resolved.id, ctx.effectiveUserId) : Promise.resolve([])]);
+  const [all, timeZone, delegated, links] = await Promise.all([
+    listFunnels(ctx.resolved.id, ctx.brand.id),
+    orgTimezone(ctx.resolved.id),
+    delegateOnly ? delegatedFunnelIds(ctx.resolved.id, ctx.effectiveUserId) : Promise.resolve([]),
+    // Preview links use each funnel's custom domain when one is Active.
+    publicLinker({ organizationId: ctx.resolved.id, orgSlug: ctx.resolved.slug, requestHost: ctx.request.host }),
+  ]);
   // A delegate without funnels.read sees only the funnels they were given.
   const visible = new Set(visibleFunnelIds({ read: !delegateOnly, write: canWrite, publish: false }, all.map((funnel) => funnel.id), delegated));
   const funnels = all.filter((funnel) => visible.has(funnel.id));
@@ -102,7 +109,7 @@ export default async function FunnelsPage({ params, searchParams }: { params: Pr
                     <td className="px-4 py-3 text-right tabular-nums">{funnel.optinCount}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
-                        <a href={`/l/${funnel.slug}?preview=1`} target="_blank" rel="noopener" className={small}>
+                        <a href={links.preview(`/l/${funnel.slug}`, `funnel:${funnel.id}`)} target="_blank" rel="noopener" className={small}>
                           Preview
                         </a>
                         <Link href={`/funnels/${funnel.id}/stats`} className={small}>

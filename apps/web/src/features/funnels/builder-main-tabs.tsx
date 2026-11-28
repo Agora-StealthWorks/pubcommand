@@ -11,7 +11,7 @@ import { addDay, deleteDay, moveDay, saveDay, saveFunnel, setAgendaOnAllDays } f
 import { dayLabel, dayThumb, dayVideo, hasBody, isTextModule, type DayRow, type FunnelRow } from "./data";
 import { Check, Field, LinkBox, Section } from "./fields";
 import { RichTextArea } from "./rich-text-area";
-import { publicLink } from "./guard";
+import type { FunnelLinks } from "./guard";
 
 type Local = (date: Date | null) => string;
 
@@ -147,7 +147,12 @@ export function SetupTab({ funnel, canWrite, checks, publicUrl, domains }: { fun
           <Link href="/settings/domains" className="font-semibold text-accent">
             Settings → Domains
           </Link>{" "}
-          and point it at <code className="rounded bg-canvas px-1">/l/{funnel.slug}</code>. Until DNS works, use <a href={publicUrl} className="break-all text-accent">{publicUrl}</a>.
+          and point it at <code className="rounded bg-canvas px-1">/l/{funnel.slug}</code>.
+          {domains.some((domain) => domain.status === "ACTIVE") ? (
+            <> Links and previews use <a href={publicUrl} className="break-all text-accent">{publicUrl}</a>.</>
+          ) : (
+            <> Until DNS works, use <a href={publicUrl} className="break-all text-accent">{publicUrl}</a>.</>
+          )}
         </p>
       </Section>
     </div>
@@ -544,7 +549,7 @@ export function CloseTab({ funnel, canWrite }: { funnel: FunnelRow; canWrite: bo
 }
 
 /** Modules: the list on the left, the selected module's editor on the right, then the calendar-buttons embed. */
-export function ModulesTab({ funnel, days, selectedId, smsForms, canWrite, local, zone, publicUrl, timeZone }: { funnel: FunnelRow; days: DayRow[]; selectedId?: string; smsForms: { id: string; name: string }[]; canWrite: boolean; local: Local; zone: string; publicUrl: string; timeZone: string }) {
+export function ModulesTab({ funnel, days, selectedId, smsForms, canWrite, local, zone, links, timeZone }: { funnel: FunnelRow; days: DayRow[]; selectedId?: string; smsForms: { id: string; name: string }[]; canWrite: boolean; local: Local; zone: string; links: FunnelLinks; timeZone: string }) {
   const selected = days.find((day) => day.id === selectedId) ?? days[0];
   const live = funnel.mode === "live";
   return (
@@ -583,7 +588,7 @@ export function ModulesTab({ funnel, days, selectedId, smsForms, canWrite, local
             </form>
           ) : null}
         </div>
-        {selected ? <ModuleEditor funnel={funnel} day={selected} days={days} smsForms={smsForms} canWrite={canWrite} local={local} zone={zone} publicUrl={publicUrl} timeZone={timeZone} /> : <Section title="No modules yet">Add the first module.</Section>}
+        {selected ? <ModuleEditor funnel={funnel} day={selected} days={days} smsForms={smsForms} canWrite={canWrite} local={local} zone={zone} links={links} timeZone={timeZone} /> : <Section title="No modules yet">Add the first module.</Section>}
       </div>
       <form action={saveFunnel}>
         <Hidden funnel={funnel} section="livendar" />
@@ -617,7 +622,7 @@ function EmbedBox({ name, value }: { name: string; value: string }) {
   );
 }
 
-function ModuleEditor({ funnel, day, days, smsForms, canWrite, local, zone, publicUrl, timeZone }: { funnel: FunnelRow; day: DayRow; days: DayRow[]; smsForms: { id: string; name: string }[]; canWrite: boolean; local: Local; zone: string; publicUrl: string; timeZone: string }) {
+function ModuleEditor({ funnel, day, days, smsForms, canWrite, local, zone, links, timeZone }: { funnel: FunnelRow; day: DayRow; days: DayRow[]; smsForms: { id: string; name: string }[]; canWrite: boolean; local: Local; zone: string; links: FunnelLinks; timeZone: string }) {
   const index = days.findIndex((item) => item.id === day.id);
   const live = funnel.mode === "live";
   const liveDay = live && day.isLive;
@@ -628,10 +633,10 @@ function ModuleEditor({ funnel, day, days, smsForms, canWrite, local, zone, publ
   const unlockBy = day.unlockAt ? "time" : "offset";
   const offsetDate = !perViewer ? scheduledUnlock({ unlockAt: null, unlockOffsetHours: day.unlockOffsetHours }, funnel.startAt) : null;
   const keyOpens = keyUnlocks(funnel);
-  const keyLink = publicLink(publicUrl, `/day-${day.position}`, { k: day.unlockKey });
+  const keyLink = links.at(`/day-${day.position}`, { k: day.unlockKey });
   const thumb = dayThumb(day, `/l/${funnel.slug}`, true);
   const resources = linkItems(day.resources);
-  const preview = publicLink(publicUrl, `/day-${day.position}`, { preview: "1" });
+  const preview = links.preview(`/day-${day.position}`);
   return (
     <div className="min-w-0 space-y-4">
       <form action={saveDay} encType="multipart/form-data" className="space-y-4" id={`day-${day.id}`}>

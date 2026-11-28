@@ -1,4 +1,4 @@
-import { buildSiteUrl } from "@pubcommand/core";
+import { publicLinker } from "../domains/public-links";
 import { Prisma, platformTx, rawPrisma } from "@pubcommand/db";
 import { rootDomain } from "@/lib/auth";
 import { CONSOLE_ORG_SLUG } from "@/lib/console-workspace";
@@ -400,7 +400,7 @@ export const PLATFORM_AUDIT_TOOLS: Tool[] = [
       return {
         data: {
           form: { id: form.id, title: form.title, slug: form.slug, status: form.status, opens_at: iso(form.opensAt), closes_at: iso(form.closesAt), response_limit: form.responseLimit, layout: form.layout, redirect_url: form.redirectUrl },
-          public_url: buildSiteUrl({ rootDomain: rootDomain(), requestHost: `app.${rootDomain()}`, site: { kind: "org", slug: org.slug }, pathname: `/f/${form.slug}` }),
+          public_url: (await publicLinker({ organizationId: org.id, orgSlug: org.slug, requestHost: `app.${rootDomain()}` })).url(`/f/${form.slug}`),
           theme: form.theme ? { name: form.theme.name, follows_brand: form.theme.followBrand, privacy_policy_url: form.theme.privacyPolicyUrl, header_color: form.theme.barColor, button_color: form.theme.accentColor } : null,
           fields: fields.map((f) => field(f as unknown as Record<string, unknown>)),
           responses: { total: responses, last_30_days: recent, last: iso(last?.createdAt) },
@@ -449,7 +449,7 @@ export const PLATFORM_AUDIT_TOOLS: Tool[] = [
       return {
         data: {
           funnel: { id: funnel.id, name: funnel.name, slug: funnel.slug, status: funnel.status, mode: funnel.mode, timing: funnel.timing, start_at: iso(funnel.startAt), end_at: iso(funnel.endAt), progression: funnel.progression, optin_mode: funnel.optinMode, site_type: funnel.siteType },
-          public_url: buildSiteUrl({ rootDomain: rootDomain(), requestHost: `app.${rootDomain()}`, site: { kind: "org", slug: org.slug }, pathname: `/l/${funnel.slug}` }),
+          public_url: (await publicLinker({ organizationId: org.id, orgSlug: org.slug, requestHost: `app.${rootDomain()}` })).url(`/l/${funnel.slug}`),
           days: days.map((d) => ({ day: d.position, title: d.title, video: d.videoId ? `${d.videoProvider ?? "video"}:${d.videoId}` : null, unlock_at: iso(d.unlockAt), unlock_after_hours: d.unlockOffsetHours, live: d.isLive, live_start: iso(d.liveStartAt) })),
           opt_ins: optins,
           events_last_7_days: events,
