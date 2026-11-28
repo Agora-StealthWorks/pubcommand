@@ -162,19 +162,21 @@ function TargetField({ id, label, value, onChange, props }: { id: string; label:
   );
 }
 
-function ImageField({ block, set, funnelId, publicPath }: { block: Extract<Block, { type: "image" }>; set: (patch: Record<string, unknown>) => void; funnelId: string; publicPath: string }) {
+/** Upload an image (or paste an https link) for any image slot: image blocks, logos, package images, testimonial photos. */
+function UploadField({ id, label = "Image", assetId, src, onChange, funnelId, publicPath, hint }: { id: string; label?: string; assetId: string; src: string; onChange: (value: { assetId: string; src: string }) => void; funnelId: string; publicPath: string; hint?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const preview = block.assetId ? `${publicPath}/asset/${block.assetId}` : block.src;
+  // The offer builder previews on a module page (/l/<funnel>/day-1); images live at /l/<funnel>/asset/<id>.
+  const preview = assetId ? `${publicPath.replace(/\/day-\d+$/, "")}/asset/${assetId}` : src;
   return (
     <div className="grid min-w-0 gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
       <div className="flex h-24 w-full items-center justify-center overflow-hidden rounded-md border border-line bg-canvas sm:w-[120px]">{preview ? <img src={preview} alt="" className="max-h-full max-w-full object-contain" /> : <span className="text-xs text-muted">No image</span>}</div>
       <div className="min-w-0 space-y-2">
-        <label className="text-sm font-medium" htmlFor={`${block.id}-file`}>
-          Upload
+        <label className="text-sm font-medium" htmlFor={`${id}-file`}>
+          {label}: upload
         </label>
         <input
-          id={`${block.id}-file`}
+          id={`${id}-file`}
           type="file"
           accept="image/png,image/jpeg,image/webp,image/gif"
           disabled={busy}
@@ -191,16 +193,28 @@ function ImageField({ block, set, funnelId, publicPath }: { block: Extract<Block
             body.set("file", file);
             const result = await uploadFunnelImage(body);
             setBusy(false);
-            if (result.ok) set({ assetId: result.id, src: "" });
+            if (result.ok) onChange({ assetId: result.id, src: "" });
             else setError(result.error);
           }}
         />
+        {busy ? <p className="text-xs text-muted">Uploading…</p> : null}
         {error ? <p className="text-xs text-[#912018]">{error}</p> : null}
-        <TextInput id={`${block.id}-src`} label="…or image link (https)" value={block.src} onChange={(src) => set({ src, assetId: "" })} placeholder="https://" />
+        <TextInput id={`${id}-src`} label="…or image link (https)" hint={hint} value={src} onChange={(next) => onChange({ src: next, assetId: "" })} placeholder="https://" />
+        {preview ? (
+          <button type="button" className="text-xs font-semibold text-muted underline" onClick={() => onChange({ assetId: "", src: "" })}>
+            Remove image
+          </button>
+        ) : null}
       </div>
     </div>
   );
 }
+
+const TONE_OPTIONS = [
+  { value: "accent", label: "Accent colour" },
+  { value: "accent2", label: "Second accent" },
+  { value: "highlight", label: "Highlight colour" },
+];
 
 function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<string, unknown>) => void; props: HomeBuilderProps }) {
   const id = (name: string) => `${block.id}-${name}`;
@@ -213,7 +227,8 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
           <TextInput id={id("eyebrow")} label="Eyebrow" hint="Small line above the headline." value={block.eyebrow} onChange={(eyebrow) => set({ eyebrow })} />
           <span className="hidden sm:block" />
           <TextInput id={id("heading")} label="Headline" value={block.heading} onChange={(heading) => set({ heading })} />
-          <TextInput id={id("accent")} label="Accent part" hint="Shown after the headline in the accent colour." value={block.accent} onChange={(accent) => set({ accent })} />
+          <TextInput id={id("accent")} label="Accent part" hint="Shown after the headline in a design colour." value={block.accent} onChange={(accent) => set({ accent })} />
+          <SelectInput id={id("tone")} label="Accent part colour" value={block.accentTone} options={TONE_OPTIONS} onChange={(accentTone) => set({ accentTone })} hint="Set the colours on the Design tab." />
           <Labelled label="Subhead" htmlFor={id("sub")} className="sm:col-span-2">
             <textarea id={id("sub")} rows={2} className="block w-full rounded-md border border-line px-3 py-2 text-sm" value={block.sub} onChange={(event) => set({ sub: event.target.value })} />
           </Labelled>
@@ -321,13 +336,14 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
         <div className="space-y-3">
           <TextInput id={id("label")} label="Button text" value={block.label} onChange={(label) => set({ label })} />
           <TargetField id={id("target")} label="Goes to" value={block.target} onChange={(target) => set({ target })} props={props} />
-          <Toggle label="Open web addresses in a new tab" checked={block.newTab} onChange={(newTab) => set({ newTab })} />
+          <SelectInput id={id("tone")} label="Button colour" value={block.tone} options={TONE_OPTIONS} onChange={(tone) => set({ tone })} />
+          <Toggle label="Open in a new tab" checked={block.newTab} onChange={(newTab) => set({ newTab })} />
         </div>
       );
     case "image":
       return (
         <div className="space-y-3">
-          <ImageField block={block} set={set} funnelId={props.funnelId} publicPath={props.publicPath} />
+          <UploadField id={id("img")} assetId={block.assetId} src={block.src} onChange={set} funnelId={props.funnelId} publicPath={props.publicPath} />
           <div className="grid gap-3 sm:grid-cols-2">
             <TextInput id={id("alt")} label="Description (alt text)" value={block.alt} onChange={(alt) => set({ alt })} />
             <TextInput id={id("width")} label="Width (%)" type="number" value={String(block.widthPercent)} onChange={(value) => set({ widthPercent: Number(value) || 100 })} />
@@ -357,7 +373,7 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
             label="Packages"
             max={MAX_TIERS}
             items={block.tiers}
-            blank={{ name: "", price: "", was: "", badge: "", features: "", bonuses: "", buttonText: "Buy now", url: "", highlight: false }}
+            blank={{ name: "", price: "", was: "", badge: "", features: "", bonuses: "", buttonText: "Buy now", url: "", highlight: false, newTab: false, tone: "accent" as const, imageAssetId: "", imageSrc: "" }}
             onChange={(tiers) => set({ tiers })}
             render={(tier, put, at) => (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -365,15 +381,21 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
                 <TextInput id={id(`t${at}-badge`)} label="Badge" hint="e.g. Most popular. Empty = none." value={tier.badge} onChange={(badge) => put({ badge })} />
                 <TextInput id={id(`t${at}-price`)} label="Price" placeholder="$197" value={tier.price} onChange={(price) => put({ price })} />
                 <TextInput id={id(`t${at}-was`)} label="Was (crossed out)" placeholder="$314" value={tier.was} onChange={(was) => put({ was })} />
-                <Labelled label="What's included" htmlFor={id(`t${at}-features`)} hint="One per line." className="sm:col-span-2">
+                <div className="sm:col-span-2">
+                  <UploadField id={id(`t${at}-img`)} label="Package image" assetId={tier.imageAssetId} src={tier.imageSrc} onChange={(value) => put({ imageAssetId: value.assetId, imageSrc: value.src })} funnelId={props.funnelId} publicPath={props.publicPath} hint="Optional: a product shot above the package name." />
+                </div>
+                <Labelled label="What's included" htmlFor={id(`t${at}-features`)} hint="One per line. Start a line with ~ to show it crossed off (not in this package)." className="sm:col-span-2">
                   <textarea id={id(`t${at}-features`)} rows={4} className="block w-full rounded-md border border-line px-3 py-2 text-sm" value={tier.features} onChange={(event) => put({ features: event.target.value })} />
                 </Labelled>
-                <Labelled label="Bonuses" htmlFor={id(`t${at}-bonuses`)} hint="One per line: Bonus name | $99 (value optional)." className="sm:col-span-2">
+                <Labelled label="Bonuses" htmlFor={id(`t${at}-bonuses`)} hint="One per line: Bonus name | $99 (value optional). Start with ~ to show a bonus this package leaves out, crossed off." className="sm:col-span-2">
                   <textarea id={id(`t${at}-bonuses`)} rows={4} className="block w-full rounded-md border border-line px-3 py-2 text-sm" value={tier.bonuses} onChange={(event) => put({ bonuses: event.target.value })} />
                 </Labelled>
                 <TextInput id={id(`t${at}-button`)} label="Button text" value={tier.buttonText} onChange={(buttonText) => put({ buttonText })} />
                 <TextInput id={id(`t${at}-url`)} label="Order link" type="url" placeholder="https://" value={tier.url} onChange={(url) => put({ url })} />
+                <SelectInput id={id(`t${at}-tone`)} label="Button and border colour" value={tier.tone} options={TONE_OPTIONS} onChange={(tone) => put({ tone: tone as typeof tier.tone })} />
+                <span className="hidden sm:block" />
                 <Toggle label="Highlight this package" checked={tier.highlight} onChange={(highlight) => put({ highlight })} />
+                <Toggle label="Open the order link in a new tab" checked={tier.newTab} onChange={(newTab) => put({ newTab })} />
               </div>
             )}
           />
@@ -390,7 +412,7 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
             label="Testimonials"
             max={MAX_ITEMS}
             items={block.items}
-            blank={{ quote: "", name: "", role: "", rating: 5 }}
+            blank={{ quote: "", name: "", role: "", rating: 5, photoAssetId: "", photoSrc: "" }}
             onChange={(items) => set({ items })}
             render={(item, put, at) => (
               <div className="grid gap-3 sm:grid-cols-3">
@@ -400,6 +422,9 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
                 <TextInput id={id(`n${at}`)} label="Name" value={item.name} onChange={(name) => put({ name })} />
                 <TextInput id={id(`r${at}`)} label="Title / location" value={item.role} onChange={(role) => put({ role })} />
                 <SelectInput id={id(`s${at}`)} label="Stars" value={String(item.rating)} options={[0, 1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n ? "★".repeat(n) : "None" }))} onChange={(value) => put({ rating: Number(value) })} />
+                <div className="sm:col-span-3">
+                  <UploadField id={id(`p${at}`)} label="Photo" assetId={item.photoAssetId} src={item.photoSrc} onChange={(value) => put({ photoAssetId: value.assetId, photoSrc: value.src })} funnelId={props.funnelId} publicPath={props.publicPath} hint="Optional: shown as a small round photo." />
+                </div>
               </div>
             )}
           />
@@ -416,8 +441,8 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
             blank={{ assetId: "", src: "", alt: "" }}
             onChange={(items) => set({ items })}
             render={(item, put, at) => (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <TextInput id={id(`l${at}`)} label="Logo image address" type="url" placeholder="https://" hint="An https link to the logo image." value={item.src} onChange={(src) => put({ src, assetId: "" })} />
+              <div className="space-y-3">
+                <UploadField id={id(`l${at}`)} label="Logo" assetId={item.assetId} src={item.src} onChange={(value) => put(value)} funnelId={props.funnelId} publicPath={props.publicPath} />
                 <TextInput id={id(`a${at}`)} label="Name (alt text)" value={item.alt} onChange={(alt) => put({ alt })} />
               </div>
             )}
@@ -453,7 +478,22 @@ function BlockFields({ block, set, props }: { block: Block; set: (patch: Record<
           <div className="sm:col-span-2">
             <TargetField id={id("target")} label="Buttons go to" value={block.target} onChange={(target) => set({ target })} props={props} />
           </div>
-          <p className="text-xs text-muted sm:col-span-2">Shows every module as a card (thumbnail, label, title).</p>
+          <div className="sm:col-span-2">
+            <Toggle label="Show each module's short description" checked={block.showSummary} onChange={(showSummary) => set({ showSummary })} hint="Write it in Modules → the module → Short description." />
+          </div>
+          <p className="text-xs text-muted sm:col-span-2">Shows every module as a card (thumbnail, label, title, description).</p>
+        </div>
+      );
+    case "rating":
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextInput id={id("heading")} label="Heading" hint="Optional." value={block.heading} onChange={(heading) => set({ heading })} />
+          <span className="hidden sm:block" />
+          <TextInput id={id("score")} label="Score" placeholder="4.9" value={block.score} onChange={(score) => set({ score })} />
+          <SelectInput id={id("outOf")} label="Out of" value={String(block.outOf)} options={[5, 10].map((n) => ({ value: String(n), label: `${n} stars` }))} onChange={(value) => set({ outOf: Number(value) })} />
+          <TextInput id={id("count")} label="Review count" placeholder="2,341 reviews" value={block.count} onChange={(count) => set({ count })} />
+          <TextInput id={id("note")} label="Source" placeholder="on Trustpilot" value={block.note} onChange={(note) => set({ note })} />
+          <p className="text-xs text-muted sm:col-span-2">Stars fill to the score (4.9 shows 4.9 of 5 stars). Only use real, verifiable ratings.</p>
         </div>
       );
   }

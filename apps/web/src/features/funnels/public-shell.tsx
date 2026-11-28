@@ -11,6 +11,7 @@ import type { LoadedFunnel } from "./public";
 import { viewerFacts } from "./public";
 import type { ViewerCookie } from "../../../../../modules/funnels/viewer";
 import { DeadlineBarClient } from "./site-client";
+import { episodeStatus } from "./episode-list";
 import { Countdown } from "./public-client";
 import { navItemThumb, pageHref, type FunnelTheme } from "./site-data";
 import { RICH } from "./public-view";
@@ -232,15 +233,17 @@ function LockBadge() {
   );
 }
 
-function Tile({ href, newTab, current, locked, faded, thumb, label, placeholder, badge, track }: { href: string | null; newTab?: boolean; current?: boolean; locked?: boolean; faded?: boolean; thumb: string | null; label: string; placeholder?: ReactNode; badge?: ReactNode; track?: { kind: string; target: string } }) {
+function Tile({ href, newTab, current, locked, faded, thumb, label, placeholder, badge, track, title, status, blur }: { href: string | null; newTab?: boolean; current?: boolean; locked?: boolean; faded?: boolean; thumb: string | null; label: string; placeholder?: ReactNode; badge?: ReactNode; track?: { kind: string; target: string }; title?: string; status?: { text: string; now: boolean }; blur?: boolean }) {
   const body = (
     <>
-      <span className="pcf-thumb">
+      <span className={`pcf-thumb${blur ? " is-blur" : ""}`}>
         {thumb ? <img src={thumb} alt="" loading="lazy" /> : placeholder ?? <span className="pcf-ph" />}
         {locked ? <LockBadge /> : null}
         {badge}
       </span>
       <span className="pcf-tile-label">{label}</span>
+      {title ? <span className="pcf-tile-title">{title}</span> : null}
+      {status ? <span className={`pcf-tile-status${status.now ? " is-now" : ""}`}>{status.text}</span> : null}
     </>
   );
   const common = { className: "pcf-tile", "data-locked": locked ? "1" : undefined, style: faded ? { opacity: 0.45 } : undefined, "aria-current": current ? ("page" as const) : undefined, title: label };
@@ -272,6 +275,7 @@ export function NavStrip({
   carry,
   currentDayId,
   currentPageSlug,
+  now = new Date(),
 }: {
   funnel: FunnelRow;
   days: DayRow[];
@@ -281,11 +285,14 @@ export function NavStrip({
   carry: string;
   currentDayId?: string;
   currentPageSlug?: string;
+  now?: Date;
 }) {
   const entries = navStrip(days, navItems);
   if (!entries.length) return null;
+  // "strip_status": the same horizontal strip, with each episode's title and status under it.
+  const withStatus = funnel.navLayout === "strip_status";
   return (
-    <nav aria-label="Modules" className="pcf-nav">
+    <nav aria-label="Modules" className={`pcf-nav${withStatus ? " has-status" : ""}`}>
       <ol className="pcf-wrap pcf-nav-row">
         {entries.map((entry) => {
           if (entry.kind === "day") {
@@ -304,6 +311,7 @@ export function NavStrip({
                 label={dayLabel(day)}
                 placeholder={<span className="pcf-ph">{isTextModule(day, funnel.mode) ? "📝" : day.position}</span>}
                 badge={state.kind === "live" ? <span className="pcf-live-badge">LIVE</span> : null}
+                {...(withStatus ? { title: day.title, status: episodeStatus(state, now, day.id === currentDayId), blur: !open && funnel.navBlurLocked } : {})}
               />
             );
           }

@@ -67,11 +67,27 @@ export type Design = {
     imageUrl: string | null;
     text: string;
     accent: string;
+    /** Second accent (e.g. gold): buttons, badges and accent text that pick it. null = the accent. */
+    accent2: string | null;
+    /** Highlight colour (e.g. red): urgency text, "was" prices, crossed-off lines. null = the accent. */
+    highlight: string | null;
     /** Text on accent buttons; null = automatic contrast. */
     buttonText: string | null;
     buttonRadius: number;
     buttonStyle: OneOf<typeof BUTTON_STYLES>;
     font: FontKey;
+    /** Headings (titles, block headings, prices). null = the body font. */
+    headingFont: FontKey | null;
+    /** Max width of the page column (video, text, blocks), px. */
+    contentWidth: number;
+    /** Max width of the video + episode list layout, px. */
+    splitWidth: number;
+    /** Width of the episode list beside the video, px. */
+    listWidth: number;
+    /** Corner rounding of the video frame, px. */
+    videoRadius: number;
+    /** Padding around the video inside its frame, px (0 = edge to edge, no frame). */
+    videoPadding: number;
   };
   content: {
     bg: string;
@@ -126,7 +142,7 @@ export const DEFAULT_DESIGN: Design = {
     logoLink: "home",
     logoLinkUrl: null,
   },
-  page: { bg: "#f5f6f8", imageAssetId: null, imageUrl: null, text: "#1f2937", accent: "#1d4ed8", buttonText: null, buttonRadius: 8, buttonStyle: "fill", font: "system" },
+  page: { bg: "#f5f6f8", imageAssetId: null, imageUrl: null, text: "#1f2937", accent: "#1d4ed8", accent2: null, highlight: null, buttonText: null, buttonRadius: 8, buttonStyle: "fill", font: "system", headingFont: null, contentWidth: 960, splitWidth: 1440, listWidth: 440, videoRadius: 0, videoPadding: 20 },
   content: { bg: "#ffffff", text: null, link: null, border: "#e5e7eb", borderWidth: 1, radius: 12, padding: 20 },
   nav: { bg: null, text: null, thumbWidth: 160, thumbStyle: "rounded", activeStyle: "ring", lockedStyle: "lock_dim", fade: "locked" },
   footer: { bg: "#ffffff", text: "#4b5563", showLogo: false, logoAssetId: null, logoUrl: null, logoHeight: null, links: [] },
@@ -252,6 +268,14 @@ export function normalizeDesign(raw: unknown, legacy: LegacyDesign = {}): Design
       buttonRadius: num(page.buttonRadius, d.page.buttonRadius, 0, 40),
       buttonStyle: pick(page.buttonStyle, BUTTON_STYLES, d.page.buttonStyle),
       font: pick(page.font, FONT_KEYS, d.page.font) as FontKey,
+      accent2: hexOrNull(page.accent2, null),
+      highlight: hexOrNull(page.highlight, null),
+      headingFont: typeof page.headingFont === "string" && (FONT_KEYS as string[]).includes(page.headingFont) ? (page.headingFont as FontKey) : null,
+      contentWidth: num(page.contentWidth, d.page.contentWidth, 600, 1600),
+      splitWidth: num(page.splitWidth, d.page.splitWidth, 900, 1920),
+      listWidth: num(page.listWidth, d.page.listWidth, 240, 640),
+      videoRadius: num(page.videoRadius, d.page.videoRadius, 0, 40),
+      videoPadding: num(page.videoPadding, d.page.videoPadding, 0, 48),
     },
     content: {
       bg: hex(content.bg, d.content.bg),
@@ -297,10 +321,10 @@ export function cssUrl(value: string | null | undefined): string | null {
   return /^https:\/\//i.test(text) && isHttpUrl(text) ? text : null;
 }
 
-/** The Google Fonts stylesheet for the design's font, or null for a system font. */
+/** The Google Fonts stylesheet for the design's fonts (body and headings), or null for system fonts only. */
 export function fontHref(design: Pick<Design, "page">): string | null {
-  const family = FONTS[design.page.font]?.google;
-  return family ? `https://fonts.googleapis.com/css2?family=${family}&display=swap` : null;
+  const families = [...new Set([design.page.font, design.page.headingFont].filter((key): key is FontKey => Boolean(key)).map((key): string | null => FONTS[key]?.google ?? null).filter((family): family is string => Boolean(family)))];
+  return families.length ? `https://fonts.googleapis.com/css2?${families.map((family) => `family=${family}`).join("&")}&display=swap` : null;
 }
 
 const FIT_CSS: Record<Design["header"]["imageFit"], string> = { fill: "background-size:cover;background-repeat:no-repeat", fit: "background-size:contain;background-repeat:no-repeat", tile: "background-size:auto;background-repeat:repeat" };
@@ -325,6 +349,9 @@ export function designCss(input: Design | unknown, images: DesignImages = {}): s
   const d = normalizeDesign(input);
   const h = d.header;
   const accentText = d.page.buttonText ?? contrastText(d.page.accent);
+  const accent2 = d.page.accent2 ?? d.page.accent;
+  const highlight = d.page.highlight ?? d.page.accent;
+  const headingStack = FONTS[d.page.headingFont ?? d.page.font].stack;
   const headerText = contrastText(h.bg);
   const headerFill = h.bg2 ? `linear-gradient(${h.gradientDir},${h.bg},${h.bg2})` : h.bg;
   const headerImage = cssUrl(images.header);
@@ -337,7 +364,7 @@ export function designCss(input: Design | unknown, images: DesignImages = {}): s
   const overlay = h.bg2 ? `linear-gradient(${h.gradientDir},${rgba(h.bg, dim)},${rgba(h.bg2, dim)})` : `linear-gradient(${rgba(h.bg, dim)},${rgba(h.bg, dim)})`;
 
   const rules: string[] = [
-    `.pcf{--pcf-page-bg:${d.page.bg};--pcf-text:${d.page.text};--pcf-accent:${d.page.accent};--pcf-accent-text:${accentText};--pcf-radius:${d.page.buttonRadius}px;--pcf-header-bg:${h.bg};--pcf-header-text:${headerText};--pcf-content-bg:${d.content.bg};--pcf-content-text:${contentText};--pcf-content-link:${contentLink};--pcf-content-border:${d.content.border};--pcf-nav-text:${navText};--pcf-thumb-w:${d.nav.thumbWidth}px;--pcf-footer-bg:${d.footer.bg};--pcf-footer-text:${d.footer.text};background-color:${d.page.bg};color:${d.page.text};font-family:${FONTS[d.page.font].stack}}`,
+    `.pcf{--pcf-page-bg:${d.page.bg};--pcf-text:${d.page.text};--pcf-accent:${d.page.accent};--pcf-accent-text:${accentText};--pcf-radius:${d.page.buttonRadius}px;--pcf-header-bg:${h.bg};--pcf-header-text:${headerText};--pcf-content-bg:${d.content.bg};--pcf-content-text:${contentText};--pcf-content-link:${contentLink};--pcf-content-border:${d.content.border};--pcf-nav-text:${navText};--pcf-thumb-w:${d.nav.thumbWidth}px;--pcf-footer-bg:${d.footer.bg};--pcf-footer-text:${d.footer.text};--pcf-accent2:${accent2};--pcf-accent2-text:${contrastText(accent2)};--pcf-highlight:${highlight};--pcf-highlight-text:${contrastText(highlight)};--pcf-heading-font:${headingStack};--pcf-content-w:${d.page.contentWidth}px;--pcf-split-w:${d.page.splitWidth}px;--pcf-list-w:${d.page.listWidth}px;--pcf-video-r:${d.page.videoRadius}px;--pcf-video-pad:${d.page.videoPadding}px;background-color:${d.page.bg};color:${d.page.text};font-family:${FONTS[d.page.font].stack}}`,
     pageImage ? `.pcf{background-image:url("${pageImage}");background-size:cover;background-position:center top;background-attachment:scroll}` : "",
     headerImage
       ? `.pcf-header{background-color:${h.bg};background-image:${overlay},url("${headerImage}");${FIT_CSS[h.imageFit]};background-position:${h.imagePos};color:${headerText}}`
@@ -347,9 +374,16 @@ export function designCss(input: Design | unknown, images: DesignImages = {}): s
     `@media (max-width:640px){.pcf-header-inner{padding:${Math.min(h.paddingY, 24)}px 16px}.pcf-logo{max-height:${mobileLogo}}}`,
     `.pcf-btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;max-width:100%;padding:12px 24px;border-radius:var(--pcf-radius);font-weight:700;text-align:center;border:2px solid var(--pcf-accent);${d.page.buttonStyle === "outline" ? "background:transparent;color:var(--pcf-accent)" : "background:var(--pcf-accent);color:var(--pcf-accent-text)"}}`,
     `.pcf-btn:hover{opacity:.9}`,
+    `.pcf-btn.is-accent2{border-color:var(--pcf-accent2);${d.page.buttonStyle === "outline" ? "background:transparent;color:var(--pcf-accent2)" : "background:var(--pcf-accent2);color:var(--pcf-accent2-text)"}}`,
+    `.pcf-btn.is-highlight{border-color:var(--pcf-highlight);${d.page.buttonStyle === "outline" ? "background:transparent;color:var(--pcf-highlight)" : "background:var(--pcf-highlight);color:var(--pcf-highlight-text)"}}`,
+    `.pcf-accent2{color:var(--pcf-accent2)}.pcf-highlight{color:var(--pcf-highlight)}`,
+    `.pcf h1,.pcf h2,.pcf h3,.pcf .pcf-title,.pcf .pcf-heading{font-family:var(--pcf-heading-font)}`,
+    d.page.videoPadding === 0 ? `.pcf-frame{background:transparent;border:0}` : "",
     `.pcf-btn-quiet{display:inline-flex;align-items:center;min-height:44px;padding:8px 18px;border-radius:var(--pcf-radius);border:2px solid var(--pcf-accent);color:var(--pcf-accent);font-weight:700}`,
     `.pcf-content{background:${d.content.bg};color:${contentText};border:${d.content.borderWidth}px solid ${d.content.border};border-radius:${d.content.radius}px;padding:${d.content.padding}px}`,
     `.pcf-content a{color:${contentLink}}`,
+    `.pcf-content a.pcf-btn{color:${d.page.buttonStyle === "outline" ? "var(--pcf-accent)" : "var(--pcf-accent-text)"}}`,
+    `.pcf-content a.pcf-btn.is-accent2{color:${d.page.buttonStyle === "outline" ? "var(--pcf-accent2)" : "var(--pcf-accent2-text)"}}.pcf-content a.pcf-btn.is-highlight{color:${d.page.buttonStyle === "outline" ? "var(--pcf-highlight)" : "var(--pcf-highlight-text)"}}`,
     `.pcf-accent{color:var(--pcf-accent)}`,
     `.pcf-nav{${d.nav.bg ? `background:${d.nav.bg};` : ""}color:${navText}}`,
     `.pcf-tile{width:var(--pcf-thumb-w)}@media (max-width:600px){.pcf-tile{width:min(var(--pcf-thumb-w),120px)}}`,

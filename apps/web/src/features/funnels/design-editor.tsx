@@ -328,13 +328,26 @@ export function DesignEditor({
               <Color id="p-text" title="Text" value={d.page.text} onChange={(text) => set("page", { text: text ?? "#1f2937" })} />
               <Color id="p-accent" title="Accent" value={d.page.accent} onChange={(accent) => set("page", { accent: accent ?? "#1d4ed8" })} />
               <Color id="p-btext" title="Button text" value={d.page.buttonText} optional onChange={(buttonText) => set("page", { buttonText })} />
+              <Color id="p-accent2" title="Second accent" value={d.page.accent2} optional unsetLabel="Same as accent" onChange={(accent2) => set("page", { accent2 })} />
+              <Color id="p-highlight" title="Highlight" value={d.page.highlight} optional unsetLabel="Same as accent" onChange={(highlight) => set("page", { highlight })} />
             </div>
-            <p className="text-xs text-muted">The accent colours buttons, the active module and accent words in headlines.</p>
+            <p className="text-xs text-muted">The accent colours buttons, the active module and accent words in headlines. Blocks can use the second accent (e.g. gold for a premium package) or the highlight (e.g. red for urgency, “was” prices and crossed-off lines) instead.</p>
             <ImagePick id="p-img" title="Background image (optional)" funnelId={funnelId} publicPath={publicPath} kind="page_bg" assetId={d.page.imageAssetId} url={d.page.imageUrl} onAsset={(imageAssetId) => set("page", { imageAssetId })} onUrl={(imageUrl) => set("page", { imageUrl, imageAssetId: null })} />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Num id="p-radius" title="Button corner radius (px)" value={d.page.buttonRadius} min={0} max={40} onChange={(buttonRadius) => set("page", { buttonRadius })} />
               <Select id="p-bstyle" title="Button style" value={d.page.buttonStyle} values={options(BUTTON_STYLES)} onChange={(value) => set("page", { buttonStyle: value as Design["page"]["buttonStyle"] })} />
-              <Select id="p-font" title="Font" value={d.page.font} values={FONT_KEYS.map((key) => ({ value: key, label: FONTS[key].label }))} onChange={(value) => set("page", { font: value as Design["page"]["font"] })} hint="Web fonts load only when chosen." />
+              <Select id="p-font" title="Body font" value={d.page.font} values={FONT_KEYS.map((key) => ({ value: key, label: FONTS[key].label }))} onChange={(value) => set("page", { font: value as Design["page"]["font"] })} hint="Web fonts load only when chosen." />
+              <Select id="p-hfont" title="Heading font" value={d.page.headingFont ?? ""} values={[{ value: "", label: "Same as body" }, ...FONT_KEYS.map((key) => ({ value: key, label: FONTS[key].label }))]} onChange={(value) => set("page", { headingFont: (value || null) as Design["page"]["headingFont"] })} hint="Titles, block headings and prices." />
+            </div>
+          </Card>
+
+          <Card title="Layout" description="How wide the page column and the video + episode list are, and how the video frame looks.">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Num id="l-content" title="Page column width (px)" value={d.page.contentWidth} min={600} max={1600} onChange={(contentWidth) => set("page", { contentWidth })} hint="Video, text and the strip. Default 960." />
+              <Num id="l-split" title="Video + episode list width (px)" value={d.page.splitWidth} min={900} max={1920} onChange={(splitWidth) => set("page", { splitWidth })} hint="Episode list beside the video. Default 1440." />
+              <Num id="l-list" title="Episode list width (px)" value={d.page.listWidth} min={240} max={640} onChange={(listWidth) => set("page", { listWidth })} hint="Default 440." />
+              <Num id="l-vr" title="Video corner radius (px)" value={d.page.videoRadius} min={0} max={40} onChange={(videoRadius) => set("page", { videoRadius })} />
+              <Num id="l-vp" title="Frame around the video (px)" value={d.page.videoPadding} min={0} max={48} onChange={(videoPadding) => set("page", { videoPadding })} hint="0 = no frame, video edge to edge." />
             </div>
           </Card>
 

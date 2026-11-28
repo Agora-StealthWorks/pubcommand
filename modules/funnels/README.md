@@ -20,10 +20,22 @@ The tabs themselves: Setup (publish checklist, name, link, custom domain) · Mod
 A docuseries (the preset sets all of this up) is an evergreen, per-viewer funnel where each episode opens on its day and **expires** after its access window:
 
 - **Access window**: Progression & messages → “Each module stays open for (hours)” (`Funnel.accessHours`, per-module override `FunnelDay.accessHours`). A module that has opened locks again as `expired` that many hours later (“Access expired” + the `lockedExpiredMsg`, with a Get full access button to `#offer`). Open time = the start (first module, or all-open funnels) or the module's scheduled unlock; watch % and link-key modules have no fixed open time and never expire; live modules never expire. The front door goes to the open episode, between episodes to the next one's countdown, and once every episode has expired the funnel is closed for that viewer. Tests: `docuseries.test.ts`.
-- **Countdowns & bars tab**: countdown style **boxes or flip clock** (every countdown), what happens at zero (reload into the page / stay), countdown tile colours; the **locked video box** (minimal = headline + countdown, box/text colours; e.g. black with “Episode 2 starts in…”, title token `{day}`); **episode navigation**: thumbnail strip, or an **episode list beside the video** (stacks under it on phones) with a status line per episode (Access expired / Expires in 22 hrs 51 mins / Available in 2 days) and optional blurred locked thumbnails.
+- **Countdowns & bars tab**: countdown style **boxes or flip clock** (every countdown), what happens at zero (reload into the page / stay), countdown tile colours; the **locked video box** (minimal = headline + countdown, box/text colours; e.g. black with “Episode 2 starts in…”, title token `{day}`); **episode navigation** (`Funnel.navLayout`): thumbnail strip (`strip`), the **strip with titles and status** (`strip_status`: each tile shows the episode title and its status line, scrolls sideways on phones), or an **episode list beside the video** (`sidebar`, stacks under it on phones). Status lines: Access expired / Expires in 22 hrs 51 mins / Available in 2 days. Locked thumbnails can be blurred (strip with status and list).
 - **Deadline bar** additions: position **In the header** (logo · message + flip clock · button in one sticky bar; phones show the message, clock and button, without the logo) and target **When the episode on screen expires**. Buttons may point to `#offer`.
-- **Offer section tab**: the home page block builder, saved as `Funnel.offerBlocks` and shown under every module (anchor `#offer`; turn it off per module with “Show the offer section under this module”). New block types (also on home pages): **Pricing** (1–3 packages: price, crossed-out price, badge, features, bonus value stack `Name | $value`, order link, highlight), **Testimonials** (quote, name, stars), **Logo strip**, **FAQ** (opens on click), **Episode grid** (every module as a card with an Unlock button). The Countdown block can count to the episode's expiry; Meet your hosts shows six, then **Load more**.
+- **Offer section tab**: the home page block builder, saved as `Funnel.offerBlocks` and shown under every module (anchor `#offer`; turn it off per module with “Show the offer section under this module”). New block types (also on home pages): **Pricing** (1–3 packages: optional package image, price, crossed-out price, badge, features, bonus value stack `Name | $value`, order link that can open in a new tab, highlight, and a colour: accent, second accent or highlight; a features or bonus line starting with `~` shows crossed off with a ✕, for what a package leaves out), **Testimonials** (quote, name, stars, optional photo), **Logo strip** (upload each logo or give an https link), **FAQ** (opens on click), **Episode grid** (every module as a card with its **short description**, `FunnelDay.summary`, set in Modules → Short description, and an Unlock button), **Star rating** (an overall score such as “4.9 out of 5” with partly filled stars, review count and source; only for real ratings). Headline accent parts and Button blocks can use any of the three design colours; buttons can open in a new tab. The Countdown block can count to the episode's expiry; Meet your hosts shows six, then **Load more**.
 - **Locked teasers**: a module resource with the style “Locked teaser” shows a lock (e.g. Download transcript / audio / video) and links to `#offer` or a URL. Clicks on offer buttons, teasers and the episode grid count as the click kind `offer` (and as offer clicks in the parameter breakdown).
+
+## Design: fonts, colours, layout
+
+On the Design tab (`design.ts`, stored in `Funnel.design`; agents set the same fields with `save_funnel_editor`):
+
+- **Fonts**: a body font and a separate **heading font** (titles, block headings, prices; “Same as body” by default). Both Google Fonts load in one stylesheet.
+- **Colours**: accent, plus a **second accent** (e.g. gold for a premium package) and a **highlight** (e.g. red: “was” prices, crossed-off lines, urgency). Unset, both follow the accent. Blocks pick one through their colour setting.
+- **Layout**: page column width (600–1600 px, default 960), video + episode list width (default 1440), episode list width (default 440), video corner radius (0–40 px) and the frame around the video (0 = no frame, edge to edge).
+
+## Images
+
+Every image slot in the block builders has **Upload** (PNG, JPG, WebP or GIF up to 3 MB; SVG is refused because it can carry script) or an https link: image blocks, logo strip logos, package images and testimonial photos (plus the Design tab's logo and backgrounds). Uploads are stored as funnel assets (`funnel_assets`, audited `funnels.asset.uploaded`) and served from `/l/<funnel>/asset/<id>`. Agents upload with `add_funnel_image`, from an https address or the file itself (base64).
 
 ## Links (no funnel emails)
 
@@ -85,7 +97,7 @@ Agents use the builder's ordinary tabs through the page tools (`open_page`, `sub
 Design, Home page and Offer section editors save structured data from the browser, so agents
 edit those with `get_funnel_editor` (the current JSON, the choices and every block type),
 `save_funnel_editor` (part `design`, `home` or `offer`) and `add_funnel_image` (an image from a
-public https address). These go through `/agent-api/funnels/<id>`, which only accepts a valid
+public https address, or the file itself as base64 with a filename). These go through `/agent-api/funnels/<id>`, which only accepts a valid
 agent pass and calls the editors' own save actions, so permissions, validation, sanitizing and the
 audit log are the same as for a person. See `docs/AI-AGENTS.md`.
 

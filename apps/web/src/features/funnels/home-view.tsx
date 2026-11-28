@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { blockBandStyle, lines, parseBonus, WIDTH_PX, type Block } from "../../../../../modules/funnels/blocks";
+import { blockBandStyle, lines, offerLine, parseBonus, WIDTH_PX, type Block, type Tone } from "../../../../../modules/funnels/blocks";
 import { eventBoxEvent } from "../../../../../modules/funnels/calendar";
 import { agendaSequence } from "../../../../../modules/funnels/nav";
 import { effectiveEnd, effectiveStart, isOpen, type DayState } from "../../../../../modules/funnels/state";
@@ -98,6 +98,10 @@ function Eyebrow({ text }: { text: string }) {
   return text ? <p className="pcf-accent mb-2 text-xs font-bold uppercase tracking-[0.18em] [overflow-wrap:anywhere]">{text}</p> : null;
 }
 
+function toneText(tone: Tone): string {
+  return tone === "accent" ? "pcf-accent" : `pcf-${tone}`;
+}
+
 function Heading({ text }: { text: string }) {
   return text ? <h2 className="mb-4 text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">{text}</h2> : null;
 }
@@ -179,7 +183,7 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
           <Eyebrow text={block.eyebrow} />
           <h1 className="text-3xl font-extrabold tracking-tight [overflow-wrap:anywhere] sm:text-5xl">
             {block.heading}
-            {block.accent ? <span className="pcf-accent"> {block.accent}</span> : null}
+            {block.accent ? <span className={toneText(block.accentTone)}> {block.accent}</span> : null}
           </h1>
           {block.sub ? <p className="mt-4 whitespace-pre-line text-lg opacity-90 [overflow-wrap:anywhere]">{block.sub}</p> : null}
         </>
@@ -285,7 +289,7 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
       const link = resolveHref(ctx, block.target);
       if (!link || !block.label) return null;
       return (
-        <a href={link.href} className="pcf-btn text-lg" {...(link.external && block.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+        <a href={link.href} className={`pcf-btn text-lg${block.tone !== "accent" ? ` is-${block.tone}` : ""}`} {...(block.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
           {block.label}
         </a>
       );
@@ -316,8 +320,10 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
           <div className="pcf-tiers" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 280px), 1fr))` }}>
             {tiers.map((tier, index) => {
               const link = tier.url ? resolveHref(ctx, tier.url) : null;
+              const image = tier.imageAssetId ? assetSrc(funnel, tier.imageAssetId) : tier.imageSrc;
               return (
-                <article key={index} className={`pcf-tier${tier.highlight ? " is-on" : ""}`}>
+                <article key={index} className={`pcf-tier${tier.highlight ? " is-on" : ""}${tier.tone !== "accent" ? ` is-${tier.tone}` : ""}`}>
+                  {image ? <img src={image} alt="" className="pcf-tier-img" loading="lazy" /> : null}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-2xl font-extrabold [overflow-wrap:anywhere]">{tier.name}</h3>
                     {tier.badge ? <span className="pcf-tier-badge">{tier.badge}</span> : null}
@@ -325,35 +331,46 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
                   {tier.price ? (
                     <p className="flex flex-wrap items-baseline gap-2">
                       <span className="text-4xl font-extrabold">{tier.price}</span>
-                      {tier.was ? <s className="opacity-70">{tier.was}</s> : null}
+                      {tier.was ? <s className="pcf-highlight opacity-80">{tier.was}</s> : null}
                     </p>
                   ) : null}
                   {lines(tier.features).length ? (
                     <ul className="list-disc space-y-1 pl-5 text-left">
-                      {lines(tier.features).map((item, at) => (
-                        <li key={at} className="[overflow-wrap:anywhere]">
-                          {item}
-                        </li>
-                      ))}
+                      {lines(tier.features).map((raw, at) => {
+                        const item = offerLine(raw);
+                        return item.off ? (
+                          <li key={at} className="list-none [overflow-wrap:anywhere]" style={{ marginLeft: "-1.25rem" }}>
+                            <span className="pcf-off-mark" aria-hidden="true">✕</span>
+                            <span className="pcf-off">{item.text}</span>
+                            <span className="sr-only"> (not included)</span>
+                          </li>
+                        ) : (
+                          <li key={at} className="[overflow-wrap:anywhere]">
+                            {item.text}
+                          </li>
+                        );
+                      })}
                     </ul>
                   ) : null}
                   {lines(tier.bonuses).length ? (
                     <ul className="space-y-2 text-left">
-                      {lines(tier.bonuses).map((item, at) => {
-                        const bonus = parseBonus(item);
+                      {lines(tier.bonuses).map((raw, at) => {
+                        const item = offerLine(raw);
+                        const bonus = parseBonus(item.text);
                         return (
-                          <li key={at} className="pcf-bonus">
+                          <li key={at} className="pcf-bonus" {...(item.off ? { "aria-label": `Not included: ${bonus.name}` } : {})}>
                             <span className="[overflow-wrap:anywhere]">
-                              <b className="pcf-accent">BONUS:</b> {bonus.name}
+                              {item.off ? <span className="pcf-off-mark" aria-hidden="true">✕</span> : null}
+                              <b className={item.off ? "pcf-off" : tier.tone === "accent" ? "pcf-accent" : `pcf-${tier.tone}`}>BONUS:</b> <span className={item.off ? "pcf-off" : undefined}>{bonus.name}</span>
                             </span>
-                            {bonus.value ? <span className="shrink-0 opacity-80">Value: {bonus.value}</span> : null}
+                            {bonus.value ? <span className={`shrink-0 opacity-80${item.off ? " pcf-off" : ""}`}>Value: {bonus.value}</span> : null}
                           </li>
                         );
                       })}
                     </ul>
                   ) : null}
                   {link && tier.buttonText ? (
-                    <a href={link.href} className="pcf-btn mt-auto w-full text-lg" data-track="offer" data-track-target={tier.name || tier.buttonText} {...(link.external ? { rel: "noopener" } : {})}>
+                    <a href={link.href} className={`pcf-btn mt-auto w-full text-lg${tier.tone !== "accent" ? ` is-${tier.tone}` : ""}`} data-track="offer" data-track-target={tier.name || tier.buttonText} {...(tier.newTab ? { target: "_blank", rel: "noopener noreferrer" } : link.external ? { rel: "noopener" } : {})}>
                       {tier.buttonText}
                     </a>
                   ) : null}
@@ -374,6 +391,7 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
           <div className="grid gap-4 text-left sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item, index) => (
               <figure key={index} className="pcf-content m-0 flex flex-col gap-2">
+                {item.photoAssetId || item.photoSrc ? <img src={item.photoAssetId ? assetSrc(funnel, item.photoAssetId) : item.photoSrc} alt={item.name} className="pcf-avatar" loading="lazy" /> : null}
                 {item.rating ? (
                   <span className="pcf-stars" role="img" aria-label={`${item.rating} out of 5 stars`}>
                     {"★".repeat(item.rating)}
@@ -422,6 +440,30 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
         </>
       );
     }
+    case "rating": {
+      const score = Number(block.score);
+      if (!block.score || !Number.isFinite(score)) return null;
+      const stars = Math.min(block.outOf, 10);
+      const fill = Math.max(0, Math.min(100, (score / block.outOf) * 100));
+      return (
+        <div className="pcf-rating">
+          <Heading text={block.heading} />
+          <div className="pcf-rating-row">
+            <span className="pcf-rating-stars" role="img" aria-label={`Rated ${block.score} out of ${block.outOf}`}>
+              {"★".repeat(stars)}
+              <span aria-hidden="true" style={{ width: `${fill}%` }}>
+                {"★".repeat(stars)}
+              </span>
+            </span>
+            <span className="pcf-rating-score pcf-heading">
+              {block.score}
+              <span className="text-base font-semibold opacity-70"> out of {block.outOf}</span>
+            </span>
+          </div>
+          {block.count || block.note ? <p className="m-0 text-sm opacity-80 [overflow-wrap:anywhere]">{[block.count, block.note].filter(Boolean).join(" ")}</p> : null}
+        </div>
+      );
+    }
     case "episodes": {
       if (!ctx.days.length) return null;
       const link = block.target ? resolveHref(ctx, block.target) : null;
@@ -438,7 +480,8 @@ function renderBlock(ctx: HomeContext, block: Block): ReactNode {
                     {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
                   </span>
                   <span className="text-xs font-bold uppercase tracking-wider opacity-70">{dayLabel(day)}</span>
-                  <span className="flex-1 font-semibold [overflow-wrap:anywhere]">{day.title || dayLabel(day)}</span>
+                  <span className={`font-semibold [overflow-wrap:anywhere]${block.showSummary && day.summary ? "" : " flex-1"}`}>{day.title || dayLabel(day)}</span>
+                  {block.showSummary && day.summary ? <span className="flex-1 text-sm opacity-80 [overflow-wrap:anywhere]">{day.summary}</span> : null}
                   {link && block.buttonText ? (
                     <a href={link.href} className="pcf-btn w-full" data-track="offer" data-track-target={dayLabel(day)}>
                       {block.buttonText}

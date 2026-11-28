@@ -77,7 +77,7 @@ model Funnel {
   lockedBoxBg            String?         @map("locked_box_bg")
   lockedBoxText          String?         @map("locked_box_text")
   lockedBoxMinimal       Boolean         @default(false) @map("locked_box_minimal")
-  /// Module navigation: strip (thumbnail tiles above the video) | sidebar (episode list beside the video).
+  /// Module navigation: strip (thumbnail tiles above the video) | strip_status (the strip with titles and status lines) | sidebar (episode list beside the video).
   navLayout              String          @default("strip") @map("nav_layout")
   /// Blur the thumbnails of locked / expired modules in the navigation.
   navBlurLocked          Boolean         @default(false) @map("nav_blur_locked")
@@ -241,6 +241,8 @@ model FunnelDay {
   /// 1-based order.
   position          Int
   title             String    @default("")
+  /// A short description of the module (episode grid cards).
+  summary           String    @default("")
   navLabel          String?   @map("nav_label")
   /// Agenda bullets.
   topics            String[]  @default([])

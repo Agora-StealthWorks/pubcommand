@@ -664,6 +664,9 @@ function ModuleEditor({ funnel, day, days, smsForms, canWrite, local, zone, link
                 <Input id="navLabel" name="navLabel" defaultValue={day.navLabel ?? ""} maxLength={60} />
               </Field>
             </div>
+            <Field label="Short description" htmlFor="summary" hint="One or two sentences. Shown on the Episode grid cards (offer section).">
+              <Textarea id="summary" name="summary" defaultValue={day.summary} maxLength={400} className="min-h-16" />
+            </Field>
             <Field label="Topics" htmlFor="topics" hint="One per line. Shown in the agenda (a single line is the description in the cards layout).">
               <Textarea id="topics" name="topics" defaultValue={day.topics.join("\n")} className="min-h-20" />
             </Field>

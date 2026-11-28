@@ -42,7 +42,7 @@ export default async function FunnelDayPage({ params, searchParams }: { params: 
   // Previews follow the close redirect too, so "preview as of" after the end shows the real behaviour.
   if (closed && funnel.closeMode === "redirect" && funnel.closeRedirectUrl) redirect(funnel.closeRedirectUrl);
   const previewBar = preview ? <PreviewBar asOf={now} label={previewLabel(loaded, query.fresh)} timeZone={timeZone} /> : null;
-  const nav = <NavStrip funnel={funnel} days={safeDays} states={states} navItems={loaded.navItems} base={base} carry={carry} currentDayId={day.id} />;
+  const nav = <NavStrip funnel={funnel} days={safeDays} states={states} navItems={loaded.navItems} base={base} carry={carry} currentDayId={day.id} now={now} />;
   const sms = smsFormFor(loaded, day.smsFormId);
   // Docuseries: the open module's access window drives the header clock and "episode" countdowns.
   const dayState = states[loaded.days.findIndex((item) => item.id === day.id)];

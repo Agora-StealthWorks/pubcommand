@@ -249,7 +249,7 @@ export async function saveFunnel(formData: FormData) {
       lockedBoxBg: blankOrColor("lockedBoxBg") || null,
       lockedBoxText: blankOrColor("lockedBoxText") || null,
       lockedBoxMinimal: bool(formData, "lockedBoxMinimal"),
-      navLayout: pickOne(formData, "navLayout", ["strip", "sidebar"] as const, "strip"),
+      navLayout: pickOne(formData, "navLayout", ["strip", "strip_status", "sidebar"] as const, "strip"),
       navBlurLocked: bool(formData, "navBlurLocked"),
     };
   } else if (section === "advanced") {
@@ -328,6 +328,7 @@ export async function saveDay(formData: FormData) {
     data: {
       kind,
       title: text(formData, "title", 300),
+      summary: text(formData, "summary", 400).replace(/\s+/g, " ").trim(),
       navLabel: optional(formData, "navLabel", 60),
       topics: text(formData, "topics", 5000)
         .split("\n")

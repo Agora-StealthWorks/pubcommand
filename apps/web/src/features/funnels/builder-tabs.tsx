@@ -428,10 +428,11 @@ export function EpisodePageSettings({ funnel, canWrite }: { funnel: FunnelRow; c
           <Field label="Layout" htmlFor="navLayout">
             <select id="navLayout" name="navLayout" defaultValue={funnel.navLayout} className="pc-control w-full text-sm">
               <option value="strip">Thumbnail strip above the video</option>
+              <option value="strip_status">Thumbnail strip with titles and status (“Expires in…”, “Access expired”)</option>
               <option value="sidebar">Episode list beside the video (stacks under it on phones)</option>
             </select>
           </Field>
-          <Check name="navBlurLocked" label="Blur locked and expired thumbnails" defaultChecked={funnel.navBlurLocked} />
+          <Check name="navBlurLocked" label="Blur locked and expired thumbnails" defaultChecked={funnel.navBlurLocked} hint="List beside the video, and the strip with titles and status." />
           {canWrite ? <Button type="submit">Save episode page</Button> : null}
         </Section>
       </fieldset>

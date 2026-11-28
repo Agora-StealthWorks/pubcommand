@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { tenantDb } from "@pubcommand/db";
 import { readAgentPassFromRequest } from "@/lib/auth";
-import { fetchRemoteImage } from "@/features/agents/remote-image";
+import { fetchRemoteImage, imageTypeOf, type RemoteImage } from "@/features/agents/remote-image";
+import { MAX_IMAGE_BYTES } from "@/features/funnels/form-input";
 import { funnelDesign, loadFunnelForBrand } from "@/features/funnels/data";
 import { funnelsAccess } from "@/features/funnels/guard";
 import { saveDesign, saveHomePage, saveOfferSection, uploadFunnelImage } from "@/features/funnels/site-actions";
@@ -70,14 +71,14 @@ export async function PUT(request: Request, { params }: Params) {
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }
 
-/** Add an image from a public https address (for the logo, design backgrounds and image blocks). */
+/** Add an image from a public https address or uploaded bytes (base64), for the logo, design backgrounds and blocks. */
 export async function POST(request: Request, { params }: Params) {
   if (!(await readAgentPassFromRequest())) return notFound();
   const { funnelId } = await params;
-  const body = (await request.json().catch(() => null)) as { image_url?: unknown; kind?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { image_url?: unknown; image_base64?: unknown; filename?: unknown; kind?: unknown } | null;
   let image;
   try {
-    image = await fetchRemoteImage(String(body?.image_url ?? ""), 10);
+    image = typeof body?.image_base64 === "string" && body.image_base64 ? uploadedImage(body.image_base64, typeof body.filename === "string" ? body.filename : "image") : await fetchRemoteImage(String(body?.image_url ?? ""), 10);
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Could not fetch that image." }, { status: 400 });
   }
@@ -87,4 +88,15 @@ export async function POST(request: Request, { params }: Params) {
   form.set("file", new File([image.data], image.filename, { type: image.mime }));
   const result = await uploadFunnelImage(form);
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+}
+
+/** An image the agent sent as base64: up to 3 MB, recognized by its bytes. */
+function uploadedImage(base64: string, filename: string): RemoteImage {
+  const data = new Uint8Array(Buffer.from(base64, "base64"));
+  if (!data.length) throw new Error("The image data is empty or not base64.");
+  if (data.length > MAX_IMAGE_BYTES) throw new Error("Images must be under 3 MB.");
+  const name = filename.replace(/[^\w.\- ]+/g, "").trim().slice(0, 200) || "image";
+  const mime = imageTypeOf(data, name);
+  if (!mime) throw new Error("That file is not a PNG, JPG, GIF or WebP image.");
+  return { filename: name, mime, data };
 }

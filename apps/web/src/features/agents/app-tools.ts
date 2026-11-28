@@ -168,18 +168,29 @@ export const APP_TOOLS: Tool[] = [
   {
     name: "add_funnel_image",
     title: "Add an image to a funnel",
-    description: 'Store an image from a public https address in the funnel, for its logo (kind "logo"), header or page background ("header_bg", "page_bg"), footer logo ("footer_logo") or an image block ("block", the default). Returns the id and src to put in save_funnel_editor (e.g. logoAssetId, or an image block\'s assetId and src).',
+    description:
+      'Upload an image to the funnel: either from a public https address (image_url) or the file itself (image_base64, the bytes base64-encoded, plus a filename; PNG, JPG, GIF or WebP, up to 3 MB; SVG is refused). kind: the funnel logo ("logo"), header or page background ("header_bg", "page_bg"), footer logo ("footer_logo"), or anything placed in blocks ("block", the default): image blocks, logo strip logos, package images and testimonial photos. Returns the id and src to put in save_funnel_editor: logoAssetId; an image block\'s assetId; a logo strip item\'s assetId; a pricing tier\'s imageAssetId; a testimonial\'s photoAssetId.',
     inputSchema: {
       type: "object",
-      properties: { funnel: { type: "string", description: "The funnel id." }, image_url: { type: "string" }, kind: { type: "string", enum: ["logo", "header_bg", "page_bg", "footer_logo", "block"] }, organization: where.organization },
-      required: ["funnel", "image_url"],
+      properties: {
+        funnel: { type: "string", description: "The funnel id." },
+        image_url: { type: "string", description: "A public https address of the image." },
+        image_base64: { type: "string", description: "The image file, base64-encoded (instead of image_url)." },
+        filename: { type: "string", description: "The file name, e.g. logo.png (with image_base64)." },
+        kind: { type: "string", enum: ["logo", "header_bg", "page_bg", "footer_logo", "block"] },
+        organization: where.organization,
+      },
+      required: ["funnel"],
       additionalProperties: false,
     },
     readOnly: false,
     available: () => true,
     run: async (ctx, args) => {
       const { agent, funnelId } = await funnelAgent(ctx, args, true);
-      const result = await callAgentApi(agent, `/agent-api/funnels/${funnelId}`, "POST", { image_url: str(args, "image_url", 2000), kind: str(args, "kind", 20) ?? "block" });
+      const base64 = typeof args.image_base64 === "string" ? args.image_base64.replace(/^data:[^,]*,/, "").replace(/\s+/g, "") : "";
+      if (!base64 && !str(args, "image_url", 2000)) throw new ToolError("Give image_url (a public https address) or image_base64 (the file).");
+      if (base64.length > 4_200_000) throw new ToolError("Images must be under 3 MB.");
+      const result = await callAgentApi(agent, `/agent-api/funnels/${funnelId}`, "POST", base64 ? { image_base64: base64, filename: str(args, "filename", 200) ?? "image", kind: str(args, "kind", 20) ?? "block" } : { image_url: str(args, "image_url", 2000), kind: str(args, "kind", 20) ?? "block" });
       return { data: { id: result.id, src: result.src }, targetType: "funnel_asset", targetId: String(result.id ?? "") };
     },
   },

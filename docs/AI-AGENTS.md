@@ -93,7 +93,7 @@ Editors that save from the browser without a form have their own tools. For a fu
 Home page and Offer section: `get_funnel_editor` returns the current JSON, the choices (forms,
 SMS forms, module and page targets, form themes) and every block type with its fields;
 `save_funnel_editor` saves one part as its Save button does (blocks replace the whole list); and
-`add_funnel_image` stores an image from a public https address. They call
+`add_funnel_image` stores an image from a public https address or from the file itself (`image_base64` plus `filename`; PNG, JPG, GIF or WebP up to 3 MB) and returns the id to use as a logo, image block, logo strip item, package image or testimonial photo. They call
 `/agent-api/funnels/<id>`, which accepts only a valid agent pass and runs the editors' own save
 actions.
 
